@@ -11,10 +11,10 @@
 | .NET target framework | `net48` (.NET Framework 4.8) | cần verify bằng build chạy được trong Max |
 | C++ toolset (nếu cần shim) | VS 2019 / v142 | chưa cần |
 | Qt (Max UI) | 5.15.2 | ảnh hưởng dock panel — xem [R3](decisions.md#r3--dockable-panel-trên-qt-515) |
-| Max .NET assemblies | `Autodesk.Max.dll`, `ManagedServices.dll`, `MaxCustomControls.dll` | ? verify đường dẫn thật trong Phase 1 |
-| WebView2 SDK | `Microsoft.Web.WebView2` (NuGet) | ? verify hỗ trợ `net48` ở version chọn |
-| WebView2 Runtime | Evergreen ([D4](decisions.md#d4--webview2-runtime-evergreen--bootstrapper-trong-installer)) | ? verify hành vi khi vắng mặt |
-| Windows | ? (10 minimum giả định) | ? |
+| Max .NET assemblies | `Autodesk.Max.dll`, `ManagedServices.dll`, `MaxCustomControls.dll` — có đủ tại `C:\Program Files\Autodesk\3ds Max 2022\` | verified 2026-09-23 (chỉ mới xác nhận tồn tại; host hiện chưa reference cái nào) |
+| WebView2 SDK | `Microsoft.Web.WebView2` 1.0.4191.47, dùng `lib\net462` | verified 2026-09-23 — build `net48` + `PlatformTarget=x64` pass |
+| WebView2 Runtime | Evergreen 153.0.4234.48 (máy dev) | ? hành vi khi vắng mặt vẫn chưa test |
+| Windows | 11 Education 26200 (máy dev) | ? chưa test Win10 |
 
 ## Việc phải làm để điền bảng này (Phase 0/1 spike)
 

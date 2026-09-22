@@ -1,0 +1,7 @@
+bin/
+obj/
+.vs/
+packages/
+installer/stage/
+installer/*.exe
+installer/Setup/payload.zip

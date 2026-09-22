@@ -1,0 +1,47 @@
+# Build plugin + dong goi thanh PlatformSetup.exe.
+# Chay: powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
+# (comment khong dau: PowerShell 5.1 doc file khong BOM theo ANSI)
+$ErrorActionPreference = 'Stop'
+
+$root  = Split-Path $PSScriptRoot -Parent
+$proj  = Join-Path $root 'plugin-csharp\MaxWebViewHost\MaxWebViewHost\MaxWebViewHost.csproj'
+$setup = Join-Path $PSScriptRoot 'Setup\Setup.csproj'
+$stage = Join-Path $PSScriptRoot 'stage'
+$out   = Join-Path $PSScriptRoot 'PlatformSetup.exe'
+
+$msbuild = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
+    -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe
+if (-not $msbuild) { throw "Khong tim thay MSBuild (can Visual Studio Build Tools)." }
+
+# --- 1. plugin, Release x64 ---
+Write-Host "==> Build plugin (Release x64)"
+& $msbuild $proj /t:Rebuild /p:Configuration=Release /p:PlatformTarget=x64 /v:minimal /nologo
+if ($LASTEXITCODE -ne 0) { throw "Build plugin that bai." }
+$bin = Join-Path $root 'plugin-csharp\MaxWebViewHost\MaxWebViewHost\bin\Release'
+
+# --- 2. stage dung layout se nam trong thu muc user cua Max ---
+Write-Host "==> Stage"
+if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+$pdir = Join-Path $stage 'Platform'
+New-Item -ItemType Directory -Path $pdir, (Join-Path $stage 'usermacros') -Force | Out-Null
+
+# runtimes\ phai giu nguyen cau truc, thieu la WebView2 khong init duoc
+Copy-Item (Join-Path $bin '*.dll') $pdir
+Copy-Item (Join-Path $bin 'runtimes') $pdir -Recurse
+Copy-Item (Join-Path $root 'maxscript\PlatformBridge.ms') $pdir
+Copy-Item (Join-Path $root 'frontend') (Join-Path $pdir 'frontend') -Recurse
+Copy-Item (Join-Path $root 'maxscript\usermacros\Platform-OpenPanel.mcr') (Join-Path $stage 'usermacros')
+
+# --- 3. zip -> nhung vao installer duoi dang embedded resource ---
+Write-Host "==> Zip payload"
+$zip = Join-Path $PSScriptRoot 'Setup\payload.zip'
+if (Test-Path $zip) { Remove-Item $zip -Force }
+Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -Force
+
+# --- 4. installer exe ---
+Write-Host "==> Build installer"
+& $msbuild $setup /restore /t:Rebuild /p:Configuration=Release /v:minimal /nologo
+if ($LASTEXITCODE -ne 0) { throw "Build installer that bai." }
+
+Copy-Item (Join-Path $PSScriptRoot 'Setup\bin\Release\net48\PlatformSetup.exe') $out -Force
+Write-Host ("==> Xong: {0} ({1:N0} KB)" -f $out, ((Get-Item $out).Length / 1KB))
