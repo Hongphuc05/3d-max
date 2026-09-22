@@ -8,21 +8,24 @@
 5. Security boundary nằm ở native side; web input luôn untrusted.
 
 ## Phase 0 — Discovery
+> Target đã khóa: **Max 2022 / .NET Framework 4.8** ([D1](docs/decisions.md#d1--target-3ds-max-2022-locked)). Không lặp lại câu hỏi này.
+
 ### Việc làm
-- Chốt 3ds Max version đầu tiên cần support.
-- Audit frontend: framework, routing, auth, CSP, API base URL, download flow.
+- Audit frontend: framework, routing, auth, CSP, API base URL, download flow. → giải [O1, O2](docs/decisions.md#quyết-định-chưa-khóa-blocker-cho-phase-0)
 - Audit backend: asset metadata, signed URL/download API, version/checksum.
-- Audit asset formats thực tế.
+- Audit asset formats thực tế. → giải [O3](docs/decisions.md#quyết-định-chưa-khóa-blocker-cho-phase-0)
 - Liệt kê các action web cần Max thực hiện.
-- Spike compatibility của .NET + WebView2 + dockable panel trên Max target.
+- Spike .NET 4.8 + WebView2 + dockable panel trên Max 2022 — điền `docs/compatibility.md`.
+- Kiểm tra [R2](docs/decisions.md#r2--assembly-conflict-trong-appdomain-của-max): liệt kê assemblies Max nạp sẵn, đối chiếu dependency của bridge. Làm sớm, đừng chờ nó gãy.
+- Hỏi business: kênh phân phối + licensing ([O4, O5](docs/decisions.md#quyết-định-chưa-khóa-blocker-cho-phase-0)).
 
 ### Deliverables
-- `docs/compatibility.md`
+- `docs/compatibility.md` — không còn ô `?`
 - `docs/current-platform-audit.md`
 - danh sách bridge methods v1.
 
 ### Exit
-Có thể mở một WebView2 trong Max target và load một test page.
+Có thể mở một WebView2 trong Max 2022 và load một test page. Bảng compatibility đã điền.
 
 ## Phase 1 — Native Host PoC
 - Tạo solution C# plugin.
@@ -76,12 +79,17 @@ Exit: user login/browse platform ngay trong Max.
 Exit: một asset production thật đi từ platform -> Max scene.
 
 ## Phase 6 — Hardening
+> Bắt buộc, không phải optional — đây là sản phẩm thương mại ([D3](docs/decisions.md#d3--mục-tiêu-sản-phẩm-thương-mại-locked)).
+
 - Navigation policy.
 - No arbitrary script/shell/path bridge.
 - Auth/token review.
 - Crash/reload/offline testing.
-- Correlation logs.
-- Installer/package/update strategy.
+- Test trường hợp WebView2 Runtime vắng mặt.
+- Correlation logs + diagnostic export cho support.
+- Installer + bootstrap WebView2 Runtime.
+- Code signing DLL + installer.
+- Update/rollback.
 
 ## Phase 7 — Materials/Renderer (nếu platform cần)
 - Renderer detection.
@@ -98,10 +106,5 @@ Exit: một asset production thật đi từ platform -> Max scene.
 - Upgrade/rollback.
 - Support/debug guide.
 
-## Quyết định cần khóa sớm
-- Max version đầu tiên.
-- WebView load remote production URL hay bundled/local frontend build.
-- Auth flow trong embedded WebView.
-- Asset format đầu tiên.
-- Ai download asset: native plugin (khuyến nghị) hay web.
-- Update mechanism.
+## Quyết định
+Đã khóa (D1–D4) và còn mở (O1–O5): xem [`docs/decisions.md`](docs/decisions.md). Không quyết lại ở đây.

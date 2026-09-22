@@ -1,5 +1,13 @@
 # AGENT.md — Coding Agent Instructions
 
+> Đọc [`docs/decisions.md`](docs/decisions.md) trước. D1–D4 đã khóa — không hỏi lại, không tự đổi.
+
+## Locked Targets
+- 3ds Max **2022**, target framework **`net48`** (.NET Framework 4.8). Không dùng .NET 8/Core.
+- Mọi NuGet package phải hỗ trợ `net48`.
+- Sản phẩm thương mại → installer, signing, update, support log là in-scope.
+- `Platform.Max.Bridge` **không được** tham chiếu type nào của `Autodesk.Max`. Mọi thứ Max-specific nằm trong `Platform.Max.Adapter` sau một interface. Vi phạm rule này = khóa chết ở Max 2022.
+
 ## Mission
 Tích hợp web platform hiện có vào Autodesk 3ds Max bằng một native C#/.NET host chứa WebView2 và một bridge API tối thiểu, typed, secure giữa JavaScript và 3ds Max.
 
@@ -19,7 +27,7 @@ Không rewrite backend/frontend nếu không có bằng chứng bắt buộc.
 
 ## Agent Working Rules
 1. Trước khi sửa code, inspect repo và ghi lại stack/cấu trúc thực tế.
-2. Không giả định version 3ds Max/.NET/API; xác minh từ project/docs được cung cấp.
+2. Max version và .NET target đã khóa (xem trên). Các API cụ thể của Max thì KHÔNG giả định — xác minh bằng assembly thật trước khi dùng.
 3. Làm theo vertical slices nhỏ, build/test sau mỗi slice.
 4. Không refactor unrelated code.
 5. Không thay auth/backend contract nếu chưa cần.
@@ -30,6 +38,7 @@ Không rewrite backend/frontend nếu không có bằng chứng bắt buộc.
 10. Network/file extraction không block UI thread.
 11. Giữ browser web app hoạt động khi không có Max host.
 12. Khi thiếu thông tin ảnh hưởng kiến trúc, ghi assumption/TODO rõ ràng thay vì invent.
+13. Trước khi thêm NuGet dependency: kiểm tra nó có xung đột với assembly Max đã nạp không ([R2](docs/decisions.md#r2--assembly-conflict-trong-appdomain-của-max)). Ưu tiên không thêm.
 
 ## Suggested Repository Shape
 Adapt vào monorepo hiện có; không ép nếu cấu trúc hiện tại khác.
@@ -46,6 +55,9 @@ Adapt vào monorepo hiện có; không ép nếu cấu trúc hiện tại khác.
   spec.md
   plan.md
   roadmap.md
+  decisions.md              # D1-D4 locked, O1-O5 open
+  compatibility.md
+  current-platform-audit.md # chưa có, deliverable Phase 0
 ```
 
 ## Bridge Contract Rules
@@ -112,7 +124,8 @@ Do not add methods speculatively.
 5. Max manual smoke test.
 
 ## First Implementation Sequence
-1. Inspect repo.
+0. Đọc `docs/decisions.md`.
+1. Inspect repo (cả repo này lẫn repo web platform).
 2. Create architecture note based on actual stack.
 3. Create minimal Max host project.
 4. Render local WebView2 page.

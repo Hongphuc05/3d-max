@@ -26,11 +26,13 @@ Yêu cầu quan trọng:
 - Không hard-code secret, token, production URL hoặc user-specific filesystem path.
 - Website bình thường phải tiếp tục chạy được ngoài 3ds Max; Max SDK cần detect host và trả unsupported rõ ràng khi chạy trong browser.
 - Thiết kế code sao cho bridge/router có thể unit-test ngoài 3ds Max bằng fake/mock Max adapter.
+- `Platform.Max.Bridge` không được tham chiếu type nào của `Autodesk.Max`. Đây là điều kiện để sau này nâng lên Max 2025+/.NET 8 mà không viết lại protocol.
+- Đây là sản phẩm thương mại: installer, code signing, update và diagnostic log là in-scope, không phải "nice to have".
 
 Cách làm việc:
 1. ĐẦU TIÊN hãy inspect toàn bộ repo liên quan và xác định stack thực tế: frontend framework, backend, auth, routing, asset APIs, download flow, project structure, target framework hiện có. Không đoán nếu repo đã có câu trả lời.
-2. Đọc `spec.md`, `plan.md`, `roadmap.md`, `agent.md` và tuân thủ chúng. Nếu tài liệu mâu thuẫn với code thực tế, báo rõ trước khi thay đổi kiến trúc.
-3. Xác định 3ds Max version mục tiêu và compatibility requirement trước khi khóa target framework/API. Nếu chưa có thông tin này trong repo/config/docs, đánh dấu đây là blocker/assumption cần xác nhận; không tự bịa version.
+2. Đọc `docs/decisions.md` TRƯỚC, rồi `spec.md`, `plan.md`, `roadmap.md`, `agent.md` và tuân thủ chúng. Nếu tài liệu mâu thuẫn với code thực tế, báo rõ trước khi thay đổi kiến trúc.
+3. Target đã khóa: **3ds Max 2022, .NET Framework 4.8 (`net48`)** — xem `docs/decisions.md`. Không hỏi lại, không đổi. Nhưng các API cụ thể của Max thì phải xác minh từ assembly thật (`Autodesk.Max.dll`, `MaxCustomControls.dll`), không bịa signature.
 4. Lập implementation plan ngắn theo milestone và liệt kê files dự kiến tạo/sửa.
 5. Implement theo vertical slice, không làm tất cả một lần.
 

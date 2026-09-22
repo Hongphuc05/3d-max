@@ -1,13 +1,18 @@
 # ROADMAP — 3ds Max Platform Extension
 
 > Milestone-based, không ép ngày trước khi audit repo/platform.
+> Target: **Max 2022 / .NET 4.8**. Sản phẩm thương mại → M5 là bắt buộc, không phải optional.
+> Xem [`docs/decisions.md`](docs/decisions.md).
 
 ## M0 — Technical Feasibility
 **Goal:** chứng minh Max có thể host web UI.
-- [ ] Chốt target Max version
-- [ ] C# plugin skeleton
-- [ ] Dockable panel
+- [x] Chốt target Max version → **2022 / .NET Framework 4.8** ([D1](docs/decisions.md#d1--target-3ds-max-2022-locked))
+- [ ] Audit repo platform → `docs/current-platform-audit.md`
+- [ ] C# plugin skeleton (`net48`) build và load được trong Max 2022
+- [ ] Dockable panel (dock/undock/reopen/DPI)
 - [ ] WebView2 render local page
+- [ ] Điền `docs/compatibility.md`, hết ô `?`
+- [ ] Verify [R2](docs/decisions.md#r2--assembly-conflict-trong-appdomain-của-max) assembly conflict
 - [ ] Load staging web page
 - [ ] Startup diagnostics
 
@@ -59,6 +64,10 @@
 **Demo:** `Import` một asset thật vào scene.
 
 ## M5 — Production Hardening
+**Bắt buộc** — sản phẩm thương mại ([D3](docs/decisions.md#d3--mục-tiêu-sản-phẩm-thương-mại-locked)).
+- [ ] WebView2 Runtime vắng mặt → lỗi có nghĩa, không crash Max
+- [ ] code signing DLL + installer
+- [ ] diagnostic log export cho support
 - [ ] offline/error matrix
 - [ ] expired session
 - [ ] corrupted package

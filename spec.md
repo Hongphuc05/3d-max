@@ -1,7 +1,12 @@
 # SPEC — 3ds Max Extension cho Web Platform hiện có
 
+> Quyết định đã khóa: [`docs/decisions.md`](docs/decisions.md). Ma trận version: [`docs/compatibility.md`](docs/compatibility.md).
+> Target: **3ds Max 2022 / .NET Framework 4.8**. Mục tiêu: **sản phẩm thương mại**.
+
 ## 1. Mục tiêu
 Biến web platform hiện có thành một extension/plugin chạy trực tiếp trong Autodesk 3ds Max, tái sử dụng tối đa frontend/backend hiện tại. Extension phải cho phép UI web giao tiếp hai chiều với 3ds Max để thực hiện các thao tác scene/asset/material mà trình duyệt thông thường không thể làm.
+
+Đây là sản phẩm bán cho studio, không phải PoC. Hệ quả: installer, code signing, update và support log là bắt buộc trước khi release — xem [D3](docs/decisions.md#d3--mục-tiêu-sản-phẩm-thương-mại-locked).
 
 ## 2. Phạm vi MVP
 MVP chứng minh end-to-end:
@@ -52,7 +57,8 @@ Existing Backend / API / Storage
 
 ## 5. Thành phần
 ### 5.1 Plugin Host
-- C#/.NET phù hợp với version 3ds Max mục tiêu.
+- C# trên **.NET Framework 4.8**, target **3ds Max 2022** ([D1](docs/decisions.md#d1--target-3ds-max-2022-locked)).
+- Bridge và Adapter tách nhau: `Platform.Max.Bridge` không được tham chiếu type nào của `Autodesk.Max`. Đây là điều kiện để nâng lên Max 2025+/.NET 8 sau này mà không viết lại protocol.
 - Lifecycle: initialize, panel registration, shutdown/dispose.
 - Không chứa business logic của web platform.
 - Quản lý WebView2 runtime/environment, local cache và bridge.
@@ -170,14 +176,11 @@ Không cho web truyền arbitrary filesystem path hoặc arbitrary script để 
 Mặc định cache theo user ở local app data, ví dụ logic `Platform/cache/<asset-id>/<version>/` (đường dẫn thực tế phải lấy từ OS, không hard-code). Metadata cache gồm version/checksum/last-access. Có chính sách clear cache và atomic download (`temp -> verify -> move`).
 
 ## 10. Compatibility
-Tạo compatibility matrix:
-- 3ds Max version
-- .NET/runtime requirement
-- WebView2 runtime
-- renderer (nếu material)
-- asset format/version
+Ma trận sống ở [`docs/compatibility.md`](docs/compatibility.md) — điền bằng test thật, không suy đoán.
 
-Không giả định một binary chạy trên mọi Max version trước khi test.
+MVP chỉ support **3ds Max 2022**. Không claim support version khác trước khi có một lần chạy thật trên máy sạch của version đó.
+
+WebView2 Runtime dùng bản Evergreen, installer tự bootstrap nếu thiếu ([D4](docs/decisions.md#d4--webview2-runtime-evergreen--bootstrapper-trong-installer)). Khi Runtime vắng mặt, plugin phải báo lỗi có nghĩa chứ không crash Max.
 
 ## 11. Error model
 Các code tối thiểu:
@@ -194,6 +197,15 @@ Các code tối thiểu:
 - `TIMEOUT`
 
 Mọi lỗi phải trả về UI, đồng thời native log diagnostic chi tiết hơn nhưng không leak secret.
+
+## 11b. Distribution (bắt buộc do D3)
+- Installer tự detect/bootstrap WebView2 Runtime.
+- Code signing cho cả DLL và installer.
+- Update/rollback có version rõ ràng.
+- Diagnostic log user export và gửi được, đã scrub secret.
+- CI build reproducible, artifact khớp bản ship.
+
+Kênh phân phối (Autodesk App Store hay tự host) và nhu cầu licensing/DRM còn mở — xem [O4/O5](docs/decisions.md#quyết-định-chưa-khóa-blocker-cho-phase-0).
 
 ## 12. Observability
 - Native log rolling file.
