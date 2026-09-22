@@ -1,0 +1,8 @@
+is_global = true
+build_property.RootNamespace = Setup
+build_property.ProjectDir = D:\Project\3d-max\installer\Setup\
+build_property.EnableComHosting = 
+build_property.EnableGeneratedComInterfaceComImportInterop = 
+build_property.CsWinRTUseWindowsUIXamlProjections = false
+build_property.EffectiveAnalysisLevelStyle = 
+build_property.EnableCodeStyleSeverity = 

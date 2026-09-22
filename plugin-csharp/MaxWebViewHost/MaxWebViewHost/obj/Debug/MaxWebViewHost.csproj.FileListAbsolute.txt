@@ -1,0 +1,17 @@
+D:\Project\3d-max\plugin-csharp\MaxWebViewHost\MaxWebViewHost\bin\Debug\runtimes\win-x64\native\WebView2Loader.dll
+D:\Project\3d-max\plugin-csharp\MaxWebViewHost\MaxWebViewHost\bin\Debug\MaxWebViewHost.dll
+D:\Project\3d-max\plugin-csharp\MaxWebViewHost\MaxWebViewHost\bin\Debug\MaxWebViewHost.pdb
+D:\Project\3d-max\plugin-csharp\MaxWebViewHost\MaxWebViewHost\bin\Debug\Microsoft.Web.WebView2.Core.dll
+D:\Project\3d-max\plugin-csharp\MaxWebViewHost\MaxWebViewHost\bin\Debug\Microsoft.Web.WebView2.WinForms.dll
+D:\Project\3d-max\plugin-csharp\MaxWebViewHost\MaxWebViewHost\bin\Debug\Microsoft.Web.WebView2.Wpf.dll
+D:\Project\3d-max\plugin-csharp\MaxWebViewHost\MaxWebViewHost\bin\Debug\Microsoft.Web.WebView2.Core.xml
+D:\Project\3d-max\plugin-csharp\MaxWebViewHost\MaxWebViewHost\bin\Debug\Microsoft.Web.WebView2.WinForms.xml
+D:\Project\3d-max\plugin-csharp\MaxWebViewHost\MaxWebViewHost\bin\Debug\Microsoft.Web.WebView2.Wpf.xml
+D:\Project\3d-max\plugin-csharp\MaxWebViewHost\MaxWebViewHost\obj\Debug\MaxWebViewHost.csproj.AssemblyReference.cache
+D:\Project\3d-max\plugin-csharp\MaxWebViewHost\MaxWebViewHost\obj\Debug\MaxWebViewHost.csproj.CoreCompileInputs.cache
+D:\Project\3d-max\plugin-csharp\MaxWebViewHost\MaxWebViewHost\obj\Debug\MaxWebVi.48D948BE.Up2Date
+D:\Project\3d-max\plugin-csharp\MaxWebViewHost\MaxWebViewHost\obj\Debug\MaxWebViewHost.dll
+D:\Project\3d-max\plugin-csharp\MaxWebViewHost\MaxWebViewHost\obj\Debug\MaxWebViewHost.pdb
+C:\Users\Admin\AppData\Local\Temp\claude\d--Project-3d-max\1aa0909b-908f-4388-9b9b-4f9b76e730c8\scratchpad\verify\runtimes\win-x64\native\WebView2Loader.dll
+C:\Users\Admin\AppData\Local\Temp\claude\d--Project-3d-max\1aa0909b-908f-4388-9b9b-4f9b76e730c8\scratchpad\verify\MaxWebViewHost.dll
+C:\Users\Admin\AppData\Local\Temp\claude\d--Project-3d-max\1aa0909b-908f-4388-9b9b-4f9b76e730c8\scratchpad\verify\MaxWebViewHost.pdb

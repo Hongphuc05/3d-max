@@ -1,0 +1,11 @@
+D:\Project\3d-max\installer\Setup\bin\Release\net48\PlatformSetup.exe.config
+D:\Project\3d-max\installer\Setup\bin\Release\net48\PlatformSetup.exe
+D:\Project\3d-max\installer\Setup\bin\Release\net48\PlatformSetup.pdb
+D:\Project\3d-max\installer\Setup\obj\Release\net48\Setup.csproj.AssemblyReference.cache
+D:\Project\3d-max\installer\Setup\obj\Release\net48\Setup.GeneratedMSBuildEditorConfig.editorconfig
+D:\Project\3d-max\installer\Setup\obj\Release\net48\Setup.AssemblyInfoInputs.cache
+D:\Project\3d-max\installer\Setup\obj\Release\net48\Setup.AssemblyInfo.cs
+D:\Project\3d-max\installer\Setup\obj\Release\net48\Setup.csproj.CoreCompileInputs.cache
+D:\Project\3d-max\installer\Setup\obj\Release\net48\Setup.sourcelink.json
+D:\Project\3d-max\installer\Setup\obj\Release\net48\PlatformSetup.exe
+D:\Project\3d-max\installer\Setup\obj\Release\net48\PlatformSetup.pdb
