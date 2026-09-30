@@ -5,3 +5,6 @@ packages/
 installer/stage/
 installer/*.exe
 installer/Setup/payload.zip
+
+# web/ (Node projects)
+node_modules/
