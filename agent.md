@@ -57,7 +57,7 @@ Adapt vào monorepo hiện có; không ép nếu cấu trúc hiện tại khác.
   roadmap.md
   decisions.md              # D1-D4 locked, O1-O5 open
   compatibility.md
-  current-platform-audit.md # chưa có, deliverable Phase 0
+  current-platform-audit.md # đã có audit source; runtime tiếp tục cập nhật theo từng phase
 ```
 
 ## Bridge Contract Rules

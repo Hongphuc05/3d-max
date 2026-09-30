@@ -20,14 +20,22 @@ Khách hàng mới không mua được license 2022. Quyết định này chỉ 
 khỏi mọi type của `Autodesk.Max`. Nâng lên 2025+ (.NET 8) chỉ được phép chạm tầng Adapter,
 không được viết lại Bridge/SDK.
 
-## D2 — Web platform: repo riêng, có source (locked)
-**Quyết định:** platform đã chạy thật, source ở repo tách biệt, team có quyền sửa frontend.
+## D2 — Web platform: có source trong `web/` (amended, locked)
+
+**Quyết định ban đầu (2026-09-23):** platform đã chạy thật, source ở repo tách biệt,
+team có quyền sửa frontend.
+
+**Cập nhật theo cấu trúc repo được xác nhận ngày 2026-09-30:** source platform hiện nằm
+trong chính project này tại `web/front-3dsmood-main` và `web/back-3dsmood-main`. Ranh giới
+giữa web platform và native PoC vẫn phải được giữ ở cấp kiến trúc.
 
 **Hệ quả:**
 - Được phép thêm route `/extension/3dsmax` và host-detection vào frontend → xem spec §5.2.
-- TS SDK (`packages/max-bridge-web`) ship kèm frontend repo hoặc publish làm package nội bộ.
-- **Blocker:** chưa audit repo đó. Không được viết bridge method nào phụ thuộc asset API
-  trước khi hoàn thành `docs/current-platform-audit.md`.
+- Bridge SDK trước mắt có thể nằm trong frontend hiện tại; chỉ tách package khi có nhu cầu
+  reuse thật.
+- Audit source ban đầu đã được ghi tại [`current-platform-audit.md`](current-platform-audit.md).
+- Chưa được viết `asset.import` production trước khi chạy local, chốt format MVP và thiết kế
+  backend import authorization.
 
 ## D3 — Mục tiêu: sản phẩm thương mại (locked)
 **Quyết định:** đây là sản phẩm bán/phát hành cho studio, không phải PoC.
@@ -50,17 +58,19 @@ trách nhiệm vá lỗ hổng Chromium. Với sản phẩm thương mại, Ever
 
 **Hệ quả:** phải test khi Runtime vắng mặt — plugin không được crash Max, phải báo lỗi rõ.
 
-## Quyết định CHƯA khóa (blocker cho Phase 0)
+## Quyết định chưa khóa
 
 | # | Câu hỏi | Chặn cái gì |
 |---|---------|-------------|
-| O1 | WebView load remote production URL hay bundled local build? | CSP, offline behaviour, update flow |
-| O2 | Auth hiện tại là cookie/session hay OAuth redirect? | Phase 4, spike WebView2 |
-| O3 | Asset format đầu tiên (`.max` / `.fbx` / `.obj`)? | Import adapter, Phase 5 |
+| O1 | Production WebView load remote website hay bundled build? Dev đã chốt dùng localhost. | CSP, offline behaviour, update flow |
+| O2 | Email/password đã rõ là JWT Bearer; Google OAuth redirect vẫn phải test trong WebView2. | Auth acceptance trong Max |
+| O3 | Asset upload chấp nhận nhiều format nhưng format import đầu tiên chưa chốt. | Import adapter |
 | O4 | Kênh phân phối: Autodesk App Store hay tự host? | Installer format, signing, review process |
 | O5 | Có cần licensing/DRM cho plugin không? | Kiến trúc host, không thêm sau dễ |
 
-O1–O3 giải được bằng audit repo platform. O4–O5 là quyết định kinh doanh, hỏi sớm.
+O1–O3 phải được chốt bằng chạy local, WebView2 spike và asset mẫu thật. O4–O5 là quyết
+định kinh doanh, cần chốt trước productization. Xem kế hoạch chi tiết tại
+[`web-in-3dsmax-integration-plan.md`](web-in-3dsmax-integration-plan.md).
 
 ## Risks
 

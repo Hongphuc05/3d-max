@@ -1,6 +1,8 @@
-# Phase 1–3 — Đã làm gì và nó chạy thế nào
+# Báo cáo PoC Phase 1–3 — WebView2/DLL/MAXScript
 
 > Ngày: 2026-09-23. Trạng thái: chạy được trên máy dev, chưa test máy sạch.
+> Đây là báo cáo lịch sử của HTML demo, không phải bằng chứng website React thật đã chạy
+> trong Max. Kế hoạch tiếp theo: [`web-in-3dsmax-integration-plan.md`](web-in-3dsmax-integration-plan.md).
 
 ## Tóm tắt một câu
 
@@ -106,5 +108,7 @@ giữa chừng. `TIMEOUT` mà Listener trống → chưa tới được MAXScrip
 
 ## Bước tiếp theo
 
-Audit repo web platform → `docs/current-platform-audit.md`. Đó vẫn là blocker chặn toàn bộ
-Phase 4–5.
+Audit source ban đầu đã được ghi tại [`current-platform-audit.md`](current-platform-audit.md).
+Bước triển khai tiếp theo là Phase 1 của
+[`web-in-3dsmax-integration-plan.md`](web-in-3dsmax-integration-plan.md): chạy backend và
+frontend local trong browser, tạo baseline runtime, sau đó mới đổi C# host sang URL Vite.

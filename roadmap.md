@@ -7,7 +7,7 @@
 ## M0 — Technical Feasibility
 **Goal:** chứng minh Max có thể host web UI.
 - [x] Chốt target Max version → **2022 / .NET Framework 4.8** ([D1](docs/decisions.md#d1--target-3ds-max-2022-locked))
-- [ ] Audit repo platform → `docs/current-platform-audit.md`
+- [x] Audit source platform bước đầu → `docs/current-platform-audit.md` (runtime vẫn chưa verify)
 - [ ] C# plugin skeleton (`net48`) build và load được trong Max 2022
 - [ ] Dockable panel (dock/undock/reopen/DPI)
 - [ ] WebView2 render local page
