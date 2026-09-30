@@ -8,3 +8,7 @@ installer/Setup/payload.zip
 
 # web/ (Node projects)
 node_modules/
+.env
+.env.local
+.env_local
+.vscode/

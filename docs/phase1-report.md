@@ -108,7 +108,7 @@ giữa chừng. `TIMEOUT` mà Listener trống → chưa tới được MAXScrip
 
 ## Bước tiếp theo
 
-Audit source ban đầu đã được ghi tại [`current-platform-audit.md`](current-platform-audit.md).
+udit source ban đầu đã được ghi tại [`current-platform-audit.md`](current-platform-audit.md).
 Bước triển khai tiếp theo là Phase 1 của
 [`web-in-3dsmax-integration-plan.md`](web-in-3dsmax-integration-plan.md): chạy backend và
 frontend local trong browser, tạo baseline runtime, sau đó mới đổi C# host sang URL Vite.

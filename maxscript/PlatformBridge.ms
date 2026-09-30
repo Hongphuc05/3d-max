@@ -162,38 +162,38 @@ fn pbOnRequest sender args = (
 
 -- ---------- khởi động ----------
 
--- Ưu tiên bản đã cài trong thư mục user của Max, không có thì rơi về layout dev.
-fn pbPaths = (
-    local installed = (getDir #userScripts) + "\\Platform\\"
-    if doesFileExist (installed + "MaxWebViewHost.dll") then
-        #(installed + "MaxWebViewHost.dll", installed + "frontend\\index.html")
-    else
-        #(@"D:\Project\3d-max\plugin-csharp\MaxWebViewHost\MaxWebViewHost\bin\Debug\MaxWebViewHost.dll",
-          @"D:\Project\3d-max\frontend\index.html")
+-- Ưu tiên DLL đã cài trong thư mục user của Max, không có thì rơi về layout dev.
+fn pbDllPath = (
+    local installed = (getDir #userScripts) + "\\Platform\\MaxWebViewHost.dll"
+    if doesFileExist installed then installed
+    else @"D:\Project\3d-max\plugin-csharp\MaxWebViewHost\MaxWebViewHost\bin\Debug\MaxWebViewHost.dll"
 )
 
+-- Phase 4: host nạp website thật qua URL (Vite dev server), không còn nạp file HTML cố định.
+-- Đổi 3 giá trị này khi target staging/production.
+global gPlatformStartUrl = "http://localhost:5173"
+global gPlatformTrustedOrigins = "http://localhost:5173,http://localhost:5001"
+global gPlatformEnvironmentName = "development"
+
 fn openPlatformPanel = (
-    local p = pbPaths()
-    local dllPath = p[1], htmlPath = p[2]
+    local dllPath = pbDllPath()
 
     if not (doesFileExist dllPath) do (
         messageBox ("Không thấy DLL:\n" + dllPath) title:"Platform"
         return undefined
     )
-    if not (doesFileExist htmlPath) do (
-        messageBox ("Không thấy UI:\n" + htmlPath) title:"Platform"
-        return undefined
-    )
 
     (dotNetClass "System.Reflection.Assembly").LoadFrom dllPath
     local cls = dotNetClass "MaxWebViewHost.MaxWebViewForm"
-    cls.HtmlPath = htmlPath
+    cls.StartUrl = gPlatformStartUrl
+    cls.TrustedOrigins = gPlatformTrustedOrigins
+    cls.EnvironmentName = gPlatformEnvironmentName
     cls.HostVersion = "3ds Max build " + ((maxVersion())[1] as string)
 
     gPlatformForm = cls.ShowWindow()
     dotNet.removeAllEventHandlers gPlatformForm          -- chạy lại không bị đăng ký trùng
     dotNet.addEventHandler gPlatformForm "SceneRequestReceived" pbOnRequest
-    format "[bridge] panel mở, UI = %\n" htmlPath
+    format "[bridge] panel mở, StartUrl = %\n" gPlatformStartUrl
     gPlatformForm
 )
 
