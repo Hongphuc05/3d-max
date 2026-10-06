@@ -100,7 +100,7 @@ logic tham chiếu (SePay webhook, stream, auth) tra bằng `git show main:web/<
 | Truy vấn DB | `pg` + SQL thuần, migration bằng file `.sql` đánh số | ~6 bảng, ORM là thừa. Nếu muốn type-safe thì Kysely/Drizzle là lựa chọn nhẹ |
 | Storage file nén | Dev: thư mục local · Prod: S3-compatible (Wasabi như cũ), **private bucket + presigned GET TTL ngắn** | Bỏ được token store in-memory của code cũ; scale nhiều instance |
 | Ảnh preview | Sinh thumbnail `.webp` khi ingest (`sharp`), phục vụ public/CDN | Ảnh gốc vài MB, grid 360 ảnh mà không có thumbnail thì rất chậm |
-| Auth | Email/password, `bcrypt`, JWT access token ngắn + refresh token | Google OAuth để sau (embedded WebView có thể bị Google chặn, cần spike riêng — O2) |
+| Auth | Email/password, `crypto.scrypt` (stdlib), session cookie HttpOnly lưu server — xem D9 | Google OAuth để sau (embedded WebView có thể bị Google chặn, cần spike riêng — O2) |
 | Thanh toán | **VietQR chuyển khoản + SePay webhook** (code cũ đã có, chuyển sang thanh toán theo đơn) | Hợp với 15.000 VND/sản phẩm và chạy được trong panel Max (user quét QR bằng điện thoại). Lựa chọn khác: PayOS, VNPay, MoMo — chưa đánh giá phí/hợp đồng, cần so sánh trước A4 |
 | Ingest | Script Node CLI + `bsdtar` (libarchive) để list/extract rar/zip/7z | `bsdtar` có sẵn trên macOS và đã list được `.rar` mẫu. Hỗ trợ RAR5 phải verify trên toàn bộ 360 file |
 | Chạy local | `docker compose` (postgres) + `npm run dev` | Không dùng DB remote khi dev |

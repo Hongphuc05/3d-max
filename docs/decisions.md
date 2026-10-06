@@ -84,13 +84,27 @@ lọc logic từ web cũ (SePay, stream, auth). `web/` **đã xóa** khỏi repo
 bảo mật đã xác nhận ([roadmap §2.4](product-roadmap.md#24-không-mang-sang-từ-code-cũ-debt-đã-xác-nhận-trong-source)).
 So sánh các lựa chọn: [roadmap §2.1](product-roadmap.md#21-quyết-định-lớn-dùng-lại-web-hay-làm-app-mới-gọn).
 
-## D7 — Database: PostgreSQL (đề xuất, chờ chốt)
+## D7 — Database: PostgreSQL (locked 2026-10-06)
 
-**Đề xuất:** dùng PostgreSQL với `pg` và SQL migration, Docker khi dev. Order, payment và
+**Quyết định:** dùng PostgreSQL với `pg` và SQL migration, Docker khi dev. Order, payment và
 license cần transaction, unique constraint và foreign key.
 
 **Thay thế:** giữ MongoDB nếu ưu tiên dùng lại model Mongoose. Khi đó transaction bắt buộc
 phải chạy trên replica set.
+
+## D9 — Đăng nhập: session cookie HttpOnly, lưu phía server (locked 2026-10-06)
+
+**Quyết định:** cookie `sid` ngẫu nhiên (HttpOnly, SameSite=Lax, Secure khi production), server
+lưu **hash sha256** của session trong bảng `sessions` (có hạn dùng, thu hồi được). Mật khẩu băm
+bằng `crypto.scrypt` của Node. Chống CSRF bằng SameSite + kiểm `Origin` + chỉ nhận JSON.
+
+**Khác roadmap ban đầu** (JWT access + refresh): session phía server **thu hồi được ngay**
+(logout, đổi mật khẩu, khóa tài khoản), không cần thư viện JWT/bcrypt, và cookie HttpOnly thì JS
+trong trang (kể cả khi bị XSS) không đọc được token. Đổi lại cần một lần truy vấn DB mỗi request
+cần đăng nhập — chấp nhận ở quy mô này.
+
+**Phase B:** native/WebView2 dùng chung cookie của WebView; việc xác thực của plugin với backend
+(device key, import ticket) là cơ chế riêng ở B3, không dùng lại `sid`.
 
 ## D8 — License = entitlement phía server, plugin miễn phí (đề xuất, chờ chốt)
 
@@ -111,7 +125,7 @@ phí và không có license key. Chi tiết: [roadmap §3](product-roadmap.md#3-
 | O5 | Mức bảo vệ asset: chỉ entitlement + device limit, hay thêm mã hóa cache/watermark? Đề xuất MVP: entitlement + device limit + ticket one-time. | Phase B3–B5 |
 | O6 | Cổng thanh toán: SePay (code cũ có sẵn) hay PayOS/VNPay/MoMo? Chưa so sánh phí/hợp đồng. | Phase A4 |
 | O7 | Số device tối đa mỗi tài khoản. (**Đã chốt 2026-10-06: không cho tải file nén trong browser.**) | Phase B3 |
-| O8 | Token auth: cookie HttpOnly hay `localStorage`. | Phase A3 |
+| ~~O8~~ | ~~Token auth~~ → **đã chốt 2026-10-06: cookie HttpOnly**, xem D9. | — |
 
 O1–O3 phải được chốt bằng chạy thật. O4–O7 là quyết định kinh doanh. Kế hoạch tổng:
 [`product-roadmap.md`](product-roadmap.md). Chi tiết phần Max:

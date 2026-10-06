@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getCategories, getProducts } from './api.js';
+import AuthModal from './AuthModal.jsx';
+import { useAuth } from './auth.jsx';
 import { Card, ProductModal, Sidebar } from './components.jsx';
 
 const LIMIT = 48;
@@ -13,6 +15,8 @@ export default function App() {
   const [state, setState] = useState('loading'); // loading | ready | error
   const [active, setActive] = useState(null);
   const [menu, setMenu] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+  const { user, logout } = useAuth();
 
   useEffect(() => { getCategories().then(setCategories).catch(() => setState('error')); }, []);
   useEffect(() => { const t = setTimeout(() => setQ(text), 250); return () => clearTimeout(t); }, [text]);
@@ -42,6 +46,14 @@ export default function App() {
           value={text} onChange={(e) => setText(e.target.value)} placeholder="Tìm model…"
           className="ml-auto w-full max-w-sm rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-2 text-sm outline-none focus:border-brand"
         />
+        {user === undefined ? null : user ? (
+          <div className="flex shrink-0 items-center gap-2 text-sm">
+            <span className="hidden max-w-[160px] truncate text-neutral-600 sm:inline" title={user.email}>{user.email}</span>
+            <button onClick={logout} className="rounded-lg border border-neutral-200 px-3 py-1.5 hover:bg-neutral-100">Đăng xuất</button>
+          </div>
+        ) : (
+          <button onClick={() => setAuthOpen(true)} className="shrink-0 rounded-lg bg-brand px-3 py-1.5 text-sm font-bold text-white">Đăng nhập</button>
+        )}
       </header>
 
       <div className="mx-auto flex max-w-[1600px]">
@@ -75,6 +87,7 @@ export default function App() {
       </div>
 
       {active && <ProductModal p={active} onClose={() => setActive(null)} />}
+      {authOpen && !user && <AuthModal onClose={() => setAuthOpen(false)} />}
     </div>
   );
 }

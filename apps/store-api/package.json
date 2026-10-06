@@ -3,13 +3,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "ingest": "node scripts/ingest.js",
-    "dev": "node --watch src/server.js",
-    "start": "node src/server.js",
-    "test": "node --test"
+    "ingest": "node --env-file-if-exists=.env scripts/ingest.js",
+    "dev": "node --env-file-if-exists=.env --watch src/server.js",
+    "start": "node --env-file-if-exists=.env src/server.js",
+    "test": "node --env-file-if-exists=.env --test"
   },
   "dependencies": {
     "express": "^5.1.0",
+    "pg": "^8.23.1",
     "sharp": "^0.34.0"
   }
 }
