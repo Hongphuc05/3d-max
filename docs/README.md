@@ -14,6 +14,7 @@
 
 | Thứ tự | Tài liệu | Mục đích |
 |---:|---|---|
+| 0 | [`STATUS.md`](STATUS.md) | **Đã làm tới đâu, còn gì** (checklist, cập nhật mỗi khi xong việc) |
 | 1 | [`product-roadmap.md`](product-roadmap.md) | **Plan tổng**: dữ liệu nguồn, tech stack, mô hình license, Phase A/B |
 | 2 | [`decisions.md`](decisions.md) | Quyết định đã khóa và đề xuất (D1–D8), câu hỏi mở (O1–O8), rủi ro |
 | 3 | [`architecture.md`](architecture.md) | Ranh giới web store và 3ds Max host |

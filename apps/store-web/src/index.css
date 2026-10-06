@@ -1,0 +1,11 @@
+@import 'tailwindcss';
+
+@font-face { font-family: 'Codec Pro'; font-weight: 400; src: url('/fonts/CodecPro/CodecPro-Regular.woff2') format('woff2'); font-display: swap; }
+@font-face { font-family: 'Codec Pro'; font-weight: 700; src: url('/fonts/CodecPro/CodecPro-Bold.woff2') format('woff2'); font-display: swap; }
+
+@theme {
+  --font-sans: 'Codec Pro', ui-sans-serif, system-ui, sans-serif;
+  --color-brand: #e8590c;
+}
+
+body { @apply bg-neutral-50 text-neutral-900 antialiased; }

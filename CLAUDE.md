@@ -259,9 +259,8 @@ Ranh giới trách nhiệm chi tiết: [`docs/architecture.md`](docs/architectur
 ## D. Development workflow
 
 ### 1. Web (dev)
-Web store mới (`apps/`) chưa có code — lệnh chạy sẽ bổ sung ở A0/A1.
-Lưu ý: backend gọi `dotenv.config()` → tìm `.env`, trong khi file đang có là `.env_local` —
-phải chỉ rõ file config khi chạy (xem audit §6).
+Web store mới (Phase A, nhánh `phuc_apps`): hướng dẫn chạy cho macOS và Windows ở
+[`apps/README.md`](apps/README.md). Tiến độ và việc còn lại: [`docs/STATUS.md`](docs/STATUS.md).
 
 ### 2. Plugin + installer (Windows)
 ```powershell

@@ -23,7 +23,7 @@ kéo `Mở Platform Design Library` vào một toolbar rồi bấm.
 | Thư mục | Nội dung |
 |---|---|
 | `source/3DSMOOD/` | Dữ liệu catalog gốc (360 sản phẩm, ~10 GB), gitignored |
-| `apps/` | Web store mới — `store-web`, `store-api` (Phase A, chưa tạo) |
+| `apps/` | Web store mới — `store-web`, `store-api` (Phase A). Cách chạy: [apps/README.md](apps/README.md) |
 | `frontend/` | Trang demo/diagnostic của PoC. HTML thuần, không build step |
 | `plugin-csharp/` | Plugin host: WebView2 + bridge. Không tham chiếu `Autodesk.Max` |
 | `maxscript/` | Handler phía Max + macroscript cho nút toolbar |
@@ -37,6 +37,7 @@ Bắt đầu tại **[docs/README.md](docs/README.md)** để đọc theo đúng
 | File | Nội dung |
 |---|---|
 | [docs/README.md](docs/README.md) | Mục lục và trạng thái hiện tại |
+| [docs/STATUS.md](docs/STATUS.md) | **Tiến độ**: đã làm tới đâu, còn gì (checklist) |
 | [docs/product-roadmap.md](docs/product-roadmap.md) | **Plan tổng**: tech stack, license, Phase A (web) → Phase B (Max) |
 | [docs/decisions.md](docs/decisions.md) | D1–D8 (khóa/đề xuất), O1–O8 còn mở, R1–R8 risks |
 | [docs/architecture.md](docs/architecture.md) | Ranh giới web platform, native PoC và kiến trúc mục tiêu |
