@@ -1,5 +1,8 @@
 # ROADMAP — 3ds Max Platform Extension
 
+> **Đã thay thế (2026-10-06):** xem [`docs/product-roadmap.md`](docs/product-roadmap.md)
+> (Phase A web store → Phase B kết nối Max). File này được giữ lại làm lịch sử.
+
 > Milestone-based, không ép ngày trước khi audit repo/platform.
 > Target: **Max 2022 / .NET 4.8**. Sản phẩm thương mại → M5 là bắt buộc, không phải optional.
 > Xem [`docs/decisions.md`](docs/decisions.md).

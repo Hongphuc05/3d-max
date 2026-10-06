@@ -5,3 +5,10 @@ packages/
 installer/stage/
 installer/*.exe
 installer/Setup/payload.zip
+source/
+.DS_Store
+.env*
+!.env.example
+node_modules/
+storage/
+dist/

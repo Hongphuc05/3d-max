@@ -3,9 +3,14 @@
 > Cập nhật: 2026-09-30  
 > Xem quyết định đã khóa tại [`decisions.md`](decisions.md).
 
+> **2026-10-06:** hướng đi đổi sang bán license (D5). Web store mới dự kiến ở
+> `apps/store-web` + `apps/store-api` (D6, đề xuất); `web/` thành legacy. Plan tổng:
+> [`product-roadmap.md`](product-roadmap.md). `web/` cũ đã xóa (tag `main`); §1.1 chỉ còn là lịch sử.
+> Ranh giới trách nhiệm ở §2 và nguyên tắc ở §7 vẫn giữ nguyên.
+
 ## 1. Hai phần của repo
 
-### 1.1 Website 3DS Mood thật
+### 1.1 Website 3DS Mood cũ (legacy)
 
 Nằm trong `web/`:
 
@@ -67,7 +72,7 @@ Website React 3DS Mood
 | Layer | Có trách nhiệm | Không có trách nhiệm |
 |---|---|---|
 | React web | UI, login, catalog, gọi API, hiển thị progress | Không gọi raw MAXScript hoặc arbitrary native API |
-| Backend | Auth, ownership, metadata, import ticket, audit | Không điều khiển scene Max |
+| Backend | Auth, order/payment, license, device, metadata, import ticket, audit | Không điều khiển scene Max |
 | C# bridge | Origin validation, RPC routing, download/cache/verify | Không chứa business logic payment/catalog |
 | Max adapter | Import và scene mutation trên thread an toàn | Không tự quyết quyền sở hữu asset |
 | Installer | Cài plugin/runtime/config, upgrade/rollback | Không hard-code secret hoặc production token |
@@ -103,12 +108,22 @@ Website phải có hai chế độ:
 Không component nào được gọi trực tiếp `window.chrome.webview`. Mọi call đi qua một SDK
 trung tâm trong frontend.
 
-## 5. Flow import mục tiêu
+## 5. Flow mua và import mục tiêu
+
+Mua (Phase A, chạy được cả browser lẫn Max):
+
+```text
+User checkout -> backend tạo order + QR VietQR
+  -> user chuyển khoản -> webhook payment (bắt buộc xác thực, idempotent)
+  -> order paid -> cấp license (user, product)
+```
+
+Import (Phase B):
 
 ```text
 User bấm Import trong website
   -> frontend xin import ticket từ backend bằng auth hiện tại
-  -> backend kiểm user + ownership + asset metadata
+  -> backend kiểm user + license + device đã đăng ký (device key do native giữ)
   -> frontend gửi assetId + ticket qua bridge
   -> native tải stream từ API trusted
   -> verify checksum/size/version
@@ -126,16 +141,13 @@ hoặc MAXScript cho native host.
 Không cần di chuyển code ngay. Khi triển khai, có thể tiến dần tới cấu trúc:
 
 ```text
-web/
-├── front-3dsmood-main/
-│   └── src/integrations/3dsmax/
-│       ├── bridge.js
-│       ├── protocol.js
-│       ├── host.js
-│       ├── scene.js
-│       └── assets.js
-└── back-3dsmood-main/
-    └── routes/max-import.routes.js
+apps/
+├── store-web/
+│   └── src/integrations/3dsmax/   # bridge.js, protocol.js, host.js, scene.js, assets.js
+└── store-api/
+    ├── migrations/
+    ├── scripts/ingest.js
+    └── routes/                    # catalog, auth, orders, payment webhook, licenses, devices, import tickets
 
 plugin-csharp/
 └── MaxWebViewHost/
