@@ -87,6 +87,43 @@ fn pbSofa w d h col = (
     parts
 )
 
+-- ---------- asset import: path do host tính (không phải web gửi), chạy trên UI thread ----------
+
+fn pbHandleImportFile id args = (
+    local p = args.Param "path"
+    if p == undefined or not (doesFileExist p) then (
+        gPlatformForm.PostError id "INVALID_PARAMS" "File import không tồn tại"
+        return undefined
+    )
+
+    local startX = pbNextX()
+    local before = for o in objects collect o
+    local ext = toLower (getFilenameType p)
+
+    -- #noPrompt: không hiện dialog options (dùng setting FBX/OBJ gần nhất)
+    local ok = case ext of (
+        ".max": mergeMAXFile p #select #mergeDups #useMergedMtlDups
+        default: importFile p #noPrompt
+    )
+
+    local added = for o in objects where (findItem before o) == 0 collect o
+    if added.count == 0 do (
+        gPlatformForm.PostError id "MAX_OPERATION_FAILED" "Import xong nhưng scene không có object mới"
+        return undefined
+    )
+
+    -- dời cụm object mới sang mép phải scene cũ để không chồng lên nhau
+    local minX = 1e9
+    for o in added do if o.min.x < minX do minX = o.min.x
+    local dx = startX - minX
+    for o in added where o.parent == undefined or (findItem added o.parent) == 0 do o.pos.x += dx
+    select added
+    forceCompleteRedraw()
+
+    gPlatformForm.PostResultJson id \
+        ("{\"imported\":" + (added.count as string) + ",\"file\":" + (pbJsonStr (filenameFromPath p)) + "}")
+)
+
 -- ---------- router ----------
 
 fn pbHandleDesign id args = (
@@ -150,6 +187,7 @@ fn pbOnRequest sender args = (
                 gPlatformForm.PostResultJson id ("{\"name\":" + (pbJsonStr b.name) + "}")
             )
             "design.create": pbHandleDesign id args
+            "asset.importFile": pbHandleImportFile id args
             default: gPlatformForm.PostError id "UNKNOWN_METHOD" ("Unknown method: " + m)
         )
     )
@@ -174,6 +212,7 @@ fn pbDllPath = (
 global gPlatformStartUrl = "http://localhost:5173"
 global gPlatformTrustedOrigins = "http://localhost:5173,http://localhost:5001"
 global gPlatformEnvironmentName = "development"
+global gPlatformApiBase = "http://localhost:5001"   -- phải nằm trong gPlatformTrustedOrigins
 
 fn openPlatformPanel = (
     local dllPath = pbDllPath()
@@ -188,6 +227,7 @@ fn openPlatformPanel = (
     cls.StartUrl = gPlatformStartUrl
     cls.TrustedOrigins = gPlatformTrustedOrigins
     cls.EnvironmentName = gPlatformEnvironmentName
+    cls.ApiBase = gPlatformApiBase
     cls.HostVersion = "3ds Max build " + ((maxVersion())[1] as string)
 
     gPlatformForm = cls.ShowWindow()

@@ -7,6 +7,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import DownloadPopup from "../../Components/dowloadPopup";
 import CollectionPopup from "../../Components/CollectionPopup";
 import { COUNTER_EVENT_DIRTY } from "../../utils/counterBus";
+import { isMaxHost, importAsset } from "../../integrations/3dsmax/bridge";
 
 const API = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
 const ASSET_BASE = import.meta.env.VITE_ASSET_BASE_URL || API;
@@ -374,6 +375,29 @@ const ProductDetail = () => {
     }
   }, [product, id]);
 
+  // ===== Import vào 3ds Max: xin ticket từ backend (đã kiểm quyền) rồi giao cho host =====
+  const [importing, setImporting] = useState(false);
+  const handleImportToMax = useCallback(async (productId) => {
+    try {
+      const token = readToken();
+      if (!token) {
+        alert("Vui lòng đăng nhập để import.");
+        return;
+      }
+      setImporting(true);
+      const { data } = await axios.get(`${API}/api/downloads/product/${productId}?type=file`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const ticket = String(data?.url || "").split("/").pop();
+      const r = await importAsset(productId, ticket);
+      alert(`Đã import ${r.imported} object vào 3ds Max (${r.file}).`);
+    } catch (e) {
+      alert(e?.response?.data?.message || e.message || "Import thất bại");
+    } finally {
+      setImporting(false);
+    }
+  }, []);
+
   // ===== Download cả image + file =====
   const handleDirectDownloadBoth = useCallback(async (productId) => {
     try {
@@ -656,6 +680,18 @@ const ProductDetail = () => {
                   </button>
                 )}
               </>
+            )}
+            {isMaxHost() && (status.purchased || product.price === 0) && (
+              <button
+                disabled={importing}
+                className="relative flex items-center justify-center gap-2 bg-[#2b5d8f] hover:bg-[#25507a] disabled:opacity-60 text-white/90 font-codec rounded w-full py-2 transition text-sm sm:text-base"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleImportToMax(currentId);
+                }}
+              >
+                <span className="text-base sm:text-lg">{importing ? "Đang import..." : "Import vào 3ds Max"}</span>
+              </button>
             )}
             {status.inCollections?.length ? (
               <button

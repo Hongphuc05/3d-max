@@ -12,3 +12,4 @@ node_modules/
 .env.local
 .env_local
 .vscode/
+web/back-3dsmood-main/uploads/sample/

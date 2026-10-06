@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
@@ -49,8 +51,18 @@ namespace MaxWebViewHost
         {
             "host.ping", "host.getInfo",
             "scene.getInfo", "scene.getSelection", "scene.createBox",
-            "design.create"
+            "design.create",
+            "asset.import"
         };
+
+        /// <summary>Origin của backend 3DS Mood, nơi host tải asset. Phải nằm trong TrustedOrigins.
+        /// Web chỉ gửi asset ID + ticket, không bao giờ gửi URL (spec §5.5).</summary>
+        public static string ApiBase = "http://localhost:5001";
+
+        // ponytail: giới hạn cứng 2GB, không resume/progress. Thêm khi cần tải gói lớn qua mạng thật.
+        private const long MaxPackageBytes = 2L * 1024 * 1024 * 1024;
+        private static readonly string[] ImportExtensions = { ".fbx", ".obj", ".max" }; // ưu tiên: không kéo theo plugin renderer lạ
+        private static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
 
         private static MaxWebViewForm _instance;
 
@@ -229,6 +241,18 @@ namespace MaxWebViewHost
                 return;
             }
 
+            if (method == "asset.import")
+            {
+                var p = paramsObj as Dictionary<string, object> ?? new Dictionary<string, object>();
+                _ = Task.Run(() => ImportAssetAsync(id, p));
+                return;
+            }
+
+            Dispatch(id, method, paramsObj as Dictionary<string, object>);
+        }
+
+        private void Dispatch(string id, string method, Dictionary<string, object> p)
+        {
             var handler = SceneRequestReceived;
             if (handler == null)
             {
@@ -239,9 +263,147 @@ namespace MaxWebViewHost
             {
                 Id = id,
                 Method = method,
-                ParamsJson = _json.Serialize(paramsObj ?? new Dictionary<string, object>()),
-                Params = paramsObj as Dictionary<string, object>
+                ParamsJson = _json.Serialize((object)p ?? new Dictionary<string, object>()),
+                Params = p
             });
+        }
+
+        // ---------- asset.import: tải -> giải nén an toàn -> import trên main thread ----------
+
+        private static readonly Regex AssetIdRx = new Regex("^[0-9a-fA-F]{24}$");
+        private static readonly Regex TicketRx = new Regex("^[A-Za-z0-9_-]{16,128}$");
+
+        private async Task ImportAssetAsync(string id, Dictionary<string, object> p)
+        {
+            string workDir = null;
+            try
+            {
+                object a, t;
+                p.TryGetValue("assetId", out a);
+                p.TryGetValue("ticket", out t);
+                var assetId = a as string;
+                var ticket = t as string;
+                if (assetId == null || !AssetIdRx.IsMatch(assetId) || ticket == null || !TicketRx.IsMatch(ticket))
+                {
+                    PostError(id, "INVALID_PARAMS", "assetId/ticket không hợp lệ");
+                    return;
+                }
+
+                Uri api;
+                if (!Uri.TryCreate(ApiBase, UriKind.Absolute, out api) || !IsTrusted(api.GetLeftPart(UriPartial.Authority)))
+                {
+                    PostError(id, "ORIGIN_NOT_ALLOWED", "ApiBase không nằm trong TrustedOrigins");
+                    return;
+                }
+
+                // Mỗi lần import dùng thư mục mới (ticket là một lần dùng nên không có cache hit để tận dụng).
+                var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                                        "MaxWebViewHost", "cache", assetId);
+                CleanOldDirs(root);
+                workDir = Path.Combine(root, DateTime.UtcNow.ToString("yyyyMMddHHmmss"));
+                var extractDir = Path.Combine(workDir, "content");
+                Directory.CreateDirectory(extractDir);
+                var pkg = Path.Combine(workDir, "package.bin");
+
+                // 1) tải về file tạm
+                try
+                {
+                    var url = new Uri(api, "/api/downloads/stream/" + ticket);
+                    using (var resp = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false))
+                    {
+                        if (!resp.IsSuccessStatusCode)
+                        {
+                            PostError(id, "ASSET_DOWNLOAD_FAILED", "Server trả " + (int)resp.StatusCode + " (ticket hết hạn hoặc đã dùng?)");
+                            return;
+                        }
+                        if (resp.Content.Headers.ContentLength > MaxPackageBytes)
+                        {
+                            PostError(id, "ASSET_TOO_LARGE", "Gói vượt giới hạn " + (MaxPackageBytes >> 20) + "MB");
+                            return;
+                        }
+                        using (var src = await resp.Content.ReadAsStreamAsync().ConfigureAwait(false))
+                        using (var dst = File.Create(pkg))
+                            await src.CopyToAsync(dst).ConfigureAwait(false);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine("[asset.import] download: " + ex);
+                    PostError(id, "ASSET_DOWNLOAD_FAILED", "Không tải được gói từ backend");
+                    return;
+                }
+
+                // 2) kiểm tra đường dẫn trong gói trước khi giải nén (zip-slip), rồi giải nén
+                var entries = RunTar("-tf", pkg, null);
+                if (entries == null) { PostError(id, "ASSET_EXTRACT_FAILED", "Không đọc được gói (định dạng không hỗ trợ?)"); return; }
+                foreach (var e in entries)
+                    if (!IsSafeEntry(e)) { PostError(id, "ASSET_UNSAFE_PACKAGE", "Gói chứa đường dẫn không an toàn"); return; }
+                if (RunTar("-xf", pkg, extractDir) == null) { PostError(id, "ASSET_EXTRACT_FAILED", "Giải nén thất bại"); return; }
+
+                // kiểm tra lại sau giải nén: mọi file phải nằm trong extractDir (symlink/junction)
+                var baseFull = Path.GetFullPath(extractDir) + Path.DirectorySeparatorChar;
+                var files = Directory.GetFiles(extractDir, "*", SearchOption.AllDirectories);
+                if (files.Any(f => !Path.GetFullPath(f).StartsWith(baseFull, StringComparison.OrdinalIgnoreCase)))
+                {
+                    PostError(id, "ASSET_UNSAFE_PACKAGE", "Gói chứa đường dẫn không an toàn");
+                    return;
+                }
+
+                // 3) chọn file import theo thứ tự ưu tiên định dạng
+                string entry = null;
+                foreach (var ext in ImportExtensions)
+                {
+                    entry = files.Where(f => f.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
+                                 .OrderBy(f => f.Length).FirstOrDefault();
+                    if (entry != null) break;
+                }
+                if (entry == null) { PostError(id, "ASSET_NO_IMPORTABLE_FILE", "Gói không có file .fbx/.obj/.max"); return; }
+
+                // 4) giao cho adapter (MAXScript) chạy trên UI thread. Method này KHÔNG nằm trong allowlist
+                //    nên web không gọi trực tiếp được; đường dẫn do host tự tính.
+                var args = new Dictionary<string, object> { { "path", entry }, { "assetId", assetId } };
+                BeginInvoke(new Action(() => Dispatch(id, "asset.importFile", args)));
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine("[asset.import] " + ex);
+                PostError(id, "ASSET_IMPORT_FAILED", "Import thất bại");
+            }
+        }
+
+        private static void CleanOldDirs(string root)
+        {
+            try { if (Directory.Exists(root)) Directory.Delete(root, true); } // file có thể đang bị Max khoá -> bỏ qua
+            catch { }
+        }
+
+        private static bool IsSafeEntry(string e)
+        {
+            if (string.IsNullOrWhiteSpace(e)) return true;
+            if (e.StartsWith("/") || e.StartsWith("\\") || e.Contains(":")) return false;
+            return !e.Split('/', '\\').Contains("..");
+        }
+
+        /// <summary>Chạy tar.exe của Windows (đọc zip/rar, không đọc 7z). Trả về các dòng stdout, null nếu lỗi.</summary>
+        private static List<string> RunTar(string mode, string pkg, string destDir)
+        {
+            var tar = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "tar.exe");
+            var args = mode + " \"" + pkg + "\"" + (destDir != null ? " -C \"" + destDir + "\"" : "");
+            var psi = new ProcessStartInfo(tar, args)
+            {
+                UseShellExecute = false, CreateNoWindow = true,
+                RedirectStandardOutput = true, RedirectStandardError = true
+            };
+            using (var pr = Process.Start(psi))
+            {
+                var err = pr.StandardError.ReadToEndAsync(); // đọc song song để không nghẽn pipe
+                var lines = new List<string>();
+                string line;
+                while ((line = pr.StandardOutput.ReadLine()) != null) lines.Add(line);
+                if (!pr.WaitForExit(5 * 60 * 1000)) { try { pr.Kill(); } catch { } return null; }
+                if (pr.ExitCode != 0) { Debug.WriteLine("[tar] " + err.Result); return null; }
+                return lines;
+            }
         }
 
         private void HandleHostMethod(string id, string method)
