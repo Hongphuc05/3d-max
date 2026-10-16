@@ -22,7 +22,10 @@ export function load(file) {
     name: c.name, count: c.count,
     children: Object.entries(c.children).map(([name, count]) => ({ name, count })),
   }));
-  return { products: pub, categories, bySlug: new Map(pub.map((p) => [p.slug, p])) };
+  return {
+    products: pub, categories, bySlug: new Map(pub.map((p) => [p.slug, p])),
+    files: new Map(products.map((p) => [p.id, p.asset.file])), // chi dung o server (assets.js)
+  };
 }
 
 export function query({ products }, { category, sub, q, page = 1, limit = 48 }) {

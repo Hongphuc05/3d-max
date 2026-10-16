@@ -6,7 +6,7 @@
     "ingest": "node --env-file-if-exists=.env scripts/ingest.js",
     "dev": "node --env-file-if-exists=.env --watch src/server.js",
     "start": "node --env-file-if-exists=.env src/server.js",
-    "test": "node --env-file-if-exists=.env --test"
+    "test": "node --env-file-if-exists=.env --test --test-concurrency=1"
   },
   "dependencies": {
     "express": "^5.1.0",

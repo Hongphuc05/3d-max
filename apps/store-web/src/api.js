@@ -24,4 +24,8 @@ export const register = (email, password) => request('POST', '/auth/register', {
 export const login = (email, password) => request('POST', '/auth/login', { body: { email, password } });
 export const logout = () => request('POST', '/auth/logout', { body: {} });
 
+// Download: trinh duyet tu gui cookie qua link. Import: xin ticket 1 lan roi giao cho host 3ds Max.
+export const downloadUrl = (slug) => `/api/products/${encodeURIComponent(slug)}/download`;
+export const importTicket = (slug) => request('POST', `/products/${encodeURIComponent(slug)}/import-ticket`, { body: {} });
+
 export const vnd = (n) => new Intl.NumberFormat('vi-VN').format(n) + ' ₫';

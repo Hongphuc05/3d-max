@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { vnd } from './api.js';
+import { downloadUrl, importTicket, vnd } from './api.js';
+import { useAuth } from './auth.jsx';
+import { importAsset, isMaxHost } from './integrations/3dsmax/bridge.js';
 
 const ICONS = {
   Architecture: 'home', Bathroom: 'bathroom', Childroom: 'children-park', Decoration: 'decoration',
@@ -62,7 +64,27 @@ export function Card({ p, onOpen }) {
 
 const chip = 'rounded-full bg-neutral-100 px-2.5 py-1 text-xs text-neutral-700';
 
-export function ProductModal({ p, onClose }) {
+export function ProductModal({ p, onClose, onLogin }) {
+  const { user } = useAuth();
+  const [msg, setMsg] = useState(null); // { ok, text }
+  const [importing, setImporting] = useState(false);
+
+  // shortcut: chua co license (A4) nen dang nhap la duoc tai/import.
+  const doImport = async () => {
+    if (!user) return onLogin();
+    setImporting(true);
+    setMsg({ ok: true, text: 'Đang tải và import vào 3ds Max…' });
+    try {
+      const { assetId, ticket } = await importTicket(p.slug);
+      const r = await importAsset(assetId, ticket);
+      setMsg({ ok: true, text: `Đã import ${r.imported} object (${r.file}).` });
+    } catch (e) {
+      setMsg({ ok: false, text: e.message });
+    } finally {
+      setImporting(false);
+    }
+  };
+
   useEffect(() => {
     const k = (e) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', k);
@@ -88,11 +110,16 @@ export function ProductModal({ p, onClose }) {
             {info.hasTextures && <span className={chip}>Có texture</span>}
             <span className={chip}>{info.sizeMB} MB</span>
           </div>
-          <div className="mt-auto">
-            <button disabled title="Thanh toán chưa làm (Phase A4)" className="w-full cursor-not-allowed rounded-xl bg-neutral-200 py-3 font-bold text-neutral-500">
-              Mua license — sắp có
-            </button>
-            <p className="mt-2 text-xs text-neutral-400">Mua xong, bấm Import trong 3ds Max để đưa model vào scene.</p>
+          <div className="mt-auto flex flex-col gap-2">
+            {isMaxHost() && (
+              <button onClick={doImport} disabled={importing} className="w-full rounded-xl bg-brand py-3 font-bold text-white disabled:opacity-60">
+                {importing ? 'Đang import…' : 'Import vào 3ds Max'}
+              </button>
+            )}
+            {user
+              ? <a href={downloadUrl(p.slug)} className="w-full rounded-xl border border-neutral-300 py-3 text-center font-bold hover:bg-neutral-100">Download</a>
+              : <button onClick={onLogin} className="w-full rounded-xl border border-neutral-300 py-3 font-bold hover:bg-neutral-100">Đăng nhập để Download</button>}
+            {msg && <p className={`text-sm ${msg.ok ? 'text-neutral-600' : 'text-red-600'}`}>{msg.text}</p>}
           </div>
         </div>
       </div>

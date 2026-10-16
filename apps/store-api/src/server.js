@@ -1,11 +1,13 @@
 import express from 'express';
 import path from 'node:path';
+import { assetRouter } from './assets.js';
 import { authRouter } from './auth.js';
 import { load, query } from './catalog.js';
 import { migrate, pool } from './db.js';
 import { errorHandler, originGuard } from './security.js';
 
 const STORAGE = process.env.STORAGE_DIR || path.resolve(import.meta.dirname, '../../../storage');
+const SOURCE = process.env.SOURCE_DIR || path.resolve(import.meta.dirname, '../../../source/3DSMOOD');
 const cat = load(path.join(STORAGE, 'catalog.json'));
 
 export const app = express();
@@ -24,6 +26,7 @@ app.get('/api/products/:slug', (q, r) => {
   const p = cat.bySlug.get(q.params.slug);
   return p ? r.json(p) : r.status(404).json({ error: 'NOT_FOUND' });
 });
+app.use('/api', assetRouter(cat, SOURCE));
 
 app.use(errorHandler);
 

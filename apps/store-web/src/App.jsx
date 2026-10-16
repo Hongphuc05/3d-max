@@ -86,7 +86,7 @@ export default function App() {
         </main>
       </div>
 
-      {active && <ProductModal p={active} onClose={() => setActive(null)} />}
+      {active && <ProductModal p={active} onClose={() => setActive(null)} onLogin={() => setAuthOpen(true)} />}
       {authOpen && !user && <AuthModal onClose={() => setAuthOpen(false)} />}
     </div>
   );
