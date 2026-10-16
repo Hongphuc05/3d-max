@@ -5,11 +5,11 @@ packages/
 installer/stage/
 installer/*.exe
 installer/Setup/payload.zip
-
-# web/ (Node projects)
+source/
+.DS_Store
+.env*
+!.env.example
 node_modules/
-.env
-.env.local
-.env_local
+storage/
+dist/
 .vscode/
-web/back-3dsmood-main/uploads/sample/

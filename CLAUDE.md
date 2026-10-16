@@ -145,24 +145,29 @@ Trung thực quan trọng hơn việc cố gắng đưa ra một câu trả lờ
 
 ### 1. Mục tiêu
 
-Trong 3ds Max 2022, user mở panel 3DS Mood → đăng nhập, duyệt website thật → bấm **Import vào
-3ds Max** → backend xác minh quyền sở hữu → native host tải/cache/verify asset → import vào scene
-mà không treo UI. Website vẫn phải chạy bình thường trong browser khi không có Max host.
+**Mô hình (D5, 06/10/2026):** bán **license từng sản phẩm** (1 ảnh preview + 1 file nén, mặc
+định 15.000 VND). User thanh toán (VietQR + webhook), license được cấp tự động, rồi user
+**Import** thẳng vào 3ds Max 2022. Không còn bán file để tải về.
 
-### 2. Trạng thái (30/09/2026)
+Thứ tự: **Phase A** web store (FE + BE) từ `source/3DSMOOD/` → **Phase B** nâng PoC bridge để
+kết nối Max. Plan tổng: [`docs/product-roadmap.md`](docs/product-roadmap.md).
+
+### 2. Trạng thái (06/10/2026)
 
 | Hạng mục | Trạng thái |
 |---|---|
-| Website 3DS Mood (`web/`) | Có source FE/BE; **chưa** chạy smoke test local |
+| Dữ liệu catalog `source/3DSMOOD/` | 360 sản phẩm, ~10 GB, đã khảo sát; chưa ingest |
+| Web store mới (`apps/`, Phase A) | Chưa bắt đầu; D6 đã chốt, D7 (PostgreSQL) chờ chốt |
+| Website cũ `web/` | **Đã xóa** 06/10/2026 — tra lại: `git show main:web/<path>` |
 | PoC WebView2 trong Max | Đã chạy trên máy dev — vẫn load `frontend/index.html` demo |
-| Website thật trong Max, bridge React ↔ C# ↔ Max | Chưa triển khai |
-| Import asset production | Chưa triển khai |
+| Bridge web thật ↔ Max, import asset | Chưa triển khai (Phase B) |
 | Installer production (signing, update/rollback) | Chưa hoàn thiện |
 
 ### 3. Kiến trúc
 
 ```
-Website React 3DS Mood ──HTTP──> Backend Express ──> MongoDB / Wasabi(S3)
+Web store React ──HTTP──> API Express ──> PostgreSQL (đề xuất D7) / storage local→S3
+                                  ^ webhook thanh toán (SePay, O6)
         │
         │ window.chrome.webview.postMessage (chỉ qua SDK trung tâm)
         v
@@ -176,10 +181,10 @@ Ranh giới trách nhiệm chi tiết: [`docs/architecture.md`](docs/architectur
 
 ### 4. Tech stack
 
-| Phần | Stack (đã xác nhận từ source) |
+| Phần | Stack |
 |---|---|
-| Frontend web | React 19, Vite 7, React Router 7, Axios/fetch, Tailwind; JWT trong `localStorage` |
-| Backend web | Node.js CommonJS, Express 5, MongoDB/Mongoose, JWT + Passport Google OAuth, Wasabi/S3 |
+| Web store mới (đề xuất, roadmap §2.2) | React 19 + Vite + Tailwind · Express 5 · PostgreSQL + `pg` + SQL migration · `sharp` thumbnail · `bsdtar` ingest · SePay/VietQR |
+| Web cũ `web/` (đã xóa, tag `main`) | React 19/Vite 7/Axios · Express 5/Mongoose/Passport · Wasabi/S3 |
 | Native host | C# WinForms, **.NET Framework 4.8**, WebView2 (NuGet `Microsoft.Web.WebView2` 1.0.4191.47), `JavaScriptSerializer` (tránh Newtonsoft conflict) |
 | Max adapter | MAXScript + macroscript toolbar |
 | Installer | `installer/Setup` (C# net48) + `build-installer.ps1` (MSBuild qua `vswhere`) |
@@ -198,13 +203,16 @@ Ranh giới trách nhiệm chi tiết: [`docs/architecture.md`](docs/architectur
 │
 ├── docs/
 │   ├── README.md             # Điểm vào tài liệu + thứ tự ưu tiên khi tài liệu mâu thuẫn
-│   ├── decisions.md          # D1–D4 đã khóa, O1–O5 còn mở, R1–R3 risk
+│   ├── product-roadmap.md    # PLAN TỔNG: stack, license, Phase A (web) → Phase B (Max)
+│   ├── decisions.md          # D1–D8 (khóa/đề xuất), O1–O8 mở, R1–R8 risk
 │   ├── architecture.md       # Kiến trúc hiện tại + mục tiêu
-│   ├── current-platform-audit.md  # Audit source web/ (30/09/2026)
+│   ├── web-in-3dsmax-integration-plan.md  # Chi tiết kỹ thuật Phase B (Phase 4–14)
+│   ├── current-platform-audit.md  # Audit web/ cũ (legacy)
 │   ├── compatibility.md      # Ma trận version (điền một phần)
 │   └── phase1-report.md      # Báo cáo PoC DLL/WebView2/MAXScript
 │
-├── web/                      # Website 3DS Mood THẬT — source of truth cho auth/catalog/asset
+├── source/3DSMOOD/           # Dữ liệu gốc: <Category>/<Sub>/<id>.jpg + <id>.rar|zip|7z (gitignored)
+├── apps/store-web/public/    # fonts + icon category giữ lại từ web cũ; app Phase A dựng tại apps/
 │   ├── front-3dsmood-main/   # React/Vite (src/: Components, Pages, Contexts, api, hooks, utils)
 │   └── back-3dsmood-main/    # Express (routes/, controllers/, models/, middlewares/, s3.js)
 │
@@ -239,6 +247,9 @@ Ranh giới trách nhiệm chi tiết: [`docs/architecture.md`](docs/architectur
 - Component **không** gọi trực tiếp `window.chrome.webview` — mọi call đi qua SDK trung tâm
   (dự kiến `src/integrations/3dsmax/`). Browser mode phải trả lỗi unsupported rõ ràng.
 - Không rewrite backend/frontend, không đổi auth contract nếu chưa có bằng chứng bắt buộc.
+  (Ngoại lệ đang đề xuất: D6 — viết web store mới ở `apps/` vì mô hình kinh doanh đổi và DB cũ đã mất.)
+- Giá luôn tính ở server từ DB; license chỉ được tạo từ payment đã xác minh (webhook có xác thực,
+  idempotent theo transaction id).
 
 ### 3. Script
 - `build-installer.ps1`: comment **không dấu** (PowerShell 5.1 đọc file không BOM theo ANSI).
@@ -248,12 +259,8 @@ Ranh giới trách nhiệm chi tiết: [`docs/architecture.md`](docs/architectur
 ## D. Development workflow
 
 ### 1. Web (dev)
-```bash
-cd web/back-3dsmood-main && npm install && npm run dev    # http://localhost:5000
-cd web/front-3dsmood-main && npm install && npm run dev   # http://localhost:5173
-```
-Lưu ý: backend gọi `dotenv.config()` → tìm `.env`, trong khi file đang có là `.env_local` —
-phải chỉ rõ file config khi chạy (xem audit §6).
+Web store mới (Phase A, nhánh `phuc_apps`): hướng dẫn chạy cho macOS và Windows ở
+[`apps/README.md`](apps/README.md). Tiến độ và việc còn lại: [`docs/STATUS.md`](docs/STATUS.md).
 
 ### 2. Plugin + installer (Windows)
 ```powershell
@@ -279,24 +286,30 @@ Trong Max: `Customize > Customize User Interface > Toolbars`, Category `Platform
 4. Web SDK request correlation/timeout.
 5. Manual smoke test trong Max 2022.
 
-Hiện **chưa có** automated test đáng kể trong cả `web/` lẫn `plugin-csharp/`.
+Hiện **chưa có** automated test đáng kể trong `plugin-csharp/`.
 
 ---
 
 ## F. Quyết định mở & ghi chú xử lý (scan 30/09/2026)
 
 ### 1. Quyết định chưa khóa (chi tiết: `docs/decisions.md`)
-- O1 WebView load remote URL hay bundled build · O2 auth trong WebView2 (Google OAuth redirect) ·
-  O3 format asset đầu tiên · O4 kênh phân phối (App Store / tự host) · O5 licensing/DRM cho plugin.
+- **Chờ chốt:** D7 PostgreSQL · D8 license = entitlement server,
+  plugin miễn phí.
+- O1 remote URL hay bundled · O2 Google OAuth · O3 format (đề xuất chuẩn hóa → `.zip`, import
+  `.max`, fallback FBX) · O4 kênh phân phối · O5 mức bảo vệ asset · O6 cổng thanh toán ·
+  O7 số device / có cho tải trên browser · O8 cookie hay localStorage.
+- **R4 đã đóng:** Phúc xác nhận có quyền phân phối thương mại (06/10/2026). **Không cho tải file nén trên browser.**
 
 ### 2. Vấn đề đã xác nhận từ source/git — chưa xử lý
-1. **`web/back-3dsmood-main/.env_local` đang được track trong git** — nếu chứa credential thật
-   (Mongo/Wasabi/JWT/Google) thì đã lộ trong lịch sử. Cần quyết định: gỡ khỏi index + rotate secret?
+1. **`.env_local` cũ đã nằm trong lịch sử git** (Mongo/Wasabi/JWT/Google) → phải **rotate** các secret đó.
+   Bản gốc xem bằng `git show main:web/back-3dsmood-main/.env_local`.
 2. `bin/`, `obj/`, `.vs/`, `packages/`, `installer/stage/`, `installer/PlatformSetup.exe`,
    `installer/Setup/payload.zip` có trong `.gitignore` nhưng **vẫn được track** (commit trước khi
    thêm ignore) → cần `git rm --cached`.
-3. `docs/README.md` tham chiếu `docs/web-in-3dsmax-integration-plan.md` nhưng file **chưa tồn tại**.
-4. Backend: CORS hard-code `localhost:5173`, session secret placeholder, log `MONGO_URI`, thiếu
-   khai báo `mime-types`; FE: `ProtectedRoute.jsx` đọc `token` mà context không expose (audit §6).
+3. Web cũ (tag `main`) có debt bảo mật — **không copy nguyên**: SePay webhook bỏ qua xác thực khi thiếu
+   `SEPAY_WEBHOOK_APIKEY`; `GET /api/downloads/recent` không auth; stream token không kiểm user,
+   lưu in-memory; CORS/session secret hard-code; log `MONGO_URI` (roadmap §2.4).
+4. Dữ liệu `source/` bẩn: tên ảnh có khoảng trắng trước đuôi, `...rar.rar`, 2 cặp lệch hậu tố
+   (`-yzbmix`, `-2reavm`) — ingest phải có luật ghép cặp + report (roadmap §1).
 5. PoC: host load `frontend/index.html` qua path cứng, origin trust theo prefix path — phải đổi sang
    URL theo config + exact origin allowlist trước khi load website thật.

@@ -1,5 +1,9 @@
 # Audit platform 3DS Mood hiện tại
 
+> **2026-10-06:** `web/` đã thành legacy (D5/D6), MongoDB cũ đã sập. Audit này chỉ còn dùng để
+> tham chiếu khi copy logic (SePay, stream, auth). Debt bảo mật cần tránh khi viết lại:
+> [`product-roadmap.md` §2.4](product-roadmap.md#24-không-mang-sang-từ-code-cũ-debt-đã-xác-nhận-trong-source).
+
 > Ngày audit source: 2026-09-30  
 > Phạm vi: đọc source code; chưa xác nhận runtime local, dịch vụ ngoài hoặc deployment.
 

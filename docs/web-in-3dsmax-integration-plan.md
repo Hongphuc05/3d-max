@@ -1,5 +1,10 @@
 # Kế hoạch đưa website 3DS Mood vào 3ds Max
 
+> **2026-10-06 — phạm vi mới:** plan tổng là [`product-roadmap.md`](product-roadmap.md).
+> Phase 1–3 ở đây (chạy `web/` cũ local) **không làm nữa**; được thay bằng Phase A (web store
+> mới). Phase 4–14 vẫn là chi tiết kỹ thuật của Phase B, áp dụng cho `apps/store-web` /
+> `apps/store-api` thay vì `web/`. Ownership ở Phase 8 = license (D8), có thêm device binding.
+
 > Cập nhật: 2026-09-30  
 > Trạng thái: kế hoạch triển khai, chưa bắt đầu Phase 1  
 > Target đã khóa: 3ds Max 2022, .NET Framework 4.8, WebView2 Evergreen  

@@ -1,5 +1,9 @@
 # PLAN — Web Platform -> 3ds Max Plugin
 
+> **Đã thay thế (2026-10-06):** hướng đi mới là bán license, chia Phase A (web store) và
+> Phase B (kết nối Max). Xem [`docs/product-roadmap.md`](docs/product-roadmap.md). File này
+> được giữ lại làm lịch sử.
+
 ## Nguyên tắc
 1. Không rewrite platform đang hoạt động.
 2. Native plugin là host + capability bridge, không phải frontend thứ hai.

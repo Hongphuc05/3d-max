@@ -20,9 +20,15 @@ MVP chứng minh end-to-end:
 8. Demo bắt buộc: `Create Cube`, `Get Selection`, `Get Scene Info`.
 9. Sau PoC: `asset.import` là vertical slice production đầu tiên.
 
+### 2b. Phạm vi thương mại (D5, 2026-10-06)
+- Web store: catalog từ `source/3DSMOOD/`, auth, checkout VietQR, webhook xác nhận thanh toán,
+  cấp license `(user, product)`, thư viện của tôi, admin tối thiểu.
+- `asset.import` chỉ chạy với sản phẩm user đã có license, qua import ticket dùng 1 lần.
+- Plan tổng: [`docs/product-roadmap.md`](docs/product-roadmap.md).
+
 ## 3. Ngoài phạm vi MVP
-- Marketplace hoàn chỉnh.
-- Hệ thống thanh toán mới.
+- Marketplace nhiều người bán.
+- Ví coin/điểm/discount của website cũ.
 - Rewrite frontend thành WPF/native.
 - Hỗ trợ Maya/Blender/SketchUp ngay từ đầu.
 - C++ SDK nếu .NET/Max API đã đáp ứng.
@@ -239,3 +245,5 @@ Kênh phân phối (Autodesk App Store hay tự host) và nhu cầu licensing/DR
 - Import thành công vào current scene.
 - Lần hai dùng cache khi version/checksum không đổi.
 - Error hiển thị có nghĩa và có request ID để debug.
+- Sản phẩm chưa có license không import được, kể cả khi gọi bridge/API trực tiếp.
+- Ticket hết hạn hoặc đã dùng bị từ chối; ticket của device/user khác bị từ chối.

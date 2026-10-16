@@ -1,0 +1,15 @@
+# Postgres cho dev. Cung URL mac dinh voi may dung Postgres cai san:
+#   postgres://store:store@localhost:5432/store   (test: .../store_test)
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: store
+      POSTGRES_PASSWORD: store
+      POSTGRES_DB: store
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+volumes:
+  pgdata:
