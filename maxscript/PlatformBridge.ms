@@ -212,7 +212,7 @@ fn pbDllPath = (
 global gPlatformStartUrl = "http://localhost:5173"
 global gPlatformTrustedOrigins = "http://localhost:5173,http://localhost:5001"
 global gPlatformEnvironmentName = "development"
-global gPlatformApiBase = "http://localhost:5001"   -- phải nằm trong gPlatformTrustedOrigins
+global gPlatformApiBase = "http://localhost:5173"   -- store-api qua proxy Vite; phải nằm trong gPlatformTrustedOrigins
 
 fn openPlatformPanel = (
     local dllPath = pbDllPath()

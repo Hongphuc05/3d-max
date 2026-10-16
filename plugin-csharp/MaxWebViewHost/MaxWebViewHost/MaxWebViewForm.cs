@@ -270,7 +270,7 @@ namespace MaxWebViewHost
 
         // ---------- asset.import: tải -> giải nén an toàn -> import trên main thread ----------
 
-        private static readonly Regex AssetIdRx = new Regex("^[0-9a-fA-F]{24}$");
+        private static readonly Regex AssetIdRx = new Regex("^[0-9a-fA-F]{12,24}$"); // 12 = id store-api, 24 = ObjectId web cu
         private static readonly Regex TicketRx = new Regex("^[A-Za-z0-9_-]{16,128}$");
 
         private async Task ImportAssetAsync(string id, Dictionary<string, object> p)

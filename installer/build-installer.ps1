@@ -10,10 +10,17 @@ $stage = Join-Path $PSScriptRoot 'stage'
 $out   = Join-Path $PSScriptRoot 'PlatformSetup.exe'
 
 $msbuild = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
-    -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe
+    -latest -products * -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe |
+    Select-Object -First 1
+# -products *: khong co thi vswhere bo qua Build Tools (chi tim ban VS co IDE)
 if (-not $msbuild) { throw "Khong tim thay MSBuild (can Visual Studio Build Tools)." }
 
 # --- 1. plugin, Release x64 ---
+# packages\ khong nam trong git nen phai restore (packages.config) truoc khi build
+Write-Host "==> Restore NuGet (WebView2)"
+& $msbuild $proj /t:Restore /p:RestorePackagesConfig=true /p:SolutionDir="$(Split-Path (Split-Path $proj))\" /v:minimal /nologo
+if ($LASTEXITCODE -ne 0) { throw "Restore NuGet that bai." }
+
 Write-Host "==> Build plugin (Release x64)"
 & $msbuild $proj /t:Rebuild /p:Configuration=Release /p:PlatformTarget=x64 /v:minimal /nologo
 if ($LASTEXITCODE -ne 0) { throw "Build plugin that bai." }
