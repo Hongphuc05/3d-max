@@ -72,10 +72,16 @@ npm run dev
 Mở **http://localhost:5173**. Những lần sau chỉ cần `npm run dev` ở cả hai thư mục (ingest chỉ chạy
 lại khi `source/` đổi).
 
+## Xem giao diện như đang ở trong 3ds Max (chỉ khi dev)
+
+Mở **http://localhost:5173/?mockMax=1**: giả lập host 3ds Max để xem nút Download, hàng đợi và thanh trạng thái
+ngay trên trình duyệt (cần đăng nhập; ~25% job giả lập cố ý lỗi để xem trạng thái "Thử lại"). Không có trong bản build.
+
 ## Test
 
 ```bash
 cd apps/store-api && npm test      # cần Postgres đang chạy (database store_test)
+cd apps/store-web && npm test      # hàng đợi Download (Node thuần, không cần server)
 ```
 
 ## Lưu ý theo hệ điều hành

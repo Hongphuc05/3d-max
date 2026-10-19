@@ -1,0 +1,19 @@
+// Icon SVG noi tuyen, net theo currentColor. Khong them thu vien icon.
+const P = {
+  cube: 'M12 2 3 7v10l9 5 9-5V7l-9-5Zm0 0v10m0 0 9-5m-9 5-9-5m9 5v10',
+  user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 9a7 7 0 0 1 14 0',
+  refresh: 'M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7',
+  filter: 'M3 5h18l-7 8v6l-4 2v-8L3 5Z',
+  close: 'M6 6l12 12M18 6 6 18',
+  chevron: 'm9 6 6 6-6 6',
+  download: 'M12 3v12m0 0-5-5m5 5 5-5M4 21h16',
+  search: 'm21 21-4.3-4.3M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z',
+};
+
+export function Icon({ name, className = 'size-4' }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d={P[name]} />
+    </svg>
+  );
+}

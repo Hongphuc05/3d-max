@@ -1,6 +1,6 @@
 # STATUS — đã làm tới đâu, còn gì
 
-> Cập nhật lần cuối: **2026-10-06** (A3) · nhánh làm việc: `phuc_apps` · `main` giữ code cũ (có `web/`)
+> Cập nhật lần cuối: **2026-10-19** (giao diện plugin theme tối — UI-1) · nhánh hiện tại: `hung-connection_to_3dsmax` · nhánh làm việc: `phuc_apps` · `main` giữ code cũ (có `web/`)
 > Plan đầy đủ: [`product-roadmap.md`](product-roadmap.md) · Cách chạy: [`../apps/README.md`](../apps/README.md)
 > **Khi xong một việc: đổi `[ ]` thành `[x]`, ghi ngày, và sửa dòng "Cập nhật lần cuối".**
 
@@ -117,13 +117,53 @@ Chú giải: `[x]` xong và đã kiểm tra · `[~]` xong một phần / chưa k
 - [ ] Backup database và thử restore
 - [ ] Deploy staging, test E2E (xem → đăng nhập → mua → thấy trong thư viện)
 
-## Phase B — Kết nối 3ds Max (chưa bắt đầu)
+## UI-1 — Giao diện plugin theme tối (2026-10-19, chỉ frontend `apps/store-web`)
+
+Tham khảo bố cục từ ảnh Phúc gửi (thư viện model dạng app desktop); **không** dùng tên/logo của sản phẩm đó.
+
+- [x] Theme tối, accent xanh; tên model dùng Codec Pro, số liệu/trạng thái dùng font monospace hệ thống
+- [x] Khung app: thanh trên (trạng thái 3ds Max + API ONLINE/OFFLINE + làm mới), cột icon (Models, Tài khoản),
+  cột bộ lọc + hàng đợi, lưới, panel chi tiết bên phải (màn hẹp: bộ lọc thành ngăn kéo, chi tiết phủ lên)
+- [x] Bộ lọc: cây danh mục chọn nhiều (checkbox 3 trạng thái), lọc renderer V-Ray/Corona, đếm bộ lọc, xóa lọc
+- [x] Tìm kiếm, sắp xếp (tên, dung lượng), phân trang 30/trang, tab Online / Đã tải
+- [x] Card: ảnh nền trắng, nhãn renderer, dung lượng; trong Max có nút Download theo trạng thái
+  (Đăng nhập để tải / Download / Trong hàng đợi / Đang tải / Lỗi · Thử lại / Đã import)
+- [x] Hàng đợi (`queue.js`): chống bấm trùng, chạy tuần tự, thử lại xin ticket mới, bỏ job chờ/lỗi
+- [x] **Bỏ nút Download trên trình duyệt (O7)**; trình duyệt chỉ xem catalog + nút "Mua license — sắp có"
+- [x] Giả lập host khi dev: `http://localhost:5173/?mockMax=1` (không có trong bản build production — đã kiểm)
+- [x] 3 test hàng đợi (`cd apps/store-web && npm test`); thử phá code: bỏ chạy tuần tự / bỏ chống trùng /
+  cho bỏ job đang chạy → đều có test báo lỗi
+- [x] Build pass; API trả đủ 360 sản phẩm qua 4 trang
+- [~] **Chưa ai xem giao diện mới trên trình duyệt thật** — Phúc kiểm tra (cả chế độ thường và `?mockMax=1`)
+- [ ] **Chưa chạy trong 3ds Max thật** (cần Windows) — checklist ở `download-queue-plan.md` §7
+- [ ] **NỢ FE-1 — Web tải hết catalog về rồi lọc/sắp xếp/phân trang tại chỗ.** Đủ cho 360 sản phẩm (~100 KB),
+  không đủ khi lên hàng nghìn. **Hướng giải quyết:** backend lọc nhiều danh mục + renderer + sắp xếp (BE5), web
+  quay lại gọi theo trang.
+- [ ] **NỢ FE-2 — Hàng đợi chưa có %, chưa hủy được job đang chạy, mất khi F5, tab "Đã tải" chỉ là trong phiên.**
+  Nguyên nhân: native chưa gửi event tiến độ / chưa hỗ trợ hủy / xóa cache sau import. **Hướng giải quyết:**
+  N1–N5 rồi F1–F4 trong `download-queue-plan.md`.
+- [ ] **NỢ FE-3 — Thanh trên chưa hiện tên file scene** (scene.getInfo chưa trả). Hướng: N6 + F5.
+- [ ] **NỢ FE-4 — Chưa có lọc "Đã sở hữu / Chưa mua"** (thay cho PRO/FREE trong ảnh tham khảo) và không có lọc
+  Style (dữ liệu không có style). Hướng: BE4 cùng A4.
+- [ ] **NỢ FE-5 — Mỗi sản phẩm chỉ có 1 ảnh** nên panel chi tiết không có gallery. Cần dữ liệu ảnh thêm.
+
+### Nợ backend phát sinh (chi tiết: `download-queue-plan.md` §5)
+- [ ] **BE2 — Gỡ `GET /api/products/:slug/download`** (trái O7; giao diện đã bỏ nút nhưng endpoint vẫn tải được). Làm ngay.
+- [ ] BE1 — `import-ticket` kiểm license (cùng A4). Hiện đăng nhập là import được mọi sản phẩm.
+- [ ] BE3 — trả `sha256` + `size` cùng ticket để native kiểm file.
+- [ ] BE4 — cờ `owned` trong danh sách sản phẩm. · BE5 — lọc/sắp xếp ở server. · BE6 — giới hạn ticket/phút.
+
+## Phase B — Kết nối 3ds Max (đang làm trên nhánh `hung-connection_to_3dsmax`)
 
 Chi tiết kỹ thuật: [`web-in-3dsmax-integration-plan.md`](web-in-3dsmax-integration-plan.md) (Phase 4–14).
 
 - [x] PoC: WebView2 trong Max, bridge `host.ping` / `scene.*` / `design.create`, installer (chỉ với trang demo)
-- [ ] B1: panel load web store thật theo URL cấu hình, kiểm origin chính xác; bỏ path `D:\` cứng
-- [ ] B2: SDK bridge trong React, chế độ "đang chạy trong Max", nút Import
+- [~] B1: host nạp `StartUrl` theo cấu hình, kiểm origin chính xác scheme/host/port (đã có trong code của Hùng —
+  chưa xác minh trên Windows). Còn path `D:\` dự phòng trong `PlatformBridge.ms` / `.mcr`
+- [~] B2: `bridge.js` + nút Download/hàng đợi trên giao diện mới; thanh trạng thái dùng `host.getInfo`/`scene.getInfo`.
+  Chưa chạy trong Max thật
+- [~] Ticket import 1 lần (Hùng, `import_tickets`) — **chưa kiểm license (BE1)**
+- [ ] Hàng đợi native, tiến độ, hủy, cache: **plan cho người làm Windows ở [`download-queue-plan.md`](download-queue-plan.md)**
 - [ ] B3: đăng ký máy (device) + import ticket dùng 1 lần
 - [ ] B4: native tải file, kiểm sha256, giải nén an toàn, cache
 - [ ] B5: import `.max` vào scene (chọn bản theo version/renderer)
@@ -135,7 +175,7 @@ Chi tiết kỹ thuật: [`web-in-3dsmax-integration-plan.md`](web-in-3dsmax-int
 |---|---|---|
 | O6 | Cổng thanh toán | A4 |
 | O5 | Mức bảo vệ asset (chỉ license + giới hạn máy, hay thêm mã hóa cache) | B3–B5 |
-| O7 | Số máy tối đa mỗi tài khoản | B3 |
+| O7 | Số máy tối đa mỗi tài khoản (đã chốt: không Download trên trình duyệt) | B3 |
 | O4 | Kênh phân phối plugin (Autodesk App Store hay tự host) | B6 |
 
 ## Giới hạn đã biết

@@ -3,9 +3,21 @@
 @font-face { font-family: 'Codec Pro'; font-weight: 400; src: url('/fonts/CodecPro/CodecPro-Regular.woff2') format('woff2'); font-display: swap; }
 @font-face { font-family: 'Codec Pro'; font-weight: 700; src: url('/fonts/CodecPro/CodecPro-Bold.woff2') format('woff2'); font-display: swap; }
 
+/* Theme toi kieu app desktop. Ten model/tieu de: Codec Pro. So lieu, dung luong, trang thai: monospace he thong. */
 @theme {
   --font-sans: 'Codec Pro', ui-sans-serif, system-ui, sans-serif;
-  --color-brand: #e8590c;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, Menlo, monospace;
+  --color-base: #0b0d0e;
+  --color-panel: #111416;
+  --color-raised: #181c1f;
+  --color-line: #252b2f;
+  --color-fg: #e6ebe8;
+  --color-mute: #87928c;
+  --color-accent: #45e08c;
+  --color-accent-ink: #04210f;
+  --color-warn: #f2b84b;
+  --color-danger: #f07171;
 }
 
-body { @apply bg-neutral-50 text-neutral-900 antialiased; }
+:root { color-scheme: dark; accent-color: var(--color-accent); }
+body { @apply bg-base text-fg antialiased; }

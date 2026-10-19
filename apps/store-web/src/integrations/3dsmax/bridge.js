@@ -41,3 +41,6 @@ export function call(method, params = {}, timeoutMs = 15000) {
 // ticket = đoạn cuối của link /api/downloads/stream/<ticket> mà backend cấp (một lần dùng, TTL ngắn).
 // Native tự dựng URL từ ApiBase đã cấu hình; web không gửi URL/đường dẫn.
 export const importAsset = (assetId, ticket) => call("asset.import", { assetId, ticket }, 10 * 60 * 1000);
+
+export const getHostInfo = () => call("host.getInfo", {}, 5000);
+export const getSceneInfo = () => call("scene.getInfo", {}, 5000);

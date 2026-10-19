@@ -106,6 +106,18 @@ cần đăng nhập — chấp nhận ở quy mô này.
 **Phase B:** native/WebView2 dùng chung cookie của WebView; việc xác thực của plugin với backend
 (device key, import ticket) là cơ chế riêng ở B3, không dùng lại `sid`.
 
+## D10 — Download = tải về máy trong plugin rồi import (locked 2026-10-19)
+
+**Quyết định:** sau khi khách trả phí và license được cấp, khách phải **Download** sản phẩm (plugin tải gói về
+máy) rồi mới **import** vào 3ds Max. Giao diện gộp hai bước vào **một nút "Download"** (lựa chọn a): bấm là
+tải xong import luôn; hàng đợi để theo dõi. Native vẫn giữ hai bước tách riêng để sau tách được thành hai nút.
+
+**Hệ quả:**
+- O7 giữ nguyên: **trình duyệt không có Download.** Nút "Download" chỉ xuất hiện khi chạy trong plugin.
+- Endpoint `GET /api/products/:slug/download` (tải trên trình duyệt, nhánh `hung-connection_to_3dsmax`) trái
+  O7 → phải gỡ (nợ BE2).
+- Hàng đợi, % tiến độ, hủy, cache lâu dài: plan ở [`download-queue-plan.md`](download-queue-plan.md).
+
 ## D8 — License = entitlement phía server, plugin miễn phí (đề xuất, chờ chốt)
 
 **Đề xuất:** license là quyền vĩnh viễn `(user, product)` lưu ở server, chỉ được tạo khi
