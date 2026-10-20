@@ -89,10 +89,11 @@ fn pbSofa w d h col = (
 
 -- ---------- asset import: path do host tính (không phải web gửi), chạy trên UI thread ----------
 
-fn pbHandleImportFile id args = (
+-- sink = nơi trả kết quả: panel (MaxWebViewForm) hoặc agent (PlatformAgent, khi lệnh đến từ Max khác). Cả hai có cùng PostResultJson/PostError.
+fn pbHandleImportFile id args sink = (
     local p = args.Param "path"
     if p == undefined or not (doesFileExist p) then (
-        gPlatformForm.PostError id "INVALID_PARAMS" "File import không tồn tại"
+        sink.PostError id "INVALID_PARAMS" "File import không tồn tại"
         return undefined
     )
 
@@ -108,7 +109,7 @@ fn pbHandleImportFile id args = (
 
     local added = for o in objects where (findItem before o) == 0 collect o
     if added.count == 0 do (
-        gPlatformForm.PostError id "MAX_OPERATION_FAILED" "Import xong nhưng scene không có object mới"
+        sink.PostError id "MAX_OPERATION_FAILED" "Import xong nhưng scene không có object mới"
         return undefined
     )
 
@@ -120,7 +121,7 @@ fn pbHandleImportFile id args = (
     select added
     forceCompleteRedraw()
 
-    gPlatformForm.PostResultJson id \
+    sink.PostResultJson id \
         ("{\"imported\":" + (added.count as string) + ",\"file\":" + (pbJsonStr (filenameFromPath p)) + "}")
 )
 
@@ -187,14 +188,14 @@ fn pbOnRequest sender args = (
                 gPlatformForm.PostResultJson id ("{\"name\":" + (pbJsonStr b.name) + "}")
             )
             "design.create": pbHandleDesign id args
-            "asset.importFile": pbHandleImportFile id args
-            default: gPlatformForm.PostError id "UNKNOWN_METHOD" ("Unknown method: " + m)
+            "asset.importFile": pbHandleImportFile id args sender
+            default: sender.PostError id "UNKNOWN_METHOD" ("Unknown method: " + m)
         )
     )
     catch (
         -- chi tiết vào Listener, UI chỉ nhận message chung (spec §11)
         format "[bridge] EXCEPTION % : %\n" m (getCurrentException())
-        gPlatformForm.PostError id "MAX_OPERATION_FAILED" ("Thao tác thất bại: " + m)
+        sender.PostError id "MAX_OPERATION_FAILED" ("Thao tác thất bại: " + m)
     )
 )
 
@@ -213,6 +214,21 @@ global gPlatformStartUrl = "http://localhost:5173"
 global gPlatformTrustedOrigins = "http://localhost:5173,http://localhost:5001"
 global gPlatformEnvironmentName = "development"
 global gPlatformApiBase = "http://localhost:5173"   -- store-api qua proxy Vite; phải nằm trong gPlatformTrustedOrigins
+
+-- Agent chạy trong MỌI Max (scripts\Startup\Platform-Agent.ms gọi hàm này) để panel ở Max khác import vào được scene này.
+global gPlatformAgent
+fn pbStartAgent = (
+    local dllPath = pbDllPath()
+    if not (doesFileExist dllPath) do return undefined
+    (dotNetClass "System.Reflection.Assembly").LoadFrom dllPath
+    gPlatformAgent = (dotNetClass "MaxWebViewHost.PlatformAgent").Start()
+    dotNet.removeAllEventHandlers gPlatformAgent
+    dotNet.addEventHandler gPlatformAgent "SceneRequestReceived" pbOnRequest
+    gPlatformAgent
+)
+
+-- true khi chỉ nạp file để lấy hàm (startup script), không mở panel
+global gPlatformNoAutoOpen
 
 fn openPlatformPanel = (
     local dllPath = pbDllPath()
@@ -233,8 +249,9 @@ fn openPlatformPanel = (
     gPlatformForm = cls.ShowWindow()
     dotNet.removeAllEventHandlers gPlatformForm          -- chạy lại không bị đăng ký trùng
     dotNet.addEventHandler gPlatformForm "SceneRequestReceived" pbOnRequest
+    pbStartAgent()    -- Max chứa panel cũng nhận được lệnh (khi panel đang trỏ vào chính nó thì đi đường local, agent chỉ để dự phòng)
     format "[bridge] panel mở, StartUrl = %\n" gPlatformStartUrl
     gPlatformForm
 )
 
-openPlatformPanel()
+if gPlatformNoAutoOpen != true do openPlatformPanel()

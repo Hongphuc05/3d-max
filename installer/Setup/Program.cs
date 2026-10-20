@@ -60,6 +60,8 @@ namespace Setup
                 string dest;
                 if (rel.StartsWith(@"Platform\", StringComparison.OrdinalIgnoreCase))
                     dest = Path.Combine(target, "scripts", rel);
+                else if (rel.StartsWith(@"Startup\", StringComparison.OrdinalIgnoreCase))
+                    dest = Path.Combine(target, "scripts", rel);
                 else if (rel.StartsWith(@"usermacros\", StringComparison.OrdinalIgnoreCase))
                     dest = Path.Combine(target, rel);
                 else

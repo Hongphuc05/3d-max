@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
@@ -66,6 +67,18 @@ namespace MaxWebViewHost
 
         private static MaxWebViewForm _instance;
 
+        [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+
+        // Max được focus gần nhất (không tính chính panel). Panel là cửa sổ riêng nên lúc bấm Import
+        // foreground đã là panel; vì vậy phải nhớ Max trước đó thay vì đọc foreground tại thời điểm import.
+        private int _targetPid = Process.GetCurrentProcess().Id;
+        private readonly Timer _focusTimer = new Timer { Interval = 500 };
+        private readonly Label _target = new Label
+        {
+            Dock = DockStyle.Fill, TextAlign = System.Drawing.ContentAlignment.MiddleLeft, Padding = new Padding(6, 0, 0, 0)
+        };
+
         // Trang chẩn đoán cũ (frontend/index.html), đóng gói cùng thư mục với DLL.
         // Luôn được tin, để khoanh vùng bridge khi website thật không load được (spec Phase 4.3).
         private static readonly string DiagnosticPagePath = Path.Combine(
@@ -98,13 +111,41 @@ namespace MaxWebViewHost
             var toolbar = new Panel { Dock = DockStyle.Top, Height = 28 };
             _retryButton.Click += (s, e) => Navigate(StartUrl);
             _diagButton.Click += (s, e) => OpenDiagnosticPage();
+            toolbar.Controls.Add(_target);
             toolbar.Controls.Add(_retryButton);
             toolbar.Controls.Add(_diagButton);
+            _focusTimer.Tick += (s, e) => TrackTarget();
+            _focusTimer.Start();
+            FormClosed += (s, e) => _focusTimer.Dispose();
+            TrackTarget();
 
             Controls.Add(_web);
             Controls.Add(toolbar);
             Controls.Add(_status);
             Load += async (s, e) => await InitAsync();
+        }
+
+        private void TrackTarget()
+        {
+            try
+            {
+                uint pid;
+                var hwnd = GetForegroundWindow();
+                if (hwnd != IntPtr.Zero && hwnd != Handle && GetWindowThreadProcessId(hwnd, out pid) != 0)
+                {
+                    using (var p = Process.GetProcessById((int)pid))
+                        if (string.Equals(p.ProcessName, "3dsmax", StringComparison.OrdinalIgnoreCase)) _targetPid = (int)pid;
+                }
+                var title = "(đã đóng)";
+                try
+                {
+                    using (var t = Process.GetProcessById(_targetPid))
+                        if (!t.HasExited) title = t.MainWindowTitle;
+                }
+                catch { }
+                _target.Text = "Import vào: " + title;
+            }
+            catch { /* process vừa thoát giữa chừng: bỏ qua, tick sau sẽ cập nhật */ }
         }
 
         private async Task InitAsync()
@@ -361,8 +402,29 @@ namespace MaxWebViewHost
 
                 // 4) giao cho adapter (MAXScript) chạy trên UI thread. Method này KHÔNG nằm trong allowlist
                 //    nên web không gọi trực tiếp được; đường dẫn do host tự tính.
-                var args = new Dictionary<string, object> { { "path", entry }, { "assetId", assetId } };
-                BeginInvoke(new Action(() => Dispatch(id, "asset.importFile", args)));
+                var target = _targetPid;
+                if (target == Process.GetCurrentProcess().Id)
+                {
+                    var args = new Dictionary<string, object> { { "path", entry }, { "assetId", assetId } };
+                    BeginInvoke(new Action(() => Dispatch(id, "asset.importFile", args)));
+                    return;
+                }
+
+                // Max đích là process khác: chuyển lệnh qua pipe. Không import nhầm sang scene khác khi đích không với tới được.
+                string replyJson;
+                try { replyJson = await PlatformAgent.SendImportAsync(target, id, entry).ConfigureAwait(false); }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine("[asset.import] pipe: " + ex);
+                    PostError(id, "TARGET_UNAVAILABLE", "Không kết nối được Max đích (" + ex.GetType().Name + "): đã đóng, chưa có agent, hoặc chạy khác quyền");
+                    return;
+                }
+                var reply = _json.Deserialize<Dictionary<string, object>>(replyJson);
+                object ok, res, er;
+                reply.TryGetValue("ok", out ok);
+                reply.TryGetValue("result", out res);
+                reply.TryGetValue("error", out er);
+                PostResponse(id, ok is bool && (bool)ok, res, er);
             }
             catch (Exception ex)
             {

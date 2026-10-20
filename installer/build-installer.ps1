@@ -30,7 +30,7 @@ $bin = Join-Path $root 'plugin-csharp\MaxWebViewHost\MaxWebViewHost\bin\Release'
 Write-Host "==> Stage"
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 $pdir = Join-Path $stage 'Platform'
-New-Item -ItemType Directory -Path $pdir, (Join-Path $stage 'usermacros') -Force | Out-Null
+New-Item -ItemType Directory -Path $pdir, (Join-Path $stage 'usermacros'), (Join-Path $stage 'Startup') -Force | Out-Null
 
 # runtimes\ phai giu nguyen cau truc, thieu la WebView2 khong init duoc
 Copy-Item (Join-Path $bin '*.dll') $pdir
@@ -38,6 +38,7 @@ Copy-Item (Join-Path $bin 'runtimes') $pdir -Recurse
 Copy-Item (Join-Path $root 'maxscript\PlatformBridge.ms') $pdir
 Copy-Item (Join-Path $root 'frontend') (Join-Path $pdir 'frontend') -Recurse
 Copy-Item (Join-Path $root 'maxscript\usermacros\Platform-OpenPanel.mcr') (Join-Path $stage 'usermacros')
+Copy-Item (Join-Path $root 'maxscript\startup\Platform-Agent.ms') (Join-Path $stage 'Startup')
 
 # --- 3. zip -> nhung vao installer duoi dang embedded resource ---
 Write-Host "==> Zip payload"
