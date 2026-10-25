@@ -139,3 +139,15 @@ test('dead R2 inbox events can be requeued by an allowlisted administrator', {sk
     if(previous===undefined)delete env.LICENSE_ADMIN_USER_IDS;else env.LICENSE_ADMIN_USER_IDS=previous;
   }
 });
+
+test('unambiguous full-path folder rename retains the existing model ID', {skip:!enabled},async()=>{
+  source=[object('3DSMOOD/Original/Seat/Seat.JPG','same-preview'),object('3DSMOOD/Original/Seat/Seat.RAR','same-archive')];
+  await runtime.worker.sync();
+  const before=(await (await fetch(base+'/api/models')).json()).items[0];
+  source=[object('3DSMOOD/Renamed/Seat/Seat.JPG','same-preview'),object('3DSMOOD/Renamed/Seat/Seat.RAR','same-archive')];
+  await runtime.worker.sync();
+  const after=(await (await fetch(base+'/api/models')).json()).items[0];
+  assert.equal(after.id,before.id);assert.equal(after.folderPath,'Renamed/Seat');
+  const categories=await (await fetch(base+'/api/categories/tree')).json();
+  assert.equal(categories[0].path,'Renamed');
+});
