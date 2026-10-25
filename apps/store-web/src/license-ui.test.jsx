@@ -37,8 +37,8 @@ const nativeHost = {
   },
 };
 function response(data, status = 200) { return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } }); }
-async function mount({ host = false, loggedIn = false, licensed = false, activated = false, available = true } = {}) {
-  fixture = { loggedIn, licensed, activated, available, requests: [], nativeCalls: [], renders: [], activationError: null, paid: false };
+async function mount({ host = false, loggedIn = false, licensed = false, activated = false, available = true, catalogAdmin = false } = {}) {
+  fixture = { loggedIn, licensed, activated, available, catalogAdmin, requests: [], nativeCalls: [], renders: [], activationError: null, paid: false };
   window.chrome = host ? { webview: nativeHost } : undefined;
   globalThis.fetch = async (url, init = {}) => {
     const path = String(url).split('?')[0];
@@ -48,8 +48,10 @@ async function mount({ host = false, loggedIn = false, licensed = false, activat
     if (path === '/api/auth/login') { fixture.loggedIn = true; return response({ user: fixture.loginUser || user }); }
     if (path === '/api/auth/logout') { fixture.loggedIn = false; return response({ ok: true }); }
     if (path === '/api/health') return response({ ok: true });
+    if (path === '/api/admin/catalog/sync/permission') return response({ allowed: fixture.catalogAdmin });
+    if (path === '/api/admin/catalog/sync' && init.method === 'POST') return response({ accepted: true }, 202);
     if (path === '/api/categories') return response([]);
-    if (path === '/api/catalog/version') return response({ version: 0, state: 'empty', provider: 'google_drive' });
+    if (path === '/api/catalog/version') return response({ version: 0, state: 'empty', provider: 'r2' });
     if (path === '/api/products') return response({ items: [], total: 0 });
     if (path === '/api/licenses/me') return response({ license: fixture.licensed ? license : null });
     if (path === '/api/licenses/devices') return response({ devices: fixture.licensed && fixture.activated ? [{ id: 'slot', ...identity, slotNumber: 1, activatedAt: '2026-10-25' }] : [] });
@@ -78,6 +80,7 @@ async function mount({ host = false, loggedIn = false, licensed = false, activat
 const buttons = () => [...container.querySelectorAll('button')];
 const button = (label) => { const element = buttons().find((value) => value.textContent === label); assert.ok(element, `Missing button ${label}`); return element; };
 async function click(element) { await act(async () => { element.click(); }); }
+const flush = () => new Promise(resolve => setImmediate(resolve));
 async function input(element, value) {
   await act(async () => {
     Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(element, value);
@@ -88,6 +91,20 @@ async function submit(form) { await act(async () => { form.dispatchEvent(new win
 afterEach(async () => {
   if (root) await act(async () => root.unmount());
   root = null; sessionStorage.clear(); dom.window.history.replaceState(null, '', '/');
+});
+
+test('only an authorized admin can request an immediate R2 catalog sync', async () => {
+  await mount({ loggedIn: true, catalogAdmin: true });
+  await act(async () => { await flush(); await flush(); });
+  await click(button('Sync R2 Now'));
+  assert.ok(fixture.requests.some(call => call.path === '/api/admin/catalog/sync' && call.body && call.credentials === 'include'));
+  assert.match(container.querySelector('[role="status"]')?.textContent || '', /quét R2/i);
+  await act(async () => root.unmount());
+  root = null;
+
+  await mount({ loggedIn: true, catalogAdmin: false });
+  await act(async () => { await flush(); await flush(); });
+  assert.equal(buttons().some(value => value.textContent === 'Sync R2 Now'), false);
 });
 after(() => { globalThis.fetch = originalFetch; dom.window.close(); });
 
