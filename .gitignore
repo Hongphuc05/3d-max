@@ -13,3 +13,5 @@ node_modules/
 storage/
 dist/
 .vscode/
+test-results/
+playwright-report/

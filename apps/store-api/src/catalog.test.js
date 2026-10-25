@@ -26,3 +26,13 @@ test('loc theo category, sub, tu khoa, phan trang', () => {
   assert.equal(query(cat, { q: 'desk' }).items[0].id, '2');
   assert.equal(query(cat, { limit: 1, page: 2 }).items[0].id, '2');
 });
+
+test('Drive filters recursive folder identity and deterministic size/name sorts', () => {
+  const snapshot = { products: [
+    {id:'b',name:'Small',folderIds:['root','child'],info:{sizeMB:1}},
+    {id:'a',name:'Big',folderIds:['root'],info:{sizeMB:10}},
+  ]};
+  assert.equal(query(snapshot,{folder:'root'}).total,2);
+  assert.equal(query(snapshot,{folder:'child'}).total,1);
+  assert.equal(query(snapshot,{sort:'big'}).items[0].id,'a');
+});

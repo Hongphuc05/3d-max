@@ -3,8 +3,12 @@ import path from 'node:path';
 import pg from 'pg';
 
 export const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL || 'postgres://store:store@localhost:5432/store',
+  connectionString: process.env.DATABASE_URL,
+  connectionTimeoutMillis: 5000,
+  idleTimeoutMillis: 30000,
 });
+// Idle connection errors must not crash Node or print provider/SQL payloads.
+pool.on('error', () => console.error('[database] idle connection failed'));
 
 const DIR = path.resolve(import.meta.dirname, '../migrations');
 

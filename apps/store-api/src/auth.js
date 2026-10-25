@@ -1,11 +1,11 @@
-import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
+import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
 import { Router } from 'express';
 import { pool } from './db.js';
 import { requireJson } from './security.js';
+import { SESSION_SECONDS, signSessionJwt, verifySessionJwt, validateJwtConfiguration } from './auth-jwt.js';
 
 const scryptAsync = promisify(scrypt);
-const SESSION_DAYS = 30;
 const COOKIE = 'sid';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -40,22 +40,24 @@ const addFail = (email, ip) => { for (const k of [`e:${email}`, `i:${ip}`]) fail
 setInterval(() => { for (const k of [...fails.keys()]) recent(k); }, 60_000).unref();
 
 // ---- session ----
-const sha = (s) => createHash('sha256').update(s).digest();
 
 function cookieOf(req, name) {
   for (const part of String(req.headers.cookie || '').split(';')) {
     const i = part.indexOf('=');
-    if (i > 0 && part.slice(0, i).trim() === name) return decodeURIComponent(part.slice(i + 1).trim());
+    if (i > 0 && part.slice(0, i).trim() === name) {
+      try { return decodeURIComponent(part.slice(i + 1).trim()); } catch { return null; }
+    }
   }
   return null;
 }
 
 async function startSession(req, res, userId) {
-  const token = randomBytes(32).toString('base64url');
-  const expires = new Date(Date.now() + SESSION_DAYS * 86400_000);
+  const sessionId = randomBytes(32);
+  const expires = new Date(Date.now() + SESSION_SECONDS * 1000);
+  const token = await signSessionJwt(userId, sessionId, expires);
   await pool.query(
     'insert into sessions (id, user_id, expires_at, user_agent) values ($1, $2, $3, $4)',
-    [sha(token), userId, expires, String(req.headers['user-agent'] || '').slice(0, 300)],
+    [sessionId, userId, expires, String(req.headers['user-agent'] || '').slice(0, 300)],
   );
   res.cookie(COOKIE, token, {
     httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', expires,
@@ -65,9 +67,13 @@ async function startSession(req, res, userId) {
 export async function currentUser(req) {
   const token = cookieOf(req, COOKIE);
   if (!token) return null;
+  const claims = await verifySessionJwt(token);
+  if (!claims) return null;
   const { rows } = await pool.query(
     `select u.id, u.email from sessions s join users u on u.id = s.user_id
-     where s.id = $1 and s.expires_at > now()`, [sha(token)]);
+     where s.id = $1 and s.user_id = $2 and s.expires_at > now()`, [claims.sessionId, claims.userId]);
+  // Keep the auth binding private: public /me only returns id and email.
+  if (rows[0]) req.auth = { sessionId: claims.sessionId };
   return rows[0] || null;
 }
 
@@ -91,7 +97,11 @@ function validate({ email, password }) {
 
 export const authRouter = Router();
 
-authRouter.post('/register', requireJson, async (req, res, next) => {
+function requireAuthConfiguration(_req, _res, next) {
+  try { validateJwtConfiguration(); next(); } catch (error) { next(error); }
+}
+
+authRouter.post('/register', requireJson, requireAuthConfiguration, async (req, res, next) => {
   try {
     const { email, password } = clean(req.body);
     const bad = validate({ email, password });
@@ -110,10 +120,11 @@ authRouter.post('/register', requireJson, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-authRouter.post('/login', requireJson, async (req, res, next) => {
+authRouter.post('/login', requireJson, requireAuthConfiguration, async (req, res, next) => {
   try {
     const { email, password } = clean(req.body);
     if (blocked(email, req.ip)) return res.status(429).json({ error: 'TOO_MANY_ATTEMPTS' });
+    if (validate({ email, password })) return res.status(401).json({ error: 'INVALID_CREDENTIALS' });
     const row = (await pool.query('select id, email, password_hash from users where email = $1', [email])).rows[0];
     const ok = await verifyPassword(password, row ? row.password_hash : await dummyHash);
     if (!row || !ok) {
@@ -126,11 +137,13 @@ authRouter.post('/login', requireJson, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-authRouter.post('/logout', async (req, res, next) => {
+authRouter.post('/logout', requireJson, async (req, res, next) => {
   try {
     const token = cookieOf(req, COOKIE);
-    if (token) await pool.query('delete from sessions where id = $1', [sha(token)]);
+    const claims = token ? await verifySessionJwt(token) : null;
+    if (claims) await pool.query('delete from sessions where id = $1 and user_id = $2', [claims.sessionId, claims.userId]);
     res.clearCookie(COOKIE, { path: '/' });
+    res.clearCookie('dsid', { path: '/' });
     res.json({ ok: true });
   } catch (e) { next(e); }
 });

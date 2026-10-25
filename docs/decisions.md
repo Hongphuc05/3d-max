@@ -59,7 +59,37 @@ trách nhiệm vá lỗ hổng Chromium. Với sản phẩm thương mại, Ever
 
 **Hệ quả:** phải test khi Runtime vắng mặt — plugin không được crash Max, phải báo lỗi rõ.
 
-## D5 — Mô hình kinh doanh: bán license từng sản phẩm, dùng trong 3ds Max (locked 2026-10-06)
+## D11 — Lifetime theo tài khoản + payOS (2026-10-24)
+
+Theo yêu cầu triển khai trong `goal.md`, **thay thế D5/D8 về license từng sản phẩm**:
+mỗi tài khoản có tối đa một license Lifetime, tối đa hai slot thiết bị cố định. Không có
+reset, deactivate, transfer hoặc tự chuyển slot khi mất khóa/cài lại Windows. payOS là
+cổng thanh toán được chọn (chốt O6); chỉ webhook/truy vấn provider đã xác minh mới cấp
+license tự động. Admin được cấu hình phía server có thể cấp license thử.
+
+Thiết bị dùng UUID và khóa RSA CNG không export trong C# net48, ưu tiên TPM; fallback
+software CNG được thông báo rõ. Challenge một lần gắn phiên đăng nhập; phiên thiết bị
+ngắn hạn được kiểm tra khi cấp và dùng import ticket. Không có offline licensing V1.
+PostgreSQL giữ metadata và giao dịch; lưu trữ model/catalog/import engine không thay đổi.
+Cookie HttpOnly hiện hữu tiếp tục giữ đăng nhập. Không tự tạo thanh toán thật trong test.
+
+## D12 — Giữ quyền của máy đã kích hoạt khi đổi tài khoản (2026-10-25)
+
+**Quyết định được người dùng xác nhận:** máy đã kích hoạt vẫn Download & import khi đăng nhập
+hoặc đăng ký tài khoản khác trên cùng danh tính Windows. License và key vẫn thuộc tài khoản mua;
+tài khoản khác không được xem key, bốn ký tự cuối hoặc danh sách slot của chủ sở hữu.
+
+`VERIFY` chứng minh sở hữu khóa bằng challenge gắn phiên hiện tại, tìm slot ACTIVE khớp đồng thời
+device UUID và public-key hash; không tạo slot. Ưu tiên binding của tài khoản đang đăng nhập nếu có,
+sau đó dùng binding ACTIVE đã tồn tại. `ACTIVATE` để tạo slot vẫn yêu cầu key thuộc tài khoản hiện tại.
+Mỗi license giữ tối đa hai slot cố định; không chuyển quyền sở hữu, reset hoặc giải phóng slot.
+
+Phiên thiết bị ghi tài khoản đang sử dụng riêng với chủ sở hữu license. Download/import ticket
+vẫn kiểm đúng tài khoản, auth session, thiết bị và license ACTIVE. Logout thu hồi phiên/ticket của
+tài khoản đó; revoke/suspend license chặn mọi tài khoản đang dùng license trên máy đã gắn.
+Quyết định này bổ sung D11 về quyền sử dụng máy, không thay quyền sở hữu hay hiển thị key.
+
+## D5 — Mô hình kinh doanh: bán license từng sản phẩm (đã thay thế bởi D11)
 
 **Quyết định:** thôi bán file nén để tải trên web. Mỗi sản phẩm chỉ gồm 1 ảnh preview,
 1 file nén và giá (mặc định 15.000 VND). User thanh toán xong thì được cấp license, và import
@@ -92,7 +122,7 @@ license cần transaction, unique constraint và foreign key.
 **Thay thế:** giữ MongoDB nếu ưu tiên dùng lại model Mongoose. Khi đó transaction bắt buộc
 phải chạy trên replica set.
 
-## D9 — Đăng nhập: session cookie HttpOnly, lưu phía server (locked 2026-10-06)
+## D9 — Đăng nhập: session cookie HttpOnly, lưu phía server (2026-10-06; thay bởi D13)
 
 **Quyết định:** cookie `sid` ngẫu nhiên (HttpOnly, SameSite=Lax, Secure khi production), server
 lưu **hash sha256** của session trong bảng `sessions` (có hạn dùng, thu hồi được). Mật khẩu băm
@@ -106,6 +136,20 @@ cần đăng nhập — chấp nhận ở quy mô này.
 **Phase B:** native/WebView2 dùng chung cookie của WebView; việc xác thực của plugin với backend
 (device key, import ticket) là cơ chế riêng ở B3, không dùng lại `sid`.
 
+## D13 — JWT trong cookie HttpOnly, giữ thu hồi session (2026-10-25)
+
+Theo yêu cầu của chủ dự án, thay opaque token trong `sid` bằng JWT HS256 qua `jose`.
+JWT có `sub` (user UUID), `jti` (session ID 32 byte), `iat`, `exp`, issuer `3dsmood-api`,
+audience `3dsmood-web`; thời hạn tối đa 30 ngày như phiên đăng nhập trước đây.
+`JWT_SECRET` là secret server riêng, đúng 32 byte ngẫu nhiên dạng base64; thiếu/sai thì auth không hoạt động.
+Cookie giữ HttpOnly, SameSite=Lax, Secure trong production; không trả JWT trong JSON hoặc lưu localStorage.
+
+Mỗi request vẫn kiểm tra session PostgreSQL khớp cả `jti` và `sub`, còn hạn và chưa bị xóa.
+Logout xóa session, vô hiệu hóa device session và import ticket liên quan; JWT chưa hết hạn cũng không dùng lại được.
+Schema và session ID bytea giữ nguyên để bảo toàn liên kết license/thiết bị. Database không lưu nguyên JWT.
+Cookie opaque cũ cần đăng nhập lại một lần; license và slot thiết bị không bị thay đổi.
+Không triển khai refresh token trong thay đổi này. Giữ secret qua restart; đổi secret sẽ yêu cầu đăng nhập lại.
+
 ## D10 — Download = tải về máy trong plugin rồi import (locked 2026-10-19)
 
 **Quyết định:** sau khi khách trả phí và license được cấp, khách phải **Download** sản phẩm (plugin tải gói về
@@ -118,7 +162,7 @@ tải xong import luôn; hàng đợi để theo dõi. Native vẫn giữ hai b�
   O7 → phải gỡ (nợ BE2).
 - Hàng đợi, % tiến độ, hủy, cache lâu dài: plan ở [`download-queue-plan.md`](download-queue-plan.md).
 
-## D8 — License = entitlement phía server, plugin miễn phí (đề xuất, chờ chốt)
+## D8 — License = entitlement từng sản phẩm (đã thay thế bởi D11)
 
 **Đề xuất:** license là quyền vĩnh viễn `(user, product)` lưu ở server, chỉ được tạo khi
 payment đã xác minh. Import qua ticket ngắn hạn, dùng 1 lần, gắn với device. Plugin không thu

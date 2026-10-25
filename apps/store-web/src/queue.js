@@ -15,6 +15,12 @@ const MESSAGES = {
   NOT_FOUND: 'Sản phẩm không còn tồn tại.',
   TIMEOUT: 'Quá thời gian chờ 3ds Max.',
   HOST_UNSUPPORTED: 'Chỉ tải được trong plugin 3ds Max.',
+  MODEL_DOWNLOAD_RESTRICTED: 'Model này hiện không được phép tải từ nguồn.',
+  DRIVE_DOWNLOAD_RESTRICTED: 'Chủ sở hữu Drive đang giới hạn tải file này.',
+  DRIVE_QUOTA_EXCEEDED: 'Google Drive đang giới hạn lượt tải. Hãy thử lại sau.',
+  DRIVE_AUTOMATED_REQUESTS_BLOCKED: 'Google tạm chặn yêu cầu tự động từ mạng máy chủ. Hãy chờ rồi thử lại.',
+  DRIVE_FILE_OR_RESOURCE_KEY_NOT_FOUND: 'File nguồn không còn khả dụng. Catalog sẽ được cập nhật trong lần đồng bộ tiếp theo.',
+  DOWNLOAD_BUSY: 'Máy chủ đang đủ lượt tải đồng thời. Hãy thử lại sau.',
 };
 const errorText = (e) => MESSAGES[e.code] || e.message || 'Có lỗi xảy ra.';
 
@@ -27,7 +33,7 @@ async function pump() {
   patch(job.slug, { status: 'running', startedAt: Date.now(), error: null });
   try {
     const { assetId, ticket } = await importTicket(job.slug); // ticket dung 1 lan nen moi lan thu lai xin ticket moi
-    const result = await importAsset(assetId, ticket);
+    const result = await importAsset(assetId, ticket, progress => patch(job.slug, {progress}));
     patch(job.slug, { status: 'done', finishedAt: Date.now(), result });
   } catch (e) {
     patch(job.slug, { status: 'failed', finishedAt: Date.now(), error: errorText(e) });
@@ -41,7 +47,7 @@ async function pump() {
 export function enqueue(p) {
   const cur = jobs.find((j) => j.slug === p.slug);
   if (cur && (cur.status === 'queued' || cur.status === 'running')) return;
-  const job = { slug: p.slug, name: p.name, sizeMB: p.info.sizeMB, status: 'queued', error: null, result: null };
+  const job = { slug: p.slug, name: p.name, sizeMB: p.info.sizeMB, product: { ...p, info: { ...p.info } }, status: 'queued', error: null, result: null };
   update([...jobs.filter((j) => j.slug !== p.slug), job]);
   pump();
 }

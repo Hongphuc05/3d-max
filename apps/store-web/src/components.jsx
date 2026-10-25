@@ -1,17 +1,18 @@
-import { useState } from 'react';
-import { mb, vnd } from './api.js';
+import { useEffect, useState } from 'react';
+import { categoryKey, categoryKeys } from './catalog-view.js';
+import { mb } from './api.js';
 import { useAuth } from './auth.jsx';
 import { Icon } from './icons.jsx';
 import { isMaxHost } from './integrations/3dsmax/bridge.js';
 import { enqueue, useJob } from './queue.js';
+import { useLicense } from './license.jsx';
 
 const ICONS = {
   Architecture: 'home', Bathroom: 'bathroom', Childroom: 'children-park', Decoration: 'decoration',
   Furniture: 'Furniture', Kitchen: 'Kitchen', Lighting: 'Lighting', Material: 'Material',
   'Other models': 'othermodel', Plants: 'plant', Technology: 'tech',
 };
-const RENDERERS = [['vray', 'V-Ray'], ['corona', 'Corona']];
-export const rendererLabel = (r) => (r === 'vray' ? 'V-Ray' : 'Corona');
+export const rendererLabel = (r) => ({ vray: 'V-Ray', corona: 'Corona' }[r] || r);
 export const subKey = (c, s) => `${c}/${s}`;
 
 // Checkbox 3 trang thai (indeterminate dat qua ref vi khong co thuoc tinh HTML).
@@ -26,7 +27,34 @@ const toggle = (set, keys, on) => {
   return next;
 };
 
-export function Filters({ categories, subs, setSubs, renderers, setRenderers }) {
+function FolderFilter({ folder, parent, subs, setSubs, open, setOpen }) {
+  const key = categoryKey(folder, parent);
+  const keys = categoryKeys(folder, parent);
+  const selected = keys.filter(value => subs.has(value)).length;
+  const children = folder.children || [];
+  const expanded = open.has(key);
+  return (
+    <li>
+      <div className="flex items-center gap-2 rounded-md px-1.5 py-1.5 text-sm hover:bg-raised">
+        <Check checked={selected === keys.length} partial={selected > 0 && selected < keys.length}
+          onChange={() => setSubs(toggle(subs, keys, selected < keys.length))} />
+        <button className="flex min-w-0 flex-1 items-center gap-2 text-left" aria-expanded={children.length ? expanded : undefined}
+          onClick={() => children.length ? setOpen(toggle(open, [key], !expanded)) : setSubs(toggle(subs, [key], !subs.has(key)))}>
+          {ICONS[folder.name] && <img src={`/categories/${ICONS[folder.name]}.svg`} alt="" className="size-4 opacity-60 invert" />}
+          <span className="flex-1 truncate" title={folder.path || folder.name}>{folder.name}</span>
+          <span className="font-mono text-[10px] text-mute">{folder.count}</span>
+          {children.length > 0 && <Icon name="chevron" className={`size-3.5 text-mute transition ${expanded ? 'rotate-90' : ''}`} />}
+        </button>
+      </div>
+      {expanded && children.length > 0 && <ul className="mb-1 ml-3 border-l border-line pl-1">
+        {children.map(child => <FolderFilter key={categoryKey(child, key)} folder={child} parent={key}
+          subs={subs} setSubs={setSubs} open={open} setOpen={setOpen} />)}
+      </ul>}
+    </li>
+  );
+}
+
+export function Filters({ categories, subs, setSubs, renderers, setRenderers, rendererOptions = [] }) {
   const [open, setOpen] = useState(() => new Set());
   const active = subs.size + renderers.size;
   const head = 'mb-1.5 mt-4 font-mono text-[10px] tracking-widest text-mute';
@@ -45,47 +73,15 @@ export function Filters({ categories, subs, setSubs, renderers, setRenderers }) 
 
       <div className={head}>DANH MỤC</div>
       <ul className="space-y-px">
-        {categories.map((c) => {
-          const keys = c.children.map((s) => subKey(c.name, s.name));
-          const n = keys.filter((k) => subs.has(k)).length;
-          const isOpen = open.has(c.name);
-          return (
-            <li key={c.name}>
-              <div className="flex items-center gap-2 rounded-md px-1.5 py-1.5 text-sm hover:bg-raised">
-                <Check checked={n === keys.length} partial={n > 0 && n < keys.length} onChange={() => setSubs(toggle(subs, keys, n < keys.length))} />
-                <button className="flex min-w-0 flex-1 items-center gap-2 text-left" onClick={() => setOpen(toggle(open, [c.name], !isOpen))}>
-                  {ICONS[c.name] && <img src={`/categories/${ICONS[c.name]}.svg`} alt="" className="size-4 opacity-60 invert" />}
-                  <span className="flex-1 truncate">{c.name}</span>
-                  <span className="font-mono text-[10px] text-mute">{c.count}</span>
-                  <Icon name="chevron" className={`size-3.5 text-mute transition ${isOpen ? 'rotate-90' : ''}`} />
-                </button>
-              </div>
-              {isOpen && (
-                <ul className="mb-1 ml-5 border-l border-line pl-2">
-                  {c.children.map((s) => {
-                    const k = subKey(c.name, s.name);
-                    return (
-                      <li key={k}>
-                        <label className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-[13px] text-mute hover:bg-raised hover:text-fg">
-                          <Check checked={subs.has(k)} onChange={() => setSubs(toggle(subs, [k], !subs.has(k)))} />
-                          <span className="flex-1 truncate">{s.name}</span>
-                          <span className="font-mono text-[10px]">{s.count}</span>
-                        </label>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </li>
-          );
-        })}
+        {categories.map(folder => <FolderFilter key={categoryKey(folder)} folder={folder}
+          subs={subs} setSubs={setSubs} open={open} setOpen={setOpen} />)}
       </ul>
 
-      <div className={head}>RENDERER</div>
-      {RENDERERS.map(([k, label]) => (
+      {rendererOptions.length > 0 && <div className={head}>RENDERER</div>}
+      {rendererOptions.map(k => (
         <label key={k} className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-raised">
           <Check checked={renderers.has(k)} onChange={() => setRenderers(toggle(renderers, [k], !renderers.has(k)))} />
-          {label}
+          {rendererLabel(k)}
         </label>
       ))}
     </div>
@@ -96,28 +92,39 @@ export function Filters({ categories, subs, setSubs, renderers, setRenderers }) 
 // Tren trinh duyet khong co Download (O7) -> component nay khong render.
 export function DownloadButton({ p, onLogin, big }) {
   const { user } = useAuth();
+  const { canImport, loading, setOpen } = useLicense();
   const job = useJob(p.slug);
   const base = `w-full rounded-md font-bold transition disabled:cursor-default ${big ? 'py-3 text-sm' : 'py-1.5 text-xs'}`;
   const solid = `${base} bg-accent text-accent-ink hover:brightness-110`;
   const ghost = `${base} border border-line text-mute`;
-  const go = (e) => { e.stopPropagation(); enqueue(p); };
+  const go = (e) => { e.stopPropagation(); if (canImport) enqueue(p); else setOpen(true); };
 
+  if (p.downloadable === false) return <button disabled className={ghost}>Tạm không thể tải</button>;
   if (user === undefined) return <button disabled className={ghost}>…</button>;
   if (!user) return <button onClick={(e) => { e.stopPropagation(); onLogin(); }} className={ghost + ' hover:text-fg'}>Đăng nhập để tải</button>;
   if (job?.status === 'queued') return <button disabled className={ghost}>Trong hàng đợi</button>;
   if (job?.status === 'running') return <button disabled className={`${ghost} animate-pulse text-accent`}>Đang tải…</button>;
+  if (!canImport) return <button onClick={(e) => { e.stopPropagation(); setOpen(true); }} className={ghost + ' hover:text-fg'}>{loading ? 'Đang xác minh license…' : 'Kích hoạt license để tải'}</button>;
   if (job?.status === 'failed') return <button onClick={go} className={`${base} border border-danger/50 text-danger hover:bg-danger/10`}>Lỗi · Thử lại</button>;
   if (job?.status === 'done') return <button onClick={go} className={`${base} border border-accent/50 text-accent hover:bg-accent/10`}>✓ Đã import · Lại</button>;
   return <button onClick={go} className={solid}>{big ? 'Download & import vào 3ds Max' : 'Download'}</button>;
 }
 
-export function Card({ p, active, onOpen, onLogin }) {
+function Preview({ source, name, lazy = false }) {
   const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setLoaded(false); setFailed(false); }, [source]);
+  if (!source || failed) return <div className="grid aspect-square w-full place-items-center bg-raised font-mono text-xs text-mute">Chưa có ảnh preview</div>;
+  return <img src={source} alt={name} loading={lazy ? 'lazy' : undefined}
+    onLoad={() => setLoaded(true)} onError={() => setFailed(true)}
+    className={`aspect-square size-full object-contain transition duration-300 group-hover:scale-105 ${loaded ? 'opacity-100' : 'opacity-0'}`} />;
+}
+
+export function Card({ p, active, onOpen, onLogin }) {
   return (
     <div className={`group flex flex-col overflow-hidden rounded-lg border bg-panel transition ${active ? 'border-accent' : 'border-line hover:border-mute/60'}`}>
       <button onClick={() => onOpen(p)} className="relative aspect-square overflow-hidden bg-white">
-        <img src={p.thumb} alt={p.name} loading="lazy" onLoad={() => setLoaded(true)} onError={() => setLoaded(true)}
-          className={`size-full object-contain transition duration-300 group-hover:scale-105 ${loaded ? 'opacity-100' : 'opacity-0'}`} />
+        <Preview source={p.thumb} name={p.name} lazy />
         {p.info.renderers.length > 0 && (
           <span className="absolute top-1.5 right-1.5 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-warn">
             {p.info.renderers.map(rendererLabel).join('+')}
@@ -131,7 +138,7 @@ export function Card({ p, active, onOpen, onLogin }) {
         </div>
       </button>
       <div className="p-2">
-        {isMaxHost() ? <DownloadButton p={p} onLogin={onLogin} /> : <div className="font-mono text-xs font-bold text-accent">{vnd(p.price)}</div>}
+        {isMaxHost() ? <DownloadButton p={p} onLogin={onLogin} /> : <div className="font-mono text-xs font-bold text-accent">Trong license Lifetime</div>}
       </div>
     </div>
   );
@@ -146,6 +153,7 @@ const Row = ({ k, v }) => (
 
 // Panel chi tiet: man rong (xl) nam co dinh ben phai; man hep thi phu len tren.
 export function DetailPanel({ p, onClose, onLogin }) {
+  const { setOpen } = useLicense();
   if (!p) {
     return (
       <aside className="hidden w-[340px] shrink-0 place-items-center border-l border-line bg-panel p-6 text-center font-mono text-xs text-mute xl:grid">
@@ -158,7 +166,7 @@ export function DetailPanel({ p, onClose, onLogin }) {
     <div className="fixed inset-0 z-40 flex justify-end bg-black/60 xl:static xl:z-auto xl:bg-transparent" onClick={onClose}>
       <aside className="flex h-full w-full max-w-[380px] flex-col overflow-auto border-l border-line bg-panel xl:w-[340px]" onClick={(e) => e.stopPropagation()}>
         <div className="relative bg-white">
-          <img src={p.image} alt={p.name} className="aspect-square w-full object-contain" />
+          <Preview source={p.image} name={p.name} />
           <button onClick={onClose} aria-label="Đóng" className="absolute top-2 right-2 rounded-md bg-black/70 p-1.5 text-fg hover:bg-black">
             <Icon name="close" />
           </button>
@@ -170,10 +178,10 @@ export function DetailPanel({ p, onClose, onLogin }) {
           </div>
           <div>
             <h2 className="text-lg leading-snug font-bold">{p.name}</h2>
-            <div className="font-mono text-[11px] text-mute">{p.category} › {p.subcategory}</div>
+            <div className="font-mono text-[11px] text-mute">{p.folderPath || `${p.category} › ${p.subcategory}`}</div>
           </div>
           <div className="grid grid-cols-2 gap-x-4">
-            <Row k="GIÁ" v={<span className="font-mono font-bold text-accent">{vnd(p.price)}</span>} />
+            <Row k="QUYỀN DÙNG" v={<span className="font-mono font-bold text-accent">License Lifetime</span>} />
             <Row k="DUNG LƯỢNG" v={<span className="font-mono">{mb(info.sizeMB)}</span>} />
             <Row k="RENDERER" v={info.renderers.map(rendererLabel).join(', ') || '—'} />
             <Row k="ĐỊNH DẠNG" v={info.formats.map((f) => '.' + f).join(' ') || '—'} />
@@ -188,8 +196,8 @@ export function DetailPanel({ p, onClose, onLogin }) {
               </>
             ) : (
               <>
-                <button disabled title="Thanh toán chưa làm (A4)" className="w-full cursor-not-allowed rounded-md border border-line py-3 text-sm font-bold text-mute">
-                  Mua license — sắp có
+                <button onClick={() => setOpen(true)} className="w-full rounded-md border border-accent/50 py-3 text-sm font-bold text-accent">
+                  Xem license Lifetime
                 </button>
                 <p className="font-mono text-[10px] text-mute">Download &amp; import chỉ có trong plugin 3ds Max. Trên trình duyệt chỉ xem catalog.</p>
               </>

@@ -90,6 +90,26 @@ fn pbSofa w d h col = (
 -- ---------- asset import: path do host tính (không phải web gửi), chạy trên UI thread ----------
 
 -- sink = nơi trả kết quả: panel (MaxWebViewForm) hoặc agent (PlatformAgent, khi lệnh đến từ Max khác). Cả hai có cùng PostResultJson/PostError.
+fn pbSceneScriptAssetsProtected = (
+    try (SceneScriptSecurityManager.IsSafeScriptAssetExecutionEnabled())
+    catch (
+        -- Max 2022 exposes SSSE/language policies, but not the later asset-policy API.
+        -- Preserve this supported version; unknown newer interfaces fail closed.
+        local build = (maxVersion())[1]
+        build >= 24000 and build < 25000
+    )
+)
+
+fn pbSceneScriptsProtected = (
+    try (
+        SceneScriptSecurityManager.IsSafeSceneScriptExecutionEnabled #Current and
+        SceneScriptSecurityManager.IsSceneScriptExecutionBlocked #MAXScriptSystemCommands #Current and
+        SceneScriptSecurityManager.IsSceneScriptExecutionBlocked #Python #Current and
+        SceneScriptSecurityManager.IsSceneScriptExecutionBlocked #DotNet #Current and
+        pbSceneScriptAssetsProtected()
+    ) catch (false)
+)
+
 fn pbHandleImportFile id args sink = (
     local p = args.Param "path"
     if p == undefined or not (doesFileExist p) then (
@@ -100,6 +120,10 @@ fn pbHandleImportFile id args sink = (
     local startX = pbNextX()
     local before = for o in objects collect o
     local ext = toLower (getFilenameType p)
+    if ext == ".max" and not (pbSceneScriptsProtected()) do (
+        sink.PostError id "SCENE_SCRIPT_PROTECTION_REQUIRED" "Bật Safe Scene Script Execution và các mục chặn MAXScript/Python/.NET trong Preferences > Security, rồi khởi động lại 3ds Max."
+        return undefined
+    )
 
     -- #noPrompt: không hiện dialog options (dùng setting FBX/OBJ gần nhất)
     local ok = case ext of (

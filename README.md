@@ -3,10 +3,12 @@
 Nhúng web platform vào Autodesk 3ds Max qua một C#/.NET plugin host chứa WebView2
 và một bridge hai chiều, typed, có allowlist giữa JavaScript và Max API.
 
-**Mô hình:** bán license từng model 3D (15.000 VND), mua xong import thẳng vào Max.
+**Mô hình:** một license Lifetime/tài khoản, tối đa hai thiết bị cố định; thanh toán payOS đã xác minh hoặc admin cấp thử.
 **Target:** 3ds Max 2022 · .NET Framework 4.8 · sản phẩm thương mại
-**Trạng thái:** PoC bridge chạy được với trang demo ([docs/phase1-report.md](docs/phase1-report.md)).
-Web store mới (Phase A) chưa bắt đầu. Plan: **[docs/product-roadmap.md](docs/product-roadmap.md)**.
+**Source hiện tại:** React/Vite, Express/PostgreSQL, C# CNG/DPAPI + WebView2.
+**Online catalog:** [Google Drive → PostgreSQL, preview cache và licensed streaming](docs/google-drive-catalog.md).
+Hướng dẫn mới: **[License + payOS setup](docs/license-payos-setup.md)** · **[API](docs/license-payos-api.md)** ·
+**[Báo cáo triển khai](LICENSE_PAYOS_IMPLEMENTATION_REPORT.md)**. Roadmap cũ về license từng model được thay bởi D11.
 
 ## Chạy thử
 
@@ -53,6 +55,5 @@ Bắt đầu tại **[docs/README.md](docs/README.md)** để đọc theo đúng
 
 ## Bước tiếp theo
 
-Phase A0 trong [product-roadmap](docs/product-roadmap.md): chốt D6–D8, xác nhận quyền phân
-phối model, gỡ secret khỏi git. Sau đó A1 (ingest `source/3DSMOOD`) → A2 (FE xem catalog và
-preview).
+Cấu hình secrets, giá Lifetime và webhook HTTPS theo [hướng dẫn](docs/license-payos-setup.md).
+Không tạo giao dịch thật hoặc đăng ký webhook production trong bộ test tự động.

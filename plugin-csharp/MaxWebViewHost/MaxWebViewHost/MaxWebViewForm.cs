@@ -53,17 +53,18 @@ namespace MaxWebViewHost
             "host.ping", "host.getInfo",
             "scene.getInfo", "scene.getSelection", "scene.createBox",
             "design.create",
-            "asset.import"
+            "asset.import", "device.getIdentity", "device.signChallenge"
         };
 
         /// <summary>Origin của backend 3DS Mood, nơi host tải asset. Phải nằm trong TrustedOrigins.
         /// Web chỉ gửi asset ID + ticket, không bao giờ gửi URL (spec §5.5).</summary>
         public static string ApiBase = "http://localhost:5001";
 
-        // ponytail: giới hạn cứng 2GB, không resume/progress. Thêm khi cần tải gói lớn qua mạng thật.
+        // Bounded streaming download; single-use tickets intentionally do not resume.
         private const long MaxPackageBytes = 2L * 1024 * 1024 * 1024;
-        private static readonly string[] ImportExtensions = { ".fbx", ".obj", ".max" }; // ưu tiên: không kéo theo plugin renderer lạ
-        private static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+        private static readonly string[] ImportExtensions = { ".max", ".fbx", ".obj" };
+        private static readonly HttpClient Http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromMinutes(30) };
+        private readonly System.Threading.CancellationTokenSource _lifetime = new System.Threading.CancellationTokenSource();
 
         private static MaxWebViewForm _instance;
 
@@ -87,6 +88,10 @@ namespace MaxWebViewHost
 
         private Uri[] _trustedOrigins;
         private string _diagnosticBaseUri;
+        private bool _navigating = true;
+        private ulong _allowedNavigationId;
+        private readonly Dictionary<string, string> _requestDocuments = new Dictionary<string, string>();
+        private readonly DeviceIdentityService _deviceIdentity = new DeviceIdentityService();
 
         private readonly WebView2 _web = new WebView2 { Dock = DockStyle.Fill };
         private readonly JavaScriptSerializer _json = new JavaScriptSerializer();
@@ -104,6 +109,7 @@ namespace MaxWebViewHost
 
         public MaxWebViewForm()
         {
+            FormClosed += (sender, args) => _lifetime.Cancel();
             Text = "3ds Max Platform — " + EnvironmentName;
             Width = 1100;
             Height = 800;
@@ -157,8 +163,7 @@ namespace MaxWebViewHost
                 .ToArray();
 
             if (File.Exists(DiagnosticPagePath))
-                _diagnosticBaseUri = new Uri(Path.GetDirectoryName(Path.GetFullPath(DiagnosticPagePath))
-                                             + Path.DirectorySeparatorChar).AbsoluteUri;
+                _diagnosticBaseUri = new Uri(Path.GetFullPath(DiagnosticPagePath)).AbsoluteUri;
 
             try
             {
@@ -185,7 +190,13 @@ namespace MaxWebViewHost
             // không load bên trong panel Max (spec Phase 4.2).
             _web.CoreWebView2.NavigationStarting += (s, e) =>
             {
-                if (IsTrusted(e.Uri)) return;
+                if (IsTrusted(e.Uri))
+                {
+                    _navigating = true;
+                    _allowedNavigationId = e.NavigationId;
+                    _requestDocuments.Clear();
+                    return;
+                }
                 e.Cancel = true;
                 OpenExternal(e.Uri);
             };
@@ -194,13 +205,20 @@ namespace MaxWebViewHost
                 e.Handled = true;
                 OpenExternal(e.Uri);
             };
-            _web.CoreWebView2.NavigationCompleted += (s, e) => ShowStatus(e.IsSuccess ? null : StartUrl);
+            _web.CoreWebView2.NavigationCompleted += (s, e) =>
+            {
+                // A cancelled external navigation must not disable the still-active trusted page.
+                if (e.NavigationId != _allowedNavigationId) return;
+                _navigating = !e.IsSuccess || !IsTrusted(_web.CoreWebView2.Source);
+                ShowStatus(e.IsSuccess ? null : StartUrl);
+            };
 
             Navigate(StartUrl);
         }
 
         private void Navigate(string url)
         {
+            if (_web.CoreWebView2 == null || !IsTrusted(url)) return;
             ShowStatus(null);
             _web.CoreWebView2.Navigate(url);
         }
@@ -218,6 +236,7 @@ namespace MaxWebViewHost
 
         private static void OpenExternal(string uri)
         {
+            if (!BridgePolicy.CanOpenExternal(uri)) return;
             try { Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true }); }
             catch { /* URL bất thường từ web input untrusted — bỏ qua, không crash host */ }
         }
@@ -233,27 +252,28 @@ namespace MaxWebViewHost
         /// hoặc nằm trong thư mục trang chẩn đoán cục bộ. Không suy diễn theo prefix chuỗi (spec Phase 4.2).</summary>
         private bool IsTrusted(string uri)
         {
-            if (string.IsNullOrEmpty(uri)) return false;
-
-            if (_diagnosticBaseUri != null && uri.StartsWith(_diagnosticBaseUri, StringComparison.OrdinalIgnoreCase))
-                return true;
-
-            Uri u;
-            if (!Uri.TryCreate(uri, UriKind.Absolute, out u)) return false;
-            return _trustedOrigins != null && _trustedOrigins.Any(o =>
-                string.Equals(o.Scheme, u.Scheme, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(o.Host, u.Host, StringComparison.OrdinalIgnoreCase)
-                && o.Port == u.Port);
+            return BridgePolicy.IsTrusted(uri, _trustedOrigins, _diagnosticBaseUri);
         }
 
         private void OnWebMessage(object sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
-            if (!IsTrusted(e.Source)) return; // chỉ trang trong allowlist mới có bridge privilege
+            if (_navigating || !IsTrusted(e.Source) || !IsTrusted(_web.CoreWebView2.Source)
+                || !BridgePolicy.SameDocument(e.Source, _web.CoreWebView2.Source)) return;
 
             Dictionary<string, object> msg;
+            string code;
             try
             {
-                msg = _json.Deserialize<Dictionary<string, object>>(e.WebMessageAsJson);
+                if (!BridgePolicy.TryParse(e.WebMessageAsJson, out msg, out code))
+                {
+                    var responseId = BridgePolicy.ResponseId(msg);
+                    if (responseId != null && !_requestDocuments.ContainsKey(responseId) && _requestDocuments.Count < 100)
+                    {
+                        _requestDocuments.Add(responseId, e.Source);
+                        PostError(responseId, code, "Bridge request không hợp lệ hoặc không được hỗ trợ.");
+                    }
+                    return;
+                }
             }
             catch
             {
@@ -269,6 +289,8 @@ namespace MaxWebViewHost
             var id = idObj as string;
             var method = methodObj as string;
             if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(method)) return;
+            if (_requestDocuments.ContainsKey(id) || _requestDocuments.Count >= 100) return;
+            _requestDocuments.Add(id, e.Source);
 
             if (!AllowedMethods.Contains(method))
             {
@@ -282,6 +304,13 @@ namespace MaxWebViewHost
                 return;
             }
 
+            if (method.StartsWith("device.", StringComparison.Ordinal))
+            {
+                var parameters = (Dictionary<string, object>)paramsObj;
+                _ = Task.Run(() => HandleDeviceMethod(id, method, parameters));
+                return;
+            }
+
             if (method == "asset.import")
             {
                 var p = paramsObj as Dictionary<string, object> ?? new Dictionary<string, object>();
@@ -290,6 +319,19 @@ namespace MaxWebViewHost
             }
 
             Dispatch(id, method, paramsObj as Dictionary<string, object>);
+        }
+
+        private void HandleDeviceMethod(string id, string method, Dictionary<string, object> parameters)
+        {
+            try
+            {
+                if (method == "device.getIdentity") PostResponse(id, true, _deviceIdentity.GetIdentity(), null);
+                else if (method == "device.signChallenge")
+                    PostResponse(id, true, new { signature = _deviceIdentity.SignChallenge(
+                        (string)parameters["challengeId"], (string)parameters["message"]) }, null);
+            }
+            catch (DeviceIdentityException ex) { PostError(id, ex.Code, ex.Message); }
+            catch (Exception) { PostError(id, "DEVICE_IDENTITY_UNAVAILABLE", "Không truy cập được khóa thiết bị an toàn trên Windows."); }
         }
 
         private void Dispatch(string id, string method, Dictionary<string, object> p)
@@ -317,6 +359,11 @@ namespace MaxWebViewHost
         private async Task ImportAssetAsync(string id, Dictionary<string, object> p)
         {
             string workDir = null;
+            bool retainContent = false;
+            using (var cancellation = System.Threading.CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token))
+            {
+            cancellation.CancelAfter(TimeSpan.FromMinutes(30));
+            var token = cancellation.Token;
             try
             {
                 object a, t;
@@ -340,8 +387,7 @@ namespace MaxWebViewHost
                 // Mỗi lần import dùng thư mục mới (ticket là một lần dùng nên không có cache hit để tận dụng).
                 var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                                         "MaxWebViewHost", "cache", assetId);
-                CleanOldDirs(root);
-                workDir = Path.Combine(root, DateTime.UtcNow.ToString("yyyyMMddHHmmss"));
+                workDir = Path.Combine(root, Guid.NewGuid().ToString("N"));
                 var extractDir = Path.Combine(workDir, "content");
                 Directory.CreateDirectory(extractDir);
                 var pkg = Path.Combine(workDir, "package.bin");
@@ -350,11 +396,18 @@ namespace MaxWebViewHost
                 try
                 {
                     var url = new Uri(api, "/api/downloads/stream/" + ticket);
-                    using (var resp = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false))
+                    using (var resp = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false))
                     {
                         if (!resp.IsSuccessStatusCode)
                         {
-                            PostError(id, "ASSET_DOWNLOAD_FAILED", "Server trả " + (int)resp.StatusCode + " (ticket hết hạn hoặc đã dùng?)");
+                            var code = "ASSET_DOWNLOAD_FAILED";
+                            try {
+                                var failure = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(await resp.Content.ReadAsStringAsync().ConfigureAwait(false));
+                                object value;
+                                if (failure != null && failure.TryGetValue("error", out value) && value is string
+                                    && Regex.IsMatch((string)value, "^[A-Z][A-Z0-9_]{1,80}$")) code = (string)value;
+                            } catch (ArgumentException) { }
+                            PostError(id, code, "Không tải được model (HTTP " + (int)resp.StatusCode + ", " + code + "). Kiểm tra license/ticket hoặc trạng thái nguồn catalog.");
                             return;
                         }
                         if (resp.Content.Headers.ContentLength > MaxPackageBytes)
@@ -362,9 +415,20 @@ namespace MaxWebViewHost
                             PostError(id, "ASSET_TOO_LARGE", "Gói vượt giới hạn " + (MaxPackageBytes >> 20) + "MB");
                             return;
                         }
+                        using (var aborted = token.Register(() => resp.Dispose()))
                         using (var src = await resp.Content.ReadAsStreamAsync().ConfigureAwait(false))
                         using (var dst = File.Create(pkg))
-                            await src.CopyToAsync(dst).ConfigureAwait(false);
+                        {
+                            var clock = Stopwatch.StartNew();
+                            var copied = ArchivePackage.CopyBounded(src, dst, MaxPackageBytes, n => {
+                                if (clock.ElapsedMilliseconds < 200) return;
+                                clock.Restart();
+                                PostProgress(id, n, resp.Content.Headers.ContentLength);
+                            }, token);
+                            if (resp.Content.Headers.ContentLength.HasValue && copied != resp.Content.Headers.ContentLength.Value)
+                                throw new InvalidDataException("Download truncated.");
+                            PostProgress(id, copied, resp.Content.Headers.ContentLength);
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -374,21 +438,8 @@ namespace MaxWebViewHost
                     return;
                 }
 
-                // 2) kiểm tra đường dẫn trong gói trước khi giải nén (zip-slip), rồi giải nén
-                var entries = RunTar("-tf", pkg, null);
-                if (entries == null) { PostError(id, "ASSET_EXTRACT_FAILED", "Không đọc được gói (định dạng không hỗ trợ?)"); return; }
-                foreach (var e in entries)
-                    if (!IsSafeEntry(e)) { PostError(id, "ASSET_UNSAFE_PACKAGE", "Gói chứa đường dẫn không an toàn"); return; }
-                if (RunTar("-xf", pkg, extractDir) == null) { PostError(id, "ASSET_EXTRACT_FAILED", "Giải nén thất bại"); return; }
-
-                // kiểm tra lại sau giải nén: mọi file phải nằm trong extractDir (symlink/junction)
-                var baseFull = Path.GetFullPath(extractDir) + Path.DirectorySeparatorChar;
-                var files = Directory.GetFiles(extractDir, "*", SearchOption.AllDirectories);
-                if (files.Any(f => !Path.GetFullPath(f).StartsWith(baseFull, StringComparison.OrdinalIgnoreCase)))
-                {
-                    PostError(id, "ASSET_UNSAFE_PACKAGE", "Gói chứa đường dẫn không an toàn");
-                    return;
-                }
+                // Validate every entry before writing; only bounded model/texture data is extracted.
+                var files = ArchivePackage.Extract(pkg, extractDir, token, null);
 
                 // 3) chọn file import theo thứ tự ưu tiên định dạng
                 string entry = null;
@@ -402,16 +453,21 @@ namespace MaxWebViewHost
 
                 // 4) giao cho adapter (MAXScript) chạy trên UI thread. Method này KHÔNG nằm trong allowlist
                 //    nên web không gọi trực tiếp được; đường dẫn do host tự tính.
+                token.ThrowIfCancellationRequested();
                 var target = _targetPid;
                 if (target == Process.GetCurrentProcess().Id)
                 {
                     var args = new Dictionary<string, object> { { "path", entry }, { "assetId", assetId } };
+                    retainContent = true; // scene textures may refer to this owned cache directory.
                     BeginInvoke(new Action(() => Dispatch(id, "asset.importFile", args)));
                     return;
                 }
 
                 // Max đích là process khác: chuyển lệnh qua pipe. Không import nhầm sang scene khác khi đích không với tới được.
                 string replyJson;
+                // A lost reply does not prove that the target failed to merge. Preserve
+                // the files from the moment the command can reach another Max scene.
+                retainContent = true;
                 try { replyJson = await PlatformAgent.SendImportAsync(target, id, entry).ConfigureAwait(false); }
                 catch (Exception ex)
                 {
@@ -431,41 +487,29 @@ namespace MaxWebViewHost
                 Debug.WriteLine("[asset.import] " + ex);
                 PostError(id, "ASSET_IMPORT_FAILED", "Import thất bại");
             }
-        }
-
-        private static void CleanOldDirs(string root)
-        {
-            try { if (Directory.Exists(root)) Directory.Delete(root, true); } // file có thể đang bị Max khoá -> bỏ qua
-            catch { }
-        }
-
-        private static bool IsSafeEntry(string e)
-        {
-            if (string.IsNullOrWhiteSpace(e)) return true;
-            if (e.StartsWith("/") || e.StartsWith("\\") || e.Contains(":")) return false;
-            return !e.Split('/', '\\').Contains("..");
-        }
-
-        /// <summary>Chạy tar.exe của Windows (đọc zip/rar, không đọc 7z). Trả về các dòng stdout, null nếu lỗi.</summary>
-        private static List<string> RunTar(string mode, string pkg, string destDir)
-        {
-            var tar = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "tar.exe");
-            var args = mode + " \"" + pkg + "\"" + (destDir != null ? " -C \"" + destDir + "\"" : "");
-            var psi = new ProcessStartInfo(tar, args)
+            finally
             {
-                UseShellExecute = false, CreateNoWindow = true,
-                RedirectStandardOutput = true, RedirectStandardError = true
-            };
-            using (var pr = Process.Start(psi))
-            {
-                var err = pr.StandardError.ReadToEndAsync(); // đọc song song để không nghẽn pipe
-                var lines = new List<string>();
-                string line;
-                while ((line = pr.StandardOutput.ReadLine()) != null) lines.Add(line);
-                if (!pr.WaitForExit(5 * 60 * 1000)) { try { pr.Kill(); } catch { } return null; }
-                if (pr.ExitCode != 0) { Debug.WriteLine("[tar] " + err.Result); return null; }
-                return lines;
+                if (workDir != null)
+                {
+                    try {
+                        var package = Path.Combine(workDir, "package.bin");
+                        if (File.Exists(package)) File.Delete(package);
+                        // workDir is a fresh GUID under a validated asset ID; never delete a scene's retained textures.
+                        if (!retainContent && Directory.Exists(workDir)) Directory.Delete(workDir, true);
+                    } catch (IOException) { Debug.WriteLine("[asset.import] cleanup deferred"); }
+                }
             }
+            }
+        }
+
+        private void PostProgress(string id, long receivedBytes, long? totalBytes)
+        {
+            if (IsDisposed || Disposing) return;
+            if (InvokeRequired) { BeginInvoke(new Action(() => PostProgress(id, receivedBytes, totalBytes))); return; }
+            string document;
+            if (_web.CoreWebView2 == null || _navigating || !_requestDocuments.TryGetValue(id, out document)
+                || !IsTrusted(_web.CoreWebView2.Source) || !BridgePolicy.SameDocument(document, _web.CoreWebView2.Source)) return;
+            _web.CoreWebView2.PostWebMessageAsJson(_json.Serialize(new { id, type = "asset.progress", receivedBytes, totalBytes }));
         }
 
         private void HandleHostMethod(string id, string method)
@@ -505,6 +549,12 @@ namespace MaxWebViewHost
         /// <summary>Trả response về JS. result/error là object bất kỳ, sẽ được serialize thành JSON.</summary>
         public void PostResponse(string id, bool ok, object result, object error)
         {
+            if (IsDisposed || Disposing) return;
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(() => PostResponse(id, ok, result, error)));
+                return;
+            }
             if (ok) PostRaw(id, true, "result", _json.Serialize(result ?? new Dictionary<string, object>()));
             else PostRaw(id, false, "error", _json.Serialize(error ?? MakeError("MAX_OPERATION_FAILED", "Unspecified error")));
         }
@@ -518,6 +568,12 @@ namespace MaxWebViewHost
         /// <summary>Dành cho MAXScript: trả lỗi theo error model trong spec.</summary>
         public void PostError(string id, string code, string message)
         {
+            if (IsDisposed || Disposing) return;
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action(() => PostError(id, code, message)));
+                return;
+            }
             PostRaw(id, false, "error", _json.Serialize(MakeError(code, message)));
         }
 
@@ -528,12 +584,16 @@ namespace MaxWebViewHost
 
         private void PostRaw(string id, bool ok, string payloadKey, string payloadJson)
         {
+            if (IsDisposed || Disposing) return;
             if (InvokeRequired)
             {
                 BeginInvoke(new Action(() => PostRaw(id, ok, payloadKey, payloadJson)));
                 return;
             }
-            if (_web.CoreWebView2 == null) return;
+            string document;
+            if (_web.CoreWebView2 == null || _navigating || !_requestDocuments.TryGetValue(id, out document)) return;
+            _requestDocuments.Remove(id);
+            if (!IsTrusted(_web.CoreWebView2.Source) || !BridgePolicy.SameDocument(document, _web.CoreWebView2.Source)) return;
 
             var envelope = "{\"id\":" + _json.Serialize(id)
                          + ",\"ok\":" + (ok ? "true" : "false")

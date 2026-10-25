@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getAllProducts, getCategories } from './api.js';
 import AuthModal from './AuthModal.jsx';
 import { useAuth } from './auth.jsx';
-import { Card, DetailPanel, Filters, subKey } from './components.jsx';
+import { Card, DetailPanel, Filters } from './components.jsx';
+import { catalogMessage, downloadedProducts, matchesCategory } from './catalog-view.js';
+import { useCatalog } from './useCatalog.js';
 import { HostBar } from './HostBar.jsx';
 import { Icon } from './icons.jsx';
 import { isMaxHost } from './integrations/3dsmax/bridge.js';
 import { Queue } from './Queue.jsx';
 import { useJobs } from './queue.js';
+import { useLicense } from './license.jsx';
+import LicensePanel from './LicensePanel.jsx';
 
 const PAGE = 30;
 const SORTS = {
@@ -42,9 +45,6 @@ function Account({ onLogin }) {
 }
 
 export default function App() {
-  const [categories, setCategories] = useState([]);
-  const [products, setProducts] = useState([]);
-  const [state, setState] = useState('loading'); // loading | ready | error
   const [subs, setSubs] = useState(() => new Set());
   const [renderers, setRenderers] = useState(() => new Set());
   const [text, setText] = useState('');
@@ -55,34 +55,34 @@ export default function App() {
   const [drawer, setDrawer] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const { categories, products, state, status, error: loadError } = useCatalog(reloadKey);
   const { user } = useAuth();
+  const licenseState = useLicense();
   const jobs = useJobs();
   const max = isMaxHost();
 
-  useEffect(() => {
-    const ac = new AbortController();
-    setState('loading');
-    Promise.all([getCategories(ac.signal), getAllProducts(ac.signal)])
-      .then(([c, p]) => { setCategories(c); setProducts(p); setState('ready'); })
-      .catch((e) => e.name !== 'AbortError' && setState('error'));
-    return () => ac.abort();
-  }, [reloadKey]);
-
   const doneSlugs = useMemo(() => new Set(jobs.filter((j) => j.status === 'done').map((j) => j.slug)), [jobs]);
+  const downloaded = useMemo(() => downloadedProducts(products, jobs), [products, jobs]);
+  const rendererOptions = useMemo(() => [...new Set(products.flatMap(p => p.info.renderers))].sort(), [products]);
+  const catalogNotice = catalogMessage(status);
+  useEffect(() => {
+    setActive(previous => previous && (products.find(product => product.id === previous.id)
+      || downloaded.find(product => product.id === previous.id) || null));
+  }, [products, downloaded]);
   const activeJobs = jobs.filter((j) => j.status === 'queued' || j.status === 'running').length;
 
   const rows = useMemo(() => {
     const needle = text.trim().toLowerCase();
-    return products
-      .filter((p) => (tab === 'online' || doneSlugs.has(p.slug))
-        && (subs.size === 0 || subs.has(subKey(p.category, p.subcategory)))
+    return (tab === 'online' ? products : downloaded)
+      .filter((p) => matchesCategory(p, subs)
         && (renderers.size === 0 || p.info.renderers.some((r) => renderers.has(r)))
         && (!needle || p.name.toLowerCase().includes(needle)))
       .sort(SORTS[sort][1]);
-  }, [products, tab, doneSlugs, subs, renderers, text, sort]);
+  }, [products, downloaded, tab, subs, renderers, text, sort]);
 
   useEffect(() => setPage(1), [tab, subs, renderers, text, sort]);
   const pages = Math.max(1, Math.ceil(rows.length / PAGE));
+  useEffect(() => setPage(previous => Math.min(previous, pages)), [pages]);
   const view = rows.slice((page - 1) * PAGE, page * PAGE);
   const login = () => setAuthOpen(true);
 
@@ -110,7 +110,7 @@ export default function App() {
         <div className={`${drawer ? 'fixed inset-0 z-30 bg-black/60' : 'hidden'} lg:static lg:z-auto lg:block lg:bg-transparent`} onClick={() => setDrawer(false)}>
           <aside className="flex h-full w-72 flex-col border-r border-line bg-panel lg:w-64" onClick={(e) => e.stopPropagation()}>
             <div className="min-h-0 flex-1 overflow-auto">
-              <Filters categories={categories} subs={subs} setSubs={setSubs} renderers={renderers} setRenderers={setRenderers} />
+              <Filters categories={categories} subs={subs} setSubs={setSubs} renderers={renderers} setRenderers={setRenderers} rendererOptions={rendererOptions} />
             </div>
             {max && <Queue />}
           </aside>
@@ -118,6 +118,7 @@ export default function App() {
 
         <main className="flex min-w-0 flex-1 flex-col">
           <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
+            <button onClick={() => licenseState.setOpen(true)} className="rounded-md border border-accent/50 px-3 py-1.5 text-xs font-bold text-accent">My License · Lifetime</button>
             {tabBtn('online', 'Online')}
             {tabBtn('done', `Đã tải${doneSlugs.size ? ` (${doneSlugs.size})` : ''}`)}
             <button onClick={() => setDrawer(true)} className="flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs text-mute hover:text-fg lg:hidden">
@@ -143,16 +144,16 @@ export default function App() {
           </div>
 
           <div className="min-h-0 flex-1 overflow-auto px-3 pb-3">
-            {state === 'error' && (
+            {tab === 'online' && (loadError || catalogNotice) && (
               <p className="rounded-md border border-danger/40 bg-danger/10 p-4 font-mono text-xs text-danger">
-                Không tải được dữ liệu. Backend đã chạy chưa? (npm run dev trong apps/store-api)
+                {loadError || catalogNotice}
               </p>
             )}
-            {state === 'ready' && rows.length === 0 && (
+            {state === 'ready' && rows.length === 0 && (tab === 'done' || products.length > 0 || (!loadError && !catalogNotice)) && (
               <p className="py-16 text-center font-mono text-xs text-mute">
                 {tab === 'done'
                   ? 'Chưa có model nào được tải trong phiên này.'
-                  : 'Không có model nào khớp bộ lọc.'}
+                  : products.length ? 'Không có model nào khớp bộ lọc.' : catalogNotice || 'Catalog đã tải thành công và hiện đang trống.'}
               </p>
             )}
             <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2.5">
@@ -174,6 +175,7 @@ export default function App() {
         <DetailPanel p={active} onClose={() => setActive(null)} onLogin={login} />
       </div>
 
+      {licenseState.open && <LicensePanel onLogin={login} />}
       {authOpen && !user && <AuthModal onClose={() => setAuthOpen(false)} />}
     </div>
   );

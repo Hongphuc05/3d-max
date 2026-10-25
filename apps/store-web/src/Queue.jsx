@@ -31,12 +31,12 @@ export function Queue() {
                 <div className="truncate text-xs font-bold" title={j.name}>{j.name}</div>
                 <div className="font-mono text-[10px] text-mute">
                   {j.status === 'queued' && `Đang chờ · ${mb(j.sizeMB)}`}
-                  {j.status === 'running' && `Đang tải + import · ${mb(j.sizeMB)} · ${secs(Date.now() - j.startedAt)}`}
+                  {j.status === 'running' && `Đang tải + import · ${j.progress?.totalBytes ? Math.min(100,Math.floor(j.progress.receivedBytes/j.progress.totalBytes*100))+'% · ' : ''}${mb(j.sizeMB)} · ${secs(Date.now() - j.startedAt)}`}
                   {j.status === 'failed' && <span className="text-danger">Lỗi: {j.error}</span>}
                 </div>
               </div>
               {j.status === 'failed' && (
-                <button onClick={() => enqueue({ slug: j.slug, name: j.name, info: { sizeMB: j.sizeMB } })} title="Thử lại"
+                <button onClick={() => enqueue(j.product || { slug: j.slug, name: j.name, info: { sizeMB: j.sizeMB } })} title="Thử lại"
                   className="rounded p-1 text-mute hover:bg-line hover:text-fg"><Icon name="refresh" className="size-3.5" /></button>
               )}
               {j.status !== 'running' && (
@@ -47,7 +47,8 @@ export function Queue() {
             </div>
             <div className="mt-1.5 h-1 overflow-hidden rounded bg-line">
               {/* native chua gui % tien do: thanh chay khong xac dinh khi dang tai */}
-              <div className={`h-full ${j.status === 'running' ? 'w-1/3 animate-pulse bg-accent' : j.status === 'failed' ? 'w-full bg-danger' : 'w-0'}`} />
+              <div style={j.status === 'running' && j.progress?.totalBytes ? {width:`${Math.min(100,j.progress.receivedBytes/j.progress.totalBytes*100)}%`} : undefined}
+                className={`h-full ${j.status === 'running' ? j.progress?.totalBytes ? 'bg-accent' : 'w-1/3 animate-pulse bg-accent' : j.status === 'failed' ? 'w-full bg-danger' : 'w-0'}`} />
             </div>
           </li>
         ))}

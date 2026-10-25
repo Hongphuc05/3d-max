@@ -2,21 +2,26 @@
 
 Tiến độ và việc còn lại: [`../docs/STATUS.md`](../docs/STATUS.md).
 
+License Lifetime + payOS: xem [setup](../docs/license-payos-setup.md) và [API](../docs/license-payos-api.md).
+Catalog mặc định lấy từ Google Drive qua PostgreSQL; xem [cấu hình, sync và API](../docs/google-drive-catalog.md).
+API tài khoản/license chạy khi Drive chưa sẵn sàng; status catalog phân biệt thiếu cấu hình, chưa sync, lỗi Drive và snapshot cũ.
+Tải/import yêu cầu license ACTIVE và phiên thiết bị đã chứng minh khóa CNG. Cấu hình hai secret license trước khi kích hoạt.
+
 ## Yêu cầu
 
 | | macOS | Windows |
 |---|---|---|
 | Node | 22.9+ (cần `--env-file-if-exists`) | 22.9+ |
 | Công cụ đọc file nén | `bsdtar` (có sẵn) | `tar.exe` (có sẵn từ Windows 10 1803, là libarchive) |
-| Dữ liệu | `source/3DSMOOD/` ở gốc repo (~10 GB, **không có trong git**) | như vậy |
+| Dữ liệu Online | Public Google Drive + API key chỉ trên backend | như vậy |
 | Ổ đĩa trống | ≥ 1 GB cho `storage/` | như vậy |
 
-`source/` và `storage/` đều bị gitignore. Máy mới phải **tự copy `source/3DSMOOD/`** vào và chạy
-ingest để sinh `storage/`.
+`source/` và `storage/` đều bị gitignore. Google Drive mode chỉ cần database và persistent preview cache;
+không copy toàn bộ model về server. Phần ingest/source/tar bên dưới chỉ dành cho development khi đặt rõ `CATALOG_PROVIDER=local`.
 
 ## Database (PostgreSQL 16, từ A3)
 
-API cần Postgres. Mặc định kết nối `postgres://store:store@localhost:5432/store`; test dùng
+API cần `DATABASE_URL` của Postgres trong `.env`; test dùng
 database `store_test`. Chọn **một** cách:
 
 **Cách 1 — Docker** (mọi hệ điều hành; tự tạo sẵn user `store` và 2 database):
@@ -31,7 +36,8 @@ psql -U <superuser> -d postgres -c "create database store owner store"
 psql -U <superuser> -d postgres -c "create database store_test owner store"
 ```
 
-Bảng được tạo tự động khi API khởi động (`migrations/*.sql`). Không cần chạy lệnh migrate riêng.
+Bảng được tạo khi API khởi động ở development (`migrations/*.sql`). Production chạy migration riêng
+bằng `node --env-file=.env scripts/migrate.js` với role phù hợp; runtime mặc định không chạy DDL.
 
 ## Chạy lần đầu
 
@@ -44,7 +50,7 @@ Làm xong phần **Database** ở trên trước. Mở 2 terminal, đứng ở g
 cd apps/store-api
 npm install
 cp .env.example .env  # tạo cấu hình (mặc định đã khớp Postgres ở trên)
-npm run ingest        # quét source/3DSMOOD -> storage/ (khoảng 10-40 giây)
+# Điền GOOGLE_DRIVE_API_KEY và bật Google Drive API; không chạy ingest trong google_drive mode.
 npm run dev           # http://localhost:4000 (tự tạo bảng trong Postgres)
 
 # terminal 2 — giao diện
@@ -60,7 +66,7 @@ npm run dev           # http://localhost:5173
 cd apps\store-api
 npm install
 copy .env.example .env   # tạo cấu hình (mặc định đã khớp Postgres ở trên)
-npm run ingest
+# Điền GOOGLE_DRIVE_API_KEY và bật Google Drive API.
 npm run dev
 
 # terminal 2 — giao diện
@@ -69,8 +75,8 @@ npm install
 npm run dev
 ```
 
-Mở **http://localhost:5173**. Những lần sau chỉ cần `npm run dev` ở cả hai thư mục (ingest chỉ chạy
-lại khi `source/` đổi).
+Mở **http://localhost:5173**. Những lần sau chỉ cần `npm run dev` ở cả hai thư mục. Backend sync Drive mỗi 30 phút;
+frontend nhận catalog version mỗi hai phút và khi quay lại foreground, không reload toàn bộ WebView.
 
 ## Xem giao diện như đang ở trong 3ds Max (chỉ khi dev)
 
@@ -80,8 +86,8 @@ ngay trên trình duyệt (cần đăng nhập; ~25% job giả lập cố ý l�
 ## Test
 
 ```bash
-cd apps/store-api && npm test      # cần Postgres đang chạy (database store_test)
-cd apps/store-web && npm test      # hàng đợi Download (Node thuần, không cần server)
+cd apps/store-api && npm test      # TEST_DATABASE_URL riêng, tên database chứa test
+cd apps/store-web && npm test      # queue, license flow, React UI với jsdom
 ```
 
 ## Lưu ý theo hệ điều hành

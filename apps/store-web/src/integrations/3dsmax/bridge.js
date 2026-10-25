@@ -15,6 +15,10 @@ function listen() {
     const m = e.data;
     const p = m && pending.get(m.id);
     if (!p) return;
+    if (m.type === 'asset.progress') {
+      if (Number.isFinite(m.receivedBytes) && m.receivedBytes >= 0) p.onProgress?.({receivedBytes:m.receivedBytes,totalBytes:m.totalBytes});
+      return;
+    }
     pending.delete(m.id);
     clearTimeout(p.timer);
     if (m.ok) p.resolve(m.result);
@@ -22,7 +26,7 @@ function listen() {
   });
 }
 
-export function call(method, params = {}, timeoutMs = 15000) {
+export function call(method, params = {}, timeoutMs = 15000, onProgress) {
   if (!wv()) {
     return Promise.reject(Object.assign(new Error("Chức năng này chỉ có trong 3ds Max"), { code: "HOST_UNSUPPORTED" }));
   }
@@ -33,14 +37,18 @@ export function call(method, params = {}, timeoutMs = 15000) {
       pending.delete(id);
       reject(Object.assign(new Error("Hết thời gian chờ 3ds Max"), { code: "TIMEOUT" }));
     }, timeoutMs);
-    pending.set(id, { resolve, reject, timer });
+    pending.set(id, { resolve, reject, timer, onProgress });
     wv().postMessage({ id, version: 1, method, params });
   });
 }
 
 // ticket = đoạn cuối của link /api/downloads/stream/<ticket> mà backend cấp (một lần dùng, TTL ngắn).
 // Native tự dựng URL từ ApiBase đã cấu hình; web không gửi URL/đường dẫn.
-export const importAsset = (assetId, ticket) => call("asset.import", { assetId, ticket }, 10 * 60 * 1000);
+export const importAsset = (assetId, ticket, onProgress) => call("asset.import", { assetId, ticket }, 31 * 60 * 1000, onProgress);
 
 export const getHostInfo = () => call("host.getInfo", {}, 5000);
 export const getSceneInfo = () => call("scene.getInfo", {}, 5000);
+
+// The native key never crosses this bridge. Only public identity and scoped proof do.
+export const getDeviceIdentity = () => call('device.getIdentity', {}, 30000);
+export const signDeviceChallenge = (challengeId, message) => call('device.signChallenge', { challengeId, message }, 30000);

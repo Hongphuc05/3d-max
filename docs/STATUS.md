@@ -1,10 +1,41 @@
 # STATUS — đã làm tới đâu, còn gì
 
-> Cập nhật lần cuối: **2026-10-19** (giao diện plugin theme tối — UI-1) · nhánh hiện tại: `hung-connection_to_3dsmax` · nhánh làm việc: `phuc_apps` · `main` giữ code cũ (có `web/`)
+> Cập nhật lần cuối: **2026-10-25** — License Lifetime + payOS, D12 giữ quyền của máy khi đổi tài khoản. Phần roadmap cũ bên dưới được giữ làm lịch sử; D11 thay mô hình license từng model.
 > Plan đầy đủ: [`product-roadmap.md`](product-roadmap.md) · Cách chạy: [`../apps/README.md`](../apps/README.md)
 > **Khi xong một việc: đổi `[ ]` thành `[x]`, ghi ngày, và sửa dòng "Cập nhật lần cuối".**
 
 Chú giải: `[x]` xong và đã kiểm tra · `[~]` xong một phần / chưa kiểm tra đủ · `[ ]` chưa làm.
+
+## Google Drive catalog (2026-10-25)
+
+- [x] Provider SDK v3, recursive scan/pagination/resource keys/retry; không fallback local.
+- [x] Migration 008 và bốn bảng catalog riêng; snapshot transaction/advisory lock/stable IDs.
+- [x] Preview cache validate/convert/version/ETag; deletion chỉ publish sau complete scan.
+- [x] Licensed backend archive streaming, one-use ticket, disconnect/timeout/concurrency limits.
+- [x] React recursive folders/status/poll version/foreground refresh; giữ login/queue/Đã tải.
+- [x] DLL Release net48; ZIP/RAR/7z extractor và tests traversal/budgets/manifest; native progress.
+- [x] Backend 113 tests, frontend 31 unit/React tests và năm Playwright E2E tests; xem báo cáo catalog.
+- [x] MAXScript guard/merge fixture thực tế PASS trong process Max2022 riêng; giữ tương thích API SSSE của 2022.
+- [x] Drive API thật xác nhận root 3DSMOOD/126 folders/845 files/360 models; tải JPG và stream RAR 133.270 bytes thành công.
+- [~] Initial sync cache 93 preview rồi Google chặn automated queries (HTML 403). Chưa publish snapshot dở dang; chờ sync đầy đủ thành công.
+
+Xem [hướng dẫn](google-drive-catalog.md) và [báo cáo kiểm chứng](google-drive-catalog-report.md).
+
+## License + payOS (2026-10-25)
+
+- [x] Express/PostgreSQL: một Lifetime/account, hai slot bất biến, challenge và phiên thiết bị, bảo vệ import ticket/download.
+- [x] payOS SDK: order, xác minh webhook, transaction/idempotency và reconciliation; test bằng mock, không giao dịch thật.
+- [x] React: mua/My License/activation, khôi phục proof; C# net48 CNG/TPM + DPAPI và bridge có kiểm tra origin/schema.
+- [x] D12: máy đã kích hoạt tiếp tục dùng qua tài khoản khác sau signed VERIFY; key chỉ cho chủ sở hữu, không tạo thêm slot.
+- [x] PAID tự đóng modal QR sau khi tải được key chính chủ và hiển thị My License, không chờ proof TPM; backend 68 tests, frontend 22 tests đạt trong lần bổ sung này.
+- [x] State license phía client gắn ngay với tài khoản hiện tại, không hiển thị key của tài khoản trước trong lúc chuyển account.
+- [x] Migration 003–007 đã chạy trên database dev/test riêng; rollback đã kiểm tra trên schema thử. D12 không cần migration mới.
+- [x] API/React tests, build DLL, native/WebView2 runtime; kích hoạt TPM thật trong 3ds Max2022 và mở lại panel vẫn một slot.
+- [x] Local `.env` đã có credential payOS/giá; SDK GET chỉ đọc đã được kiểm tra, không thay cho thanh toán thật.
+- [ ] Thay URL webhook/return/cancel mẫu bằng HTTPS public thật, đăng ký webhook và kiểm thử ngân hàng có phê duyệt.
+- [ ] Import model thật: source/catalog hiện chưa có trên máy, ngoài phạm vi thay đổi lưu trữ lần này.
+
+Xem [báo cáo](../LICENSE_PAYOS_IMPLEMENTATION_REPORT.md), [setup](license-payos-setup.md), [API](license-payos-api.md).
 
 ## Tổng quan
 
@@ -63,8 +94,12 @@ Chú giải: `[x]` xong và đã kiểm tra · `[~]` xong một phần / chưa k
 
 ### A3 — Tài khoản (code xong 2026-10-06, **chờ Phúc kiểm tra giao diện**)
 - [x] Đăng ký / đăng nhập / đăng xuất / `me` bằng email + mật khẩu (`apps/store-api/src/auth.js`)
-- [x] Cơ chế: session cookie HttpOnly + SameSite=Lax, lưu hash sha256 phía server; mật khẩu băm
-  `scrypt` của Node (quyết định D9, `docs/decisions.md`)
+- [x] Cập nhật 2026-10-25: JWT HS256 trong cookie HttpOnly + SameSite=Lax, Secure khi production.
+  PostgreSQL giữ session ID để thu hồi ngay; mật khẩu vẫn băm `scrypt` (D13 thay D9).
+- [x] Kiểm chứng JWT 2026-10-25: **77/77 backend tests**, coverage **90.68% lines / 85.67% branches**;
+  frontend **22/22**, build thành công, dependency audit 0 vulnerabilities. Test có sửa token, sai chữ ký,
+  hết hạn, sai chủ session, thiếu signing key và thu hồi logout/device/ticket. Không cần migration schema;
+  cookie opaque cũ cần đăng nhập lại một lần, fixed slots được giữ nguyên.
 - [x] PostgreSQL 16 + migration tự chạy khi khởi động (`migrations/001_init.sql`: `users`, `sessions`)
 - [x] Chống CSRF: kiểm `Origin` + chỉ nhận JSON; giới hạn 10 KB/body
 - [x] Giới hạn đăng nhập sai: 10 lần/15 phút theo email, 100 lần/15 phút theo IP → 429

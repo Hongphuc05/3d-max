@@ -17,7 +17,7 @@ if (-not $msbuild) { throw "Khong tim thay MSBuild (can Visual Studio Build Tool
 
 # --- 1. plugin, Release x64 ---
 # packages\ khong nam trong git nen phai restore (packages.config) truoc khi build
-Write-Host "==> Restore NuGet (WebView2)"
+Write-Host "==> Restore NuGet (WebView2 + archive dependencies)"
 & $msbuild $proj /t:Restore /p:RestorePackagesConfig=true /p:SolutionDir="$(Split-Path (Split-Path $proj))\" /v:minimal /nologo
 if ($LASTEXITCODE -ne 0) { throw "Restore NuGet that bai." }
 
@@ -34,6 +34,7 @@ New-Item -ItemType Directory -Path $pdir, (Join-Path $stage 'usermacros'), (Join
 
 # runtimes\ phai giu nguyen cau truc, thieu la WebView2 khong init duoc
 Copy-Item (Join-Path $bin '*.dll') $pdir
+Copy-Item -LiteralPath (Join-Path $bin 'ThirdPartyNotices.txt') -Destination $pdir
 Copy-Item (Join-Path $bin 'runtimes') $pdir -Recurse
 Copy-Item (Join-Path $root 'maxscript\PlatformBridge.ms') $pdir
 Copy-Item (Join-Path $root 'frontend') (Join-Path $pdir 'frontend') -Recurse
