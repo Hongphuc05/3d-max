@@ -218,23 +218,80 @@ export class R2CatalogRepository {
   async replaceModels(client,models,scope,syncId) {
     const folder=scope.slice(this.config.rootPrefix.length).replace(/\/$/,'');
     await this.adoptLegacyIds(client,models);
-    const existing=(await client.query(`select id,folder_id as "folderId",basename,content_hash as "contentHash",status from catalog_models
-      where provider=$1 and root_folder_id=$2 and ($3='' or folder_id=$3 or left(folder_id,length($3)+1)=$3||'/') and status='active'`,[...this.source,folder])).rows;
     const identity=model=>JSON.stringify([model.folderId,model.basename]);
+    const columns='id,folder_id as "folderId",basename,content_hash as "contentHash",status,archive_extension as "archiveExtension",file_size as size,checksum,preview_metadata as "previewMetadata"';
+    const historicalColumns='m.id,m.folder_id as "folderId",m.basename,m.content_hash as "contentHash",m.status,m.archive_extension as "archiveExtension",m.file_size as size,m.checksum,m.preview_metadata as "previewMetadata"';
+    const active=(await client.query(`select ${columns} from catalog_models where provider=$1 and root_folder_id=$2
+      and ($3='' or folder_id=$3 or left(folder_id,length($3)+1)=$3||'/') and status='active'`,[...this.source,folder])).rows;
+    const historical=[];
+    for(const batch of chunks(models.map(model=>({folderId:model.folderId,basename:model.basename})),this.config.batchSize || 1000)) {
+      if(!batch.length)continue;
+      const result=await client.query(`select ${historicalColumns} from catalog_models m join jsonb_to_recordset($3::jsonb) as x("folderId" text,basename text)
+        on m.folder_id=x."folderId" and m.basename=x.basename
+        where m.provider=$1 and m.root_folder_id=$2 and m.status='removed'`,[...this.source,JSON.stringify(batch)]);
+      historical.push(...result.rows);
+    }
+    const existing=[...active,...historical];
     const existingByIdentity=new Map(existing.map(model=>[identity(model),model]));
     const records=models.map(model=>{
       const previous=existingByIdentity.get(identity(model));
       return {...model,id:previous?.id || hash([...this.source,model.folderId,model.basename]).slice(0,12),contentHash:hash(model)};
     });
     const currentIdentities=new Set(records.map(identity));
-    const removed=existing.filter(model=>!currentIdentities.has(identity(model))).map(model=>model.id);
+    const signature=model=>{
+      const preview=model.previewMetadata || {};
+      const size=model.size==null?null:Number(model.size);
+      const previewSize=preview.size==null?null:Number(preview.size);
+      return JSON.stringify([model.basename,model.archiveExtension || null,size,model.checksum || null,previewSize,preview.etag || null]);
+    };
+    const unmatchedOld=active.filter(model=>!currentIdentities.has(identity(model)));
+    const unmatchedNew=records.filter(model=>!existingByIdentity.has(identity(model)));
+    const bySignature=items=>{
+      const result=new Map();
+      for(const item of items) {
+        const key=signature(item);
+        result.set(key,[...(result.get(key)||[]),item]);
+      }
+      return result;
+    };
+    const oldBySignature=bySignature(unmatchedOld),newBySignature=bySignature(unmatchedNew),renameCandidates=[];
+    for(const [key,oldRows] of oldBySignature) {
+      const newRows=newBySignature.get(key);
+      if(oldRows.length===1 && newRows?.length===1 && oldRows[0].folderId!==newRows[0].folderId) {
+        renameCandidates.push({old:oldRows[0],record:{...newRows[0],id:oldRows[0].id}});
+      }
+    }
+    const renamedRecordByIdentity=new Map(renameCandidates.map(candidate=>[identity(candidate.record),candidate.record]));
+    const recordsWithRenames=records.map(record=>renamedRecordByIdentity.get(identity(record)) || record);
     let changed=0;
     const batchSize=this.config.batchSize || 1000;
+    const renamedIdentities=new Set();
+    for(const batch of chunks(renameCandidates,batchSize)) {
+      const values=batch.map(({old,record})=>({oldId:old.id,folderId:record.folderId,archiveId:record.archiveId,name:record.name,
+        archiveExtension:record.archiveExtension,size:record.size,modifiedTime:record.modifiedTime,checksum:record.checksum,
+        canDownload:record.canDownload,previewId:record.previewId,previewMetadata:record.previewMetadata,previewVersion:record.previewVersion,
+        contentHash:record.contentHash,basename:record.basename,status:record.status}));
+      const result=await client.query(`update catalog_models m set folder_id=x."folderId",archive_file_id=x."archiveId",name=x.name,
+        archive_extension=x."archiveExtension",file_size=x.size,modified_time=x."modifiedTime",checksum=x.checksum,can_download=x."canDownload",
+        preview_file_id=x."previewId",preview_metadata=x."previewMetadata",preview_version=x."previewVersion",content_hash=x."contentHash",
+        basename=x.basename,model_status=x.status,status='active',last_seen_sync_id=$2,updated_at=now()
+        from jsonb_to_recordset($1::jsonb) as x("oldId" text,"folderId" text,"archiveId" text,name text,"archiveExtension" text,size bigint,
+          "modifiedTime" timestamptz,checksum text,"canDownload" boolean,"previewId" text,"previewMetadata" jsonb,"previewVersion" text,
+          "contentHash" text,basename text,status text)
+        where m.id=x."oldId" and m.status='active' and not exists(select 1 from catalog_models target where target.provider=m.provider
+          and target.root_folder_id=m.root_folder_id and target.folder_id=x."folderId" and target.basename=x.basename and target.id<>m.id)`,[JSON.stringify(values),syncId]);
+      if(result.rowCount!==batch.length)throw Object.assign(new Error('R2_MODEL_RENAME_CONFLICT'),{code:'R2_MODEL_RENAME_CONFLICT'});
+      changed+=result.rowCount;
+      for(const item of batch)renamedIdentities.add(identity(item.record));
+    }
+    const renamedIds=new Set(renameCandidates.map(candidate=>candidate.old.id));
+    const removed=active.filter(model=>!currentIdentities.has(identity(model))&&!renamedIds.has(model.id)).map(model=>model.id);
     for(const batch of chunks(removed,batchSize)) {
       const result=await client.query("update catalog_models set status='removed',can_download=false,updated_at=now() where id=any($1::text[]) and status='active'",[batch]);
       changed+=result.rowCount || 0;
     }
-    const upserts=records.filter(model=>{
+    const upserts=recordsWithRenames.filter(model=>{
+      if(renamedIdentities.has(identity(model)))return false;
       const previous=existingByIdentity.get(identity(model));
       return !previous || previous.status!=='active' || previous.contentHash!==model.contentHash;
     });
