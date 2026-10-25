@@ -90,9 +90,9 @@ test('manual R2 reconciliation is restricted to server-allowlisted administrator
   const response=await fetch(base+'/api/auth/register',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:'catalog-admin@test.invalid',password:'fixture-password'})});
   const {user}=await response.json();const cookie=response.headers.getSetCookie()[0].split(';')[0];
   assert.equal((await call(cookie)).status,403);
-  const previous=process.env.LICENSE_ADMIN_USER_IDS;process.env.LICENSE_ADMIN_USER_IDS=user.id;
+  const previous=env.LICENSE_ADMIN_USER_IDS;env.LICENSE_ADMIN_USER_IDS=user.id;
   try{assert.equal((await call(cookie)).status,202);await runtime.worker.sync();}finally{
-    if(previous===undefined)delete process.env.LICENSE_ADMIN_USER_IDS;else process.env.LICENSE_ADMIN_USER_IDS=previous;
+    if(previous===undefined)delete env.LICENSE_ADMIN_USER_IDS;else env.LICENSE_ADMIN_USER_IDS=previous;
   }
 });
 
@@ -108,7 +108,7 @@ test('dead R2 inbox events can be requeued by an allowlisted administrator', {sk
   await runtime.repository.ingestEvents([event]);
   const id=eventIdentity(event);
   await pool.query("update r2_event_inbox set status='dead',attempts=10 where id=$1",[id]);
-  const previous=process.env.LICENSE_ADMIN_USER_IDS;process.env.LICENSE_ADMIN_USER_IDS=user.id;
+  const previous=env.LICENSE_ADMIN_USER_IDS;env.LICENSE_ADMIN_USER_IDS=user.id;
   try{
     const retried=await call(cookie);
     assert.equal(retried.status,202);
@@ -121,6 +121,6 @@ test('dead R2 inbox events can be requeued by an allowlisted administrator', {sk
     const models=await (await fetch(base+'/api/models?category='+encodeURIComponent('Recovery/new-model'))).json();
     assert.equal(models.total,1);assert.equal(models.items[0].status,'ready');
   }finally{
-    if(previous===undefined)delete process.env.LICENSE_ADMIN_USER_IDS;else process.env.LICENSE_ADMIN_USER_IDS=previous;
+    if(previous===undefined)delete env.LICENSE_ADMIN_USER_IDS;else env.LICENSE_ADMIN_USER_IDS=previous;
   }
 });

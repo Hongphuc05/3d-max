@@ -195,10 +195,10 @@ export class R2CatalogRepository {
       await client.query(`insert into r2_objects(bucket,object_key,category_path,object_type,size,etag,last_modified)
         select $1,x.key,x.category,x.type,x.size,x.etag,x."lastModified" from jsonb_to_recordset($2::jsonb) as x(key text,category text,type text,size bigint,etag text,"lastModified" timestamptz)
         on conflict(bucket,object_key) do update set category_path=excluded.category_path,object_type=excluded.object_type,size=excluded.size,etag=excluded.etag,
-        last_modified=excluded."lastModified",availability='active',updated_at=now()
+        last_modified=excluded.last_modified,availability='active',updated_at=now()
         where r2_objects.category_path is distinct from excluded.category_path or r2_objects.object_type is distinct from excluded.object_type
           or r2_objects.size is distinct from excluded.size or r2_objects.etag is distinct from excluded.etag
-          or r2_objects.last_modified is distinct from excluded."lastModified" or r2_objects.availability is distinct from 'active'`,[this.config.bucket,JSON.stringify(batch)]);
+          or r2_objects.last_modified is distinct from excluded.last_modified or r2_objects.availability is distinct from 'active'`,[this.config.bucket,JSON.stringify(batch)]);
     }
   }
   async upsertFolders(client,folders,syncId) {
