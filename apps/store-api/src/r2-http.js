@@ -49,23 +49,29 @@ export function catalogEventStream(runtime,{pollMs=1000,heartbeatMs=15000,maxCli
     res.status(200).set({'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform',
       Connection:'keep-alive','X-Accel-Buffering':'no'});
     res.flushHeaders();res.write('retry: 2000\n\n');
-    let closed=false,running=false,last;
+    let closed=false,running=false,lastVersion;
+    const writeVersion=version=>{
+      if(closed || !Number.isSafeInteger(Number(version)) || Number(version)<0 || lastVersion===Number(version))return;
+      lastVersion=Number(version);
+      write(`event: catalog.changed\ndata: ${JSON.stringify({version:lastVersion})}\n\n`);
+    };
     const close=()=>{
-      if(closed)return;closed=true;active--;clearInterval(poll);clearInterval(heartbeat);res.end();
+      if(closed)return;closed=true;active--;if(poll)clearInterval(poll);clearInterval(heartbeat);unsubscribe?.();res.end();
     };
     const write=value=>{if(!closed && !res.write(value))close();};
     const refresh=async()=>{
       if(closed||running)return;running=true;
       try {
         const status=runtime.eventVersion ? await runtime.eventVersion() : await runtime.status();
-        const identity=`${status.provider}:${status.catalogKey || ''}:${status.version}`;
-        if(!closed && last!==identity){
-          write(`event: catalog.changed\ndata: ${JSON.stringify({version:status.version})}\n\n`);last=identity;
-        }
+        writeVersion(status.version);
       } catch {close();} finally {running=false;}
     };
-    const poll=setInterval(()=>void refresh(),pollMs);
+    const unsubscribe=runtime.subscribeCatalogEvents?.(value=>{
+      if(value.resync)void refresh();
+      else writeVersion(value.version);
+    });
+    const poll=typeof unsubscribe==='function'?null:setInterval(()=>void refresh(),pollMs);
     const heartbeat=setInterval(()=>write(': heartbeat\n\n'),heartbeatMs);
-    req.once('close',close);void refresh();
+    req.once('close',close);res.once('close',close);void refresh();
   };
 }

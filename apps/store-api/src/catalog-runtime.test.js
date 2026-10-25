@@ -64,7 +64,16 @@ test('R2 preview URLs change on overwrite, expire on deletion and keep model IDs
   assert.match(preview.headers.get('content-type'),/image\/(?:jpeg|webp)/);
   assert.equal((await fetch(base+product.thumb,{headers:{'if-none-match':preview.headers.get('etag')}})).status,304);
   assert.ok((await preview.arrayBuffer()).byteLength>0);
-  const version=first.version;await runtime.worker.sync();assert.equal((await runtime.status()).version,version);
+  const version=first.version;
+  const inventory=async()=> (await pool.query(`select identity,updated_at from (
+    select 'object:'||object_key as identity,updated_at from r2_objects where bucket=$1 and availability='active'
+    union all select 'folder:'||folder_id,updated_at from catalog_folders where provider='r2' and root_folder_id=$2 and status='active'
+    union all select 'model:'||id,updated_at from catalog_models where provider='r2' and root_folder_id=$2 and status='active'
+  ) rows order by identity`,[env.R2_BUCKET,`${env.R2_BUCKET}/${env.R2_ROOT_PREFIX}`])).rows.map(row=>[row.identity,row.updated_at.toISOString()]);
+  const before=await inventory();
+  const unchanged=await runtime.worker.sync();
+  assert.equal(unchanged.changed,false);assert.equal(unchanged.objectsChanged,0);assert.equal((await runtime.status()).version,version);
+  assert.deepEqual(await inventory(),before);
   source=source.map(item=>item.key.endsWith('Lamp.JPG')?{...item,etag:'replacement',lastModified:'2026-10-25T01:00:00Z'}:item);
   await runtime.worker.sync();
   const updated=(await (await fetch(base+'/api/models')).json()).items.find(item=>item.name==='Lamp');
@@ -86,12 +95,18 @@ test('R2 preview URLs change on overwrite, expire on deletion and keep model IDs
 
 test('manual R2 reconciliation is restricted to server-allowlisted administrators', {skip:!enabled},async()=>{
   const call=(cookie)=>fetch(base+'/api/admin/catalog/sync',{method:'POST',headers:{'content-type':'application/json',...(cookie?{cookie}:{})},body:'{}'});
+  const permission=(cookie)=>fetch(base+'/api/admin/catalog/sync/permission',{headers:cookie?{cookie}:{}});
   assert.equal((await call()).status,401);
+  assert.equal((await permission()).status,401);
   const response=await fetch(base+'/api/auth/register',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:'catalog-admin@test.invalid',password:'fixture-password'})});
   const {user}=await response.json();const cookie=response.headers.getSetCookie()[0].split(';')[0];
   assert.equal((await call(cookie)).status,403);
+  assert.deepEqual(await (await permission(cookie)).json(),{allowed:false});
   const previous=env.LICENSE_ADMIN_USER_IDS;env.LICENSE_ADMIN_USER_IDS=user.id;
-  try{assert.equal((await call(cookie)).status,202);await runtime.worker.sync();}finally{
+  try{
+    assert.deepEqual(await (await permission(cookie)).json(),{allowed:true});
+    assert.equal((await call(cookie)).status,202);await runtime.worker.sync();
+  }finally{
     if(previous===undefined)delete env.LICENSE_ADMIN_USER_IDS;else env.LICENSE_ADMIN_USER_IDS=previous;
   }
 });

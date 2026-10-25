@@ -38,6 +38,6 @@ test('listener reconnects with sanitized logging after a database disconnect',as
   setup.scheduled[0].fn();await new Promise(resolve=>setImmediate(resolve));await new Promise(resolve=>setImmediate(resolve));
   assert.equal(setup.connects,2);
   setup.clients[1].emit('notification',{channel:'r2_catalog_changed',payload:'{"version":9}'});
-  assert.deepEqual(received,[{version:9}]);
+  assert.deepEqual(received,[{resync:true},{version:9}]);
   await bus.stop();
 });

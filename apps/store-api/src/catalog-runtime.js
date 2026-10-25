@@ -9,6 +9,7 @@ import { loadR2Config } from './r2/config.js';
 import { R2Provider } from './r2/provider.js';
 import { R2CatalogRepository } from './r2/repository.js';
 import { createSyncWorker } from './r2/sync.js';
+import { createCatalogEventBus } from './r2/events.js';
 import { createArchiveSender } from './download-stream.js';
 import { catalogEventStream } from './r2-http.js';
 
@@ -28,6 +29,7 @@ export async function createCatalogRuntime({ pool, env = process.env, logger = c
   }
   const config=loadR2Config(env);
   const repository=new R2CatalogRepository({pool,config});
+  const eventBus=createCatalogEventBus({pool,logger});
   const provider=config.configured ? r2Provider || new R2Provider({config}) : null;
   const canAdminSync=user=>{
     const adminIds=new Set((env.LICENSE_ADMIN_USER_IDS || '').split(',').map(value=>value.trim().toLowerCase()).filter(Boolean));
@@ -38,13 +40,19 @@ export async function createCatalogRuntime({ pool, env = process.env, logger = c
     const value=await repository.status();
     return config.configured ? value : {...value,provider:'r2',state:'configuration_required',error:config.errors[0]};
   };
+  const start=()=>{
+    const eventListenerReady=eventBus.start();
+    const stopWorker=worker ? worker.start() : async()=>{};
+    return async()=>{await stopWorker();await eventListenerReady;await eventBus.stop();};
+  };
   return {config,repository,provider,worker,canAdminSync,sendArchive:provider ? createArchiveSender(provider) : undefined,status,
     snapshot:()=>repository.snapshot(),available:async()=>Boolean(config.configured && (await status()).initialSyncComplete),
+    subscribeCatalogEvents:eventBus.subscribe,
     eventVersion:async()=>{
       const {rows}=await pool.query('select catalog_version from catalog_sources where provider=$1 and root_folder_id=$2',repository.source);
       return {provider:'r2',catalogKey:repository.lockKey,version:Number(rows[0]?.catalog_version || 0)};
     },
-    start:()=>worker ? worker.start() : ()=>{} };
+    start};
 }
 
 async function sendPreview(runtime,req,res) {

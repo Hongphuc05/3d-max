@@ -39,15 +39,17 @@ test('missing webhook configuration fails closed',async()=>{
   await serve({...runtime(),config:{...config,webhookSecret:''}},async base=>assert.equal((await post(base)).status,503));
 });
 test('SSE sends initial state, changes and heartbeat without requiring a license',async()=>{
-  let version=1;
-  await serve({...runtime(),status:async()=>({provider:'r2',version})},async base=>{
+  let version=1,notify,statusCalls=0;
+  await serve({...runtime(),status:async()=>{statusCalls++;return {provider:'r2',version};},
+    subscribeCatalogEvents:listener=>{notify=listener;return()=>{};}},async base=>{
     const abort=new AbortController();const response=await fetch(base+'/api/catalog/events',{signal:abort.signal});
     assert.match(response.headers.get('content-type'),/text\/event-stream/);
     assert.equal(response.headers.get('x-accel-buffering'),'no');
     const reader=response.body.getReader();let received='';
     while(!received.includes('"version":1')) received+=new TextDecoder().decode((await reader.read()).value);
-    version=2;
+    version=2;notify({version});
     while(!received.includes('"version":2')) received+=new TextDecoder().decode((await reader.read()).value);
-    assert.match(received,/event: catalog.changed/);abort.abort();
+    await new Promise(resolve=>setTimeout(resolve,40));
+    assert.equal(statusCalls,1);assert.match(received,/event: catalog.changed/);abort.abort();await new Promise(resolve=>setImmediate(resolve));
   });
 });
