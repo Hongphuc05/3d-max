@@ -11,6 +11,7 @@ import { Queue } from './Queue.jsx';
 import { useJobs } from './queue.js';
 import { useLicense } from './license.jsx';
 import LicensePanel from './LicensePanel.jsx';
+import { CatalogSyncButton } from './CatalogSyncButton.jsx';
 
 const PAGE = 30;
 const SORTS = {
@@ -119,6 +120,7 @@ export default function App() {
         <main className="flex min-w-0 flex-1 flex-col">
           <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
             <button onClick={() => licenseState.setOpen(true)} className="rounded-md border border-accent/50 px-3 py-1.5 text-xs font-bold text-accent">My License · Lifetime</button>
+            <CatalogSyncButton />
             {tabBtn('online', 'Online')}
             {tabBtn('done', `Đã tải${doneSlugs.size ? ` (${doneSlugs.size})` : ''}`)}
             <button onClick={() => setDrawer(true)} className="flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs text-mute hover:text-fg lg:hidden">

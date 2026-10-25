@@ -18,11 +18,12 @@ const get = (path, params, signal) => request('GET', path, { params, signal });
 
 export const getCategories = (signal) => get('/categories', null, signal);
 export const getCatalogVersion = (signal) => get('/catalog/version', null, signal);
+export const catalogSyncPermission = (signal) => get('/admin/catalog/sync/permission', null, signal);
+export const syncCatalogNow = (signal) => request('POST', '/admin/catalog/sync', { body: {}, signal });
 export const getProducts = (params, signal) => get('/products', params, signal);
 export const health = () => get('/health');
 
-// ponytail: tai het catalog ve client (360 san pham ~100 KB) roi loc nhieu category / sap xep / phan trang tai cho.
-// Tran: vai nghin san pham. Lon hon thi backend phai ho tro cac bo loc nay (STATUS: no FE-1).
+// Fetch a consistent revision across paginated responses for local multi-category filtering.
 export async function getAllProducts(signal) {
   const first = await getProducts({ limit: 100 }, signal);
   const pages = [first];

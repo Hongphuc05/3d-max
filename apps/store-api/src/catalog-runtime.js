@@ -1,45 +1,76 @@
 import path from 'node:path';
+import { pipeline } from 'node:stream/promises';
+import { Transform } from 'node:stream';
 import { Router } from 'express';
 import { load, query } from './catalog.js';
 import { requireAuth } from './auth.js';
 import { requireJson, rateLimit } from './security.js';
-import { loadDriveConfig } from './drive/config.js';
-import { CatalogProvider, GoogleDriveCatalogProvider } from './drive/provider.js';
-import { CatalogRepository } from './drive/repository.js';
-import { PreviewCache } from './drive/preview-cache.js';
-import { createSyncWorker } from './drive/sync.js';
+import { loadR2Config } from './r2/config.js';
+import { R2Provider } from './r2/provider.js';
+import { R2CatalogRepository } from './r2/repository.js';
+import { createSyncWorker } from './r2/sync.js';
 import { createArchiveSender } from './download-stream.js';
+import { catalogEventStream } from './r2-http.js';
 
 const empty = () => ({ products: [], categories: [], bySlug: new Map(), files: new Map(), version: 0 });
-export class LocalCatalogProvider extends CatalogProvider {
-  constructor(file) { super(); this.file = file; }
+export class LocalCatalogProvider {
+  constructor(file) { this.file = file; }
   async scan() { try { return load(this.file); } catch (error) { if(error.code === 'ENOENT') return null; throw error; } }
 }
 
-export async function createCatalogRuntime({ pool, env = process.env, logger = console, driveProvider }) {
-  const config = loadDriveConfig(env);
-  if (!['local','google_drive'].includes(config.provider)) throw new Error('CATALOG_PROVIDER_INVALID');
-  if (config.provider === 'local') {
+export async function createCatalogRuntime({ pool, env = process.env, logger = console, r2Provider }) {
+  if (env.CATALOG_PROVIDER === 'local') {
     const provider = new LocalCatalogProvider(path.join(env.STORAGE_DIR || path.resolve(import.meta.dirname,'../../../storage'),'catalog.json'));
     const cat = await provider.scan();
-    return { config, snapshot: async () => cat || empty(),
+    return { config:{provider:'local',configured:true,errors:[]}, snapshot: async () => cat || empty(),
       status: async () => ({ provider:'local',version:0,state:cat?'ready':'not_synced',lastSuccessfulSync:null,syncing:false,error:cat?null:'CATALOG_UNAVAILABLE' }),
       available: async () => Boolean(cat), local:cat, start:()=>()=>{} };
   }
-  const repository = config.folderId ? new CatalogRepository({pool,rootFolderId:config.folderId}) : null;
-  const provider = driveProvider || new GoogleDriveCatalogProvider({config});
-  const cache = new PreviewCache({directory:config.previewCacheDir,provider});
-  const worker = repository && config.configured ? createSyncWorker({repository,provider,previewCache:cache,intervalMinutes:config.syncIntervalMinutes,logger}) : null;
-  const status = async () => {
-    const value = repository ? await repository.status() : {version:0,lastSuccessfulSync:null,syncing:false,state:'not_synced'};
-    const {rootFolderId,lastError,...safe} = value;
-    if(!config.configured) return {...safe,provider:'google_drive',state:'configuration_required',error:config.errors[0]};
-    return safe;
+  const config=loadR2Config(env);
+  const repository=new R2CatalogRepository({pool,config});
+  const provider=config.configured ? r2Provider || new R2Provider({config}) : null;
+  const canAdminSync=user=>{
+    const adminIds=new Set((env.LICENSE_ADMIN_USER_IDS || '').split(',').map(value=>value.trim().toLowerCase()).filter(Boolean));
+    return Boolean(user?.id && adminIds.has(String(user.id).toLowerCase()));
   };
-  return {config,repository,cache,worker,sendArchive:createArchiveSender(provider),status,
-    snapshot:() => repository ? repository.snapshot() : Promise.resolve(empty()),
-    available:async()=>Boolean((await status()).lastSuccessfulSync),
-    start:() => worker ? worker.start() : () => {} };
+  const worker=provider ? createSyncWorker({repository,provider,config,logger}) : null;
+  const status=async()=>{
+    const value=await repository.status();
+    return config.configured ? value : {...value,provider:'r2',state:'configuration_required',error:config.errors[0]};
+  };
+  return {config,repository,provider,worker,canAdminSync,sendArchive:provider ? createArchiveSender(provider) : undefined,status,
+    snapshot:()=>repository.snapshot(),available:async()=>Boolean(config.configured && (await status()).initialSyncComplete),
+    eventVersion:async()=>{
+      const {rows}=await pool.query('select catalog_version from catalog_sources where provider=$1 and root_folder_id=$2',repository.source);
+      return {provider:'r2',catalogKey:repository.lockKey,version:Number(rows[0]?.catalog_version || 0)};
+    },
+    start:()=>worker ? worker.start() : ()=>{} };
+}
+
+async function sendPreview(runtime,req,res) {
+  const model=await runtime.repository?.find(req.params.id);
+  if(!model?.previewId || !runtime.provider) return res.status(404).json({error:'PREVIEW_NOT_FOUND'});
+  if(req.query.v && req.query.v !== model.previewVersion) return res.status(404).json({error:'PREVIEW_VERSION_EXPIRED'});
+  const etag='"'+model.previewVersion+'"';
+  res.set({'ETag':etag,'Cache-Control':'public, max-age=120, must-revalidate','X-Content-Type-Options':'nosniff'});
+  if(req.headers['if-none-match']===etag)return res.status(304).end();
+  const controller=new AbortController();
+  const disconnect=()=>{if(!res.writableFinished)controller.abort();};
+  res.once('close',disconnect);
+  const timeout=setTimeout(()=>controller.abort(),30000);
+  let upstream;
+  try {
+    const result=await runtime.provider.openPreview(model,{signal:controller.signal});upstream=result.data;
+    const length=Number(result.headers?.['content-length']);
+    if(Number.isFinite(length) && length>20*1024*1024)throw Object.assign(new Error('PREVIEW_TOO_LARGE'),{code:'PREVIEW_TOO_LARGE',status:502});
+    let bytes=0;
+    const bounded=new Transform({transform(chunk,_encoding,callback){bytes+=chunk.length;callback(bytes>20*1024*1024?Object.assign(new Error('PREVIEW_TOO_LARGE'),{code:'PREVIEW_TOO_LARGE',status:502}):null,chunk);}});
+    res.type('image/jpeg');
+    await pipeline(upstream,bounded,res,{signal:controller.signal});
+  } catch(error){
+    if(res.headersSent || res.destroyed){res.destroy();return;}
+    res.removeHeader('ETag');res.set('Cache-Control','no-store');throw error;
+  } finally {clearTimeout(timeout);res.removeListener('close',disconnect);controller.abort();upstream?.destroy();}
 }
 
 export function catalogRouter(runtime) {
@@ -49,37 +80,34 @@ export function catalogRouter(runtime) {
     if(status.state === 'ready' && (status.modelCount ?? (await runtime.snapshot()).products.length) === 0) status.state='empty';
     res.json(status);
   });
-  router.get('/categories',async(_req,res)=>res.json((await runtime.snapshot()).categories));
-  router.get('/products',async(req,res)=>{
+  router.get('/catalog/events',catalogEventStream(runtime));
+  router.get(['/categories','/categories/tree'],async(_req,res)=>res.json((await runtime.snapshot()).categories));
+  router.get(['/products','/models'],async(req,res)=>{
     if(runtime.config.provider === 'local' && !runtime.local) return res.status(503).json({error:'CATALOG_UNAVAILABLE'});
     const snapshot=await runtime.snapshot();res.json({...query(snapshot,req.query),version:snapshot.version});
   });
-  router.get('/products/:slug',async(req,res)=>{
+  router.get(['/products/:slug','/models/:slug'],async(req,res)=>{
     const product=(await runtime.snapshot()).bySlug.get(req.params.slug);
     return product?res.json(product):res.status(404).json({error:'NOT_FOUND'});
   });
-  router.get('/catalog/models/:id/preview',async(req,res,next)=>{
-    const model=await runtime.repository?.find(req.params.id);
-    if(!model?.cachedPreviewPath) return res.status(404).json({error:'PREVIEW_NOT_FOUND'});
-    // Old URLs must not keep serving deleted or replaced previews.
-    if(req.query.v && req.query.v !== model.previewVersion) return res.status(404).json({error:'PREVIEW_VERSION_EXPIRED'});
-    res.set('ETag',`"${model.previewVersion}"`);
-    res.set('Cache-Control','public, max-age=120, must-revalidate');
-    res.set('X-Content-Type-Options','nosniff');
-    if(req.headers['if-none-match'] === `"${model.previewVersion}"`)return res.status(304).end();
-    res.sendFile(runtime.cache.resolve(model.cachedPreviewPath),error=>{
-      if(!error)return;
-      if(res.headersSent){res.destroy();return;}
-      res.removeHeader('ETag');res.status(404).json({error:'PREVIEW_NOT_FOUND'});
-    });
-  });
+  router.get('/catalog/models/:id/preview',async(req,res)=>sendPreview(runtime,req,res));
+  router.get('/admin/catalog/sync/permission',requireAuth,(req,res)=>res.json({allowed:Boolean(runtime.worker && runtime.canAdminSync?.(req.user))}));
   router.post('/admin/catalog/sync',rateLimit({limit:5}),requireJson,requireAuth,async(req,res)=>{
-    const admins=(process.env.LICENSE_ADMIN_USER_IDS || '').split(',').map(x=>x.trim().toLowerCase());
-    if(!admins.includes(req.user.id.toLowerCase()))return res.status(403).json({error:'FORBIDDEN'});
+    if(!runtime.canAdminSync?.(req.user))return res.status(403).json({error:'FORBIDDEN'});
     if(!runtime.worker)return res.status(503).json({error:runtime.config.errors[0] || 'CATALOG_SYNC_UNAVAILABLE'});
     if(runtime.worker.syncing)return res.status(409).json({error:'SYNC_IN_PROGRESS'});
     void runtime.worker.sync().catch(()=>{});
     res.status(202).json({accepted:true});
+  });
+  router.post('/admin/catalog/retry-dead-events',rateLimit({limit:5}),requireJson,requireAuth,async(req,res)=>{
+    if(!runtime.canAdminSync?.(req.user))return res.status(403).json({error:'FORBIDDEN'});
+    if(!runtime.worker || !runtime.repository)return res.status(503).json({error:runtime.config.errors[0] || 'CATALOG_RETRY_UNAVAILABLE'});
+    try {
+      const result=await runtime.repository.retryDead();
+      res.status(202).json({accepted:true,...result});
+    } catch {
+      res.status(503).json({error:'CATALOG_RETRY_UNAVAILABLE'});
+    }
   });
   return router;
 }

@@ -4,6 +4,7 @@ import { assetRouter } from './assets.js';
 import { authRouter, requireAuth } from './auth.js';
 import { validateJwtConfiguration } from './auth-jwt.js';
 import { createCatalogRuntime, catalogRouter } from './catalog-runtime.js';
+import { r2WebhookRouter } from './r2-http.js';
 import { migrate, pool } from './db.js';
 import { errorHandler, originGuard, rateLimit } from './security.js';
 import { licenseRouter, deviceRouter, adminLicenseRouter, startLicenseMaintenance } from './licensing/routes.js';
@@ -29,6 +30,7 @@ export const app = express();
 app.disable('x-powered-by');
 // Opt-in exact trusted proxy addresses/CIDRs; never accept a client-supplied XFF blindly.
 if (process.env.TRUST_PROXY) app.set('trust proxy', process.env.TRUST_PROXY.split(',').map(value => value.trim()).filter(Boolean));
+if (catalog.config.webhookEnabled) app.use('/internal/r2/events', r2WebhookRouter(catalog));
 app.use(express.json({ limit: '10kb' }));
 app.use('/api', (_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 app.use('/api/webhooks/payos', createPayosWebhookRouter({ service: payments, rateLimit: rateLimit({ limit: 300 }) }));
@@ -48,7 +50,7 @@ app.get('/api/health', async (_q, r) => {
     catalogAvailable: available, licensingAvailable: licenseConfigured, paymentsAvailable: paymentConfig.enabled });
 });
 app.use('/api', rateLimit({limit:240}), catalogRouter(catalog));
-if (catalog.repository) app.use('/api', rateLimit({limit:120}), assetRouter(null,null,{repository:catalog.repository,sendArchive:catalog.sendArchive}));
+if (catalog.repository && catalog.sendArchive) app.use('/api', rateLimit({limit:120}), assetRouter(null,null,{repository:catalog.repository,sendArchive:catalog.sendArchive}));
 else if (catalog.local) app.use('/api',rateLimit({limit:120}),assetRouter(catalog.local,SOURCE));
 
 app.use(errorHandler);
@@ -63,7 +65,7 @@ if (process.argv[1] === import.meta.filename) {
   const port = process.env.PORT || 4000;
   if (!licenseConfigured) console.warn('Licensing disabled: configure distinct LICENSE_HMAC_SECRET and LICENSE_ENCRYPTION_KEY (32-byte base64).');
   if (!paymentConfig.enabled) console.warn('Payments disabled: configure valid payment and license environment variables.');
-  if (!catalog.config.configured) console.warn('Catalog configuration required:', catalog.config.errors.join(', '), 'See docs/google-drive-catalog.md.');
+  if (!catalog.config.configured) console.warn('Catalog configuration required:', catalog.config.errors.join(', '), 'See docs/r2-catalog.md.');
   const stopCatalog = catalog.start();
   const stopMaintenance = startLicenseMaintenance();
   const stopPayments = startPaymentMaintenance(payments, paymentConfig.enabled);
