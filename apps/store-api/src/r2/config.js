@@ -36,10 +36,12 @@ export function loadR2Config(env=process.env) {
   const syncEnabled=readBoolean(env,'R2_SYNC_ENABLED',true,errors);
   const syncOnStartup=readBoolean(env,'R2_SYNC_ON_STARTUP',true,errors);
   const webhookEnabled=readBoolean(env,'R2_WEBHOOK_ENABLED',false,errors);
+  const webhookSecret=env.R2_EVENT_WEBHOOK_SECRET || '';
+  if(webhookEnabled && !webhookSecret.trim())errors.push('R2_EVENT_WEBHOOK_SECRET_REQUIRED');
   const syncIntervalSeconds=readInteger(env,'R2_SYNC_INTERVAL_SECONDS',DEFAULT_SYNC_INTERVAL_SECONDS,{min:1,max:86400},errors);
   const batchSize=readInteger(env,'R2_SYNC_BATCH_SIZE',DEFAULT_BATCH_SIZE,{min:1,max:1000},errors);
   return {provider:'r2',accountId:env.R2_ACCOUNT_ID || '',bucket:env.R2_BUCKET || '',rootPrefix,
-    webhookEnabled,webhookSecret:webhookEnabled?(env.R2_EVENT_WEBHOOK_SECRET || ''):'',
+    webhookEnabled,webhookSecret:webhookEnabled?webhookSecret:'',
     endpoint,region:env.R2_REGION || '',credentials:{accessKeyId:env.R2_READ_ACCESS_KEY_ID || '',secretAccessKey:env.R2_READ_SECRET_ACCESS_KEY || ''},
     syncEnabled,syncOnStartup,syncIntervalSeconds,batchSize,configured:errors.length===0,errors};
 }

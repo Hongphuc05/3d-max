@@ -61,12 +61,14 @@ test('disabled payment service never contacts provider or database', async () =>
   assert.equal(service.product().available, false);
   await assert.rejects(service.create({ id: 'x' }), { code: 'PAYMENTS_UNAVAILABLE', status: 503 });
   await assert.rejects(service.webhook({}), { code: 'PAYMENTS_UNAVAILABLE' });
+  await assert.rejects(service.check('owner', 'order'), { code: 'PAYMENTS_UNAVAILABLE' });
 });
 
 test('HTTP routes reject client prices, require ownership identity and ignore return query payment claims', async () => {
   const calls = [];
   const service = { product: () => ({ available: true }), create: async (u) => { calls.push(u); return { status: 'PENDING' }; },
-    get: async (u, id) => { calls.push([u, id]); return { status: 'PENDING' }; } };
+    get: async (u, id) => { calls.push([u, id]); return { status: 'PENDING' }; },
+    check: async (u, id) => { calls.push([u, id, 'active']); return { status: 'PENDING' }; } };
   const app = express();
   app.use(express.json());
   app.use('/api/payments', createPaymentRouter({ service, requireUser: (req, _res, next) => {
@@ -83,6 +85,10 @@ test('HTTP routes reject client prices, require ownership identity and ignore re
     const response = await fetch(`${base}/order?status=PAID&success=true`, { headers: { 'x-test-user': 'owner' } });
     assert.equal((await response.json()).order.status, 'PENDING');
     assert.deepEqual(calls, [['owner', 'order']]);
+    assert.equal((await fetch(`${base}/order/status`)).status, 401);
+    const active = await fetch(`${base}/order/status?status=PAID&success=true`, { headers: { 'x-test-user': 'owner' } });
+    assert.equal((await active.json()).order.status, 'PENDING');
+    assert.deepEqual(calls.at(-1), ['owner', 'order', 'active']);
   } finally { await new Promise(resolve => server.close(resolve)); }
 });
 

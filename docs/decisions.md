@@ -73,21 +73,34 @@ ngắn hạn được kiểm tra khi cấp và dùng import ticket. Không có o
 PostgreSQL giữ metadata và giao dịch; lưu trữ model/catalog/import engine không thay đổi.
 Cookie HttpOnly hiện hữu tiếp tục giữ đăng nhập. Không tự tạo thanh toán thật trong test.
 
-## D12 — Giữ quyền của máy đã kích hoạt khi đổi tài khoản (2026-10-25)
+## D12 — Tải và import chỉ cho tài khoản sở hữu license (2026-10-25)
 
-**Quyết định được người dùng xác nhận:** máy đã kích hoạt vẫn Download & import khi đăng nhập
-hoặc đăng ký tài khoản khác trên cùng danh tính Windows. License và key vẫn thuộc tài khoản mua;
-tài khoản khác không được xem key, bốn ký tự cuối hoặc danh sách slot của chủ sở hữu.
+**Quyết định mới của người dùng, thay thế chính sách D12 trước đó:** tài khoản đang đăng nhập phải
+sở hữu license ACTIVE mới được tải archive hoặc import model. Xác minh được một thiết bị đã gắn với
+license của tài khoản khác chỉ khôi phục thông tin thiết bị; điều đó không cấp quyền tải/import.
+Preview catalog vẫn xem được, và tài khoản có thể mua license riêng.
 
-`VERIFY` chứng minh sở hữu khóa bằng challenge gắn phiên hiện tại, tìm slot ACTIVE khớp đồng thời
-device UUID và public-key hash; không tạo slot. Ưu tiên binding của tài khoản đang đăng nhập nếu có,
-sau đó dùng binding ACTIVE đã tồn tại. `ACTIVATE` để tạo slot vẫn yêu cầu key thuộc tài khoản hiện tại.
-Mỗi license giữ tối đa hai slot cố định; không chuyển quyền sở hữu, reset hoặc giải phóng slot.
+`VERIFY` tiếp tục chứng minh device UUID và public-key hash bằng challenge của phiên hiện tại; nó
+không tạo slot. `ACTIVATE` yêu cầu key thuộc tài khoản đang đăng nhập. Mỗi license giữ tối đa hai
+slot cố định; không chuyển quyền sở hữu, reset hoặc giải phóng slot.
 
-Phiên thiết bị ghi tài khoản đang sử dụng riêng với chủ sở hữu license. Download/import ticket
-vẫn kiểm đúng tài khoản, auth session, thiết bị và license ACTIVE. Logout thu hồi phiên/ticket của
-tài khoản đó; revoke/suspend license chặn mọi tài khoản đang dùng license trên máy đã gắn.
-Quyết định này bổ sung D11 về quyền sử dụng máy, không thay quyền sở hữu hay hiển thị key.
+Các route tải và cấp import ticket yêu cầu đồng thời device session hợp lệ, license ACTIVE trong
+tài khoản hiện tại và ID license khớp với session. Khi dùng ticket, backend kiểm tra lại license
+thuộc đúng user để ticket cũ không vượt qua chính sách mới. Key đầy đủ chỉ hiển thị cho tài khoản sở hữu;
+admin được tra cứu last4 và metadata slot theo D14. Logout thu hồi phiên/ticket, revoke/suspend chặn tải.
+
+## D14 — Tài khoản admin và giao diện quản trị (2026-10-25)
+
+Không phát hành tài khoản hoặc mật khẩu admin mặc định. Operator cấp quyền cho tài khoản chủ sở hữu đã xác minh
+bằng UUID trong `LICENSE_ADMIN_USER_IDS`; thay đổi cấu hình này có hiệu lực sau khi API khởi động lại.
+Migration 013 hạ quyền tài khoản bootstrap cũ có credential dùng chung và thu hồi session. Đổi username/password
+cần mật khẩu hiện tại, thu hồi toàn bộ session cũ trong transaction và cấp session mới.
+
+Admin đăng nhập mở dashboard riêng cho tài khoản/license, thiết bị, thanh toán, nhật ký và đồng bộ R2.
+Role DB được đối chiếu trên mỗi request; `LICENSE_ADMIN_USER_IDS` vẫn là cơ chế cấp quyền operator.
+Đổi thông tin đăng nhập không biến admin allowlist thành role vĩnh viễn. Public registration luôn tạo khách hàng.
+License có thể cấp thủ công, SUSPENDED rồi mở khóa; REVOKED giữ tính vĩnh viễn. Slot chỉ xem, không reset/chuyển.
+Quyền admin không miễn kiểm tra license chính chủ/thiết bị khi gọi download và import API.
 
 ## D5 — Mô hình kinh doanh: bán license từng sản phẩm (đã thay thế bởi D11)
 

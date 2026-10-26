@@ -31,8 +31,8 @@ export function load(file) {
 export function query({ products }, { category, sub, folder, q, sort, renderer, page = 1, limit = 48 }) {
   const needle = String(q || '').normalize('NFKC').trim().toLowerCase();
   const rows = products.filter((p) =>
-    (!category || p.category === category) && (!sub || p.subcategory === sub) &&
-    (!folder || p.folderIds?.includes(folder)) &&
+    (!category || p.category === category || p.folderPath === category || p.folderPath?.startsWith(category + '/')) && (!sub || p.subcategory === sub) &&
+    (!folder || p.folderIds?.includes(folder) || p.folderPath === folder || p.folderPath?.startsWith(folder + '/')) &&
     (!renderer || p.info.renderers.includes(renderer)) &&
     (!needle || p.name.normalize('NFKC').toLowerCase().includes(needle)));
   const sorts = { name: (a,b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),

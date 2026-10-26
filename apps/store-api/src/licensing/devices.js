@@ -29,8 +29,8 @@ export async function createDeviceChallenge(userId, sessionId, input) {
   const owner = uuid(userId);
   validateSessionId(sessionId);
   const identity = validateIdentity(input);
-  // Activating a new slot requires ownership. Restoring an existing machine
-  // requires signed device proof and may use its owner's license across accounts.
+  // Activating a new slot requires ownership. VERIFY may restore device proof
+  // across accounts, but archive access still requires the signed-in account's license.
   if (identity.purpose === 'ACTIVATE') requireActiveLicense(await getLicenseByAccount(owner));
   const challengeId = randomUUID();
   const expiresAt = new Date(Date.now() + CHALLENGE_MS);

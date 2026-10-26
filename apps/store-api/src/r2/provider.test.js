@@ -16,8 +16,12 @@ test('configuration needs only READ credentials and defaults to free polling',()
 
 test('polling settings are configurable and invalid values fail closed',()=>{
   const config=loadR2Config({R2_BUCKET:'test',R2_ENDPOINT:'https://example.com',R2_REGION:'auto',R2_READ_ACCESS_KEY_ID:'read',R2_READ_SECRET_ACCESS_KEY:'secret',
-    R2_SYNC_ENABLED:'false',R2_SYNC_INTERVAL_SECONDS:'120',R2_SYNC_ON_STARTUP:'false',R2_SYNC_BATCH_SIZE:'250',R2_WEBHOOK_ENABLED:'true'});
+    R2_SYNC_ENABLED:'false',R2_SYNC_INTERVAL_SECONDS:'120',R2_SYNC_ON_STARTUP:'false',R2_SYNC_BATCH_SIZE:'250',R2_WEBHOOK_ENABLED:'true',R2_EVENT_WEBHOOK_SECRET:'webhook-secret'});
   assert.deepEqual([config.syncEnabled,config.syncOnStartup,config.syncIntervalSeconds,config.batchSize,config.webhookEnabled],[false,false,120,250,true]);
+  assert.equal(config.webhookSecret,'webhook-secret');
+  const missingWebhookSecret=loadR2Config({R2_BUCKET:'test',R2_ENDPOINT:'https://example.com',R2_REGION:'auto',R2_READ_ACCESS_KEY_ID:'read',R2_READ_SECRET_ACCESS_KEY:'secret',R2_WEBHOOK_ENABLED:'true'});
+  assert.equal(missingWebhookSecret.configured,false);
+  assert.ok(missingWebhookSecret.errors.includes('R2_EVENT_WEBHOOK_SECRET_REQUIRED'));
   const invalid=loadR2Config({R2_BUCKET:'test',R2_ENDPOINT:'https://example.com',R2_REGION:'auto',R2_READ_ACCESS_KEY_ID:'read',R2_READ_SECRET_ACCESS_KEY:'secret',R2_SYNC_INTERVAL_SECONDS:'0'});
   assert.equal(invalid.configured,false);
   assert.ok(invalid.errors.includes('R2_SYNC_INTERVAL_INVALID'));

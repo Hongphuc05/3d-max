@@ -1,5 +1,7 @@
 # Báo cáo triển khai catalog Google Drive — 2026-10-25
 
+> Báo cáo lịch sử trước migration R2. Không dùng cấu hình hoặc lệnh Drive bên dưới cho triển khai hiện tại; xem [R2 catalog](r2-catalog.md).
+
 Code đã triển khai và kiểm thử bằng mock Drive + PostgreSQL thật trong schema test riêng. **Drive thật đã list được root 3DSMOOD, 126 thư mục, 845 mục và 360 model; JPG và RAR thật tải thành công.** Initial sync chưa publish: sau 93 preview đã cache, Google trả HTML 403 báo mạng gửi automated queries. Không bypass; giữ snapshot và chờ lần sync theo lịch. Không có dữ liệu demo trong catalog thật. Mục tiêu vận hành còn mở cho đến khi có snapshot thành công đầy đủ.
 
 ## 1. Source files trong phạm vi thay đổi

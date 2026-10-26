@@ -1,5 +1,7 @@
 # Tài liệu dự án 3DS Mood cho 3ds Max
 
+**Cấu hình hiện tại:** [R2 polling catalog và SSE](r2-catalog.md) · [License Lifetime + payOS](license-payos-setup.md). Phần định hướng 2026-10-06 bên dưới được giữ làm lịch sử; R2 thay nguồn Drive/local và Lifetime thay license từng model.
+
 > Cập nhật: 2026-10-06
 
 **Hướng đi hiện tại (D5):** bán license từng model 3D (15.000 VND/sản phẩm), import thẳng vào

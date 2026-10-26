@@ -15,6 +15,7 @@ import { startPaymentMaintenance } from './payments/maintenance.js';
 import { createPaymentProvider } from './payments/provider.js';
 import { createPaymentService } from './payments/service.js';
 import { createPaymentRouter, createPayosWebhookRouter } from './payments/routes.js';
+import { adminRouter } from './admin/routes.js';
 
 const STORAGE = process.env.STORAGE_DIR || path.resolve(import.meta.dirname, '../../../storage');
 const SOURCE = process.env.SOURCE_DIR || path.resolve(import.meta.dirname, '../../../source/3DSMOOD');
@@ -41,6 +42,7 @@ const requireLicenseConfiguration = (_req, res, next) => licenseConfigured ? nex
 app.use('/api/licenses', requireLicenseConfiguration, licenseRouter);
 app.use('/api/devices', requireLicenseConfiguration, deviceRouter);
 app.use('/api/admin/licenses', requireLicenseConfiguration, adminLicenseRouter);
+app.use('/api/admin', adminRouter(catalog));
 app.use('/api/payments', rateLimit({ limit: 120 }), createPaymentRouter({ service: payments, requireUser: requireAuth, rateLimit: rateLimit({ limit: 20 }) }));
 app.get('/api/health', async (_q, r) => {
   const db = await pool.query('select 1').then(() => true, () => false);

@@ -8,6 +8,8 @@ installer/Setup/payload.zip
 source/
 .DS_Store
 .env*
+.dev.vars*
+.wrangler/
 !.env.example
 node_modules/
 storage/

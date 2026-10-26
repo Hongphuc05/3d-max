@@ -6,19 +6,25 @@ và một bridge hai chiều, typed, có allowlist giữa JavaScript và Max API
 **Mô hình:** một license Lifetime/tài khoản, tối đa hai thiết bị cố định; thanh toán payOS đã xác minh hoặc admin cấp thử.
 **Target:** 3ds Max 2022 · .NET Framework 4.8 · sản phẩm thương mại
 **Source hiện tại:** React/Vite, Express/PostgreSQL, C# CNG/DPAPI + WebView2.
-**Online catalog:** [Google Drive → PostgreSQL, preview cache và licensed streaming](docs/google-drive-catalog.md).
+**Online catalog:** [Cloudflare R2 private → scheduled PostgreSQL polling, SSE và licensed streaming](docs/r2-catalog.md).
 Hướng dẫn mới: **[License + payOS setup](docs/license-payos-setup.md)** · **[API](docs/license-payos-api.md)** ·
 **[Báo cáo triển khai](LICENSE_PAYOS_IMPLEMENTATION_REPORT.md)**. Roadmap cũ về license từng model được thay bởi D11.
 
 ## Chạy thử
 
 ```
-powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
+powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1 -ApiBaseUrl https://YOUR-BACKEND-DOMAIN
 installer\PlatformSetup.exe          # đóng 3ds Max trước khi chạy
 ```
 
 Trong Max: `Customize > Customize User Interface > tab Toolbars`, Category `Platform`,
 kéo `Mở Platform Design Library` vào một toolbar rồi bấm.
+
+Giao diện React được build và đóng gói trong bộ cài. Máy khách không cần Node.js,
+npm hay web dev server; cần WebView2 và Internet để kết nối backend đã cấu hình.
+Plugin chỉ tải giao diện sau khi kiểm tra kết nối, giữ phiên đăng nhập tối đa 30 ngày
+theo thời hạn server và tự xác minh lại thiết bị đã kích hoạt. Dữ liệu đăng nhập được
+bảo vệ bằng Windows DPAPI, khóa thiết bị bằng CNG/TPM.
 
 ## Cấu trúc
 

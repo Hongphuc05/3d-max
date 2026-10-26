@@ -3,8 +3,8 @@
 Tiến độ và việc còn lại: [`../docs/STATUS.md`](../docs/STATUS.md).
 
 License Lifetime + payOS: xem [setup](../docs/license-payos-setup.md) và [API](../docs/license-payos-api.md).
-Catalog mặc định lấy từ Google Drive qua PostgreSQL; xem [cấu hình, sync và API](../docs/google-drive-catalog.md).
-API tài khoản/license chạy khi Drive chưa sẵn sàng; status catalog phân biệt thiếu cấu hình, chưa sync, lỗi Drive và snapshot cũ.
+Catalog mặc định lấy từ Cloudflare R2 private qua PostgreSQL; backend quét metadata khi khởi động và mỗi 10 phút, rồi gửi thay đổi qua SSE. Xem [cấu hình và vận hành](../docs/r2-catalog.md).
+API tài khoản/license chạy khi R2 chưa sẵn sàng; status catalog phân biệt thiếu cấu hình, chưa sync, lỗi R2 và snapshot cũ.
 Tải/import yêu cầu license ACTIVE và phiên thiết bị đã chứng minh khóa CNG. Cấu hình hai secret license trước khi kích hoạt.
 
 ## Yêu cầu
@@ -13,10 +13,10 @@ Tải/import yêu cầu license ACTIVE và phiên thiết bị đã chứng minh
 |---|---|---|
 | Node | 22.9+ (cần `--env-file-if-exists`) | 22.9+ |
 | Công cụ đọc file nén | `bsdtar` (có sẵn) | `tar.exe` (có sẵn từ Windows 10 1803, là libarchive) |
-| Dữ liệu Online | Public Google Drive + API key chỉ trên backend | như vậy |
+| Dữ liệu Online | Private R2 + Object Read credentials chỉ trên backend | như vậy |
 | Ổ đĩa trống | ≥ 1 GB cho `storage/` | như vậy |
 
-`source/` và `storage/` đều bị gitignore. Google Drive mode chỉ cần database và persistent preview cache;
+`source/` và `storage/` đều bị gitignore. R2 mode dùng database và metadata object;
 không copy toàn bộ model về server. Phần ingest/source/tar bên dưới chỉ dành cho development khi đặt rõ `CATALOG_PROVIDER=local`.
 
 ## Database (PostgreSQL 16, từ A3)
@@ -50,7 +50,7 @@ Làm xong phần **Database** ở trên trước. Mở 2 terminal, đứng ở g
 cd apps/store-api
 npm install
 cp .env.example .env  # tạo cấu hình (mặc định đã khớp Postgres ở trên)
-# Điền GOOGLE_DRIVE_API_KEY và bật Google Drive API; không chạy ingest trong google_drive mode.
+# Điền R2_READ_* và R2_ENDPOINT; API tự chạy initial sync khi khởi động.
 npm run dev           # http://localhost:4000 (tự tạo bảng trong Postgres)
 
 # terminal 2 — giao diện
@@ -66,7 +66,7 @@ npm run dev           # http://localhost:5173
 cd apps\store-api
 npm install
 copy .env.example .env   # tạo cấu hình (mặc định đã khớp Postgres ở trên)
-# Điền GOOGLE_DRIVE_API_KEY và bật Google Drive API.
+# Điền R2_READ_* và R2_ENDPOINT; API tự chạy initial sync khi khởi động.
 npm run dev
 
 # terminal 2 — giao diện
@@ -75,8 +75,13 @@ npm install
 npm run dev
 ```
 
-Mở **http://localhost:5173**. Những lần sau chỉ cần `npm run dev` ở cả hai thư mục. Backend sync Drive mỗi 30 phút;
-frontend nhận catalog version mỗi hai phút và khi quay lại foreground, không reload toàn bộ WebView.
+Mở **http://localhost:5173**. Những lần sau chỉ cần `npm run dev` ở cả hai thư mục. Backend sẽ liệt kê lại metadata R2 theo chu kỳ, không cần Event Notifications, Queue, Worker hoặc Tunnel. Khi một lần quét phát hiện thay đổi, SSE cập nhật cây category, model, preview và số lượng mà không cần reload trang.
+
+Không có tài khoản/mật khẩu admin mặc định. Đăng ký tài khoản chủ sở hữu trước, lấy UUID đã xác minh từ
+PostgreSQL rồi thêm UUID đó vào `LICENSE_ADMIN_USER_IDS` trong môi trường backend; khởi động lại API và
+đăng nhập lại. Xóa UUID khỏi cấu hình sẽ thu hồi quyền admin. Sau đó có thể quản lý tài khoản, license,
+thiết bị, thanh toán và lịch sử trong mục quản trị. Production cần chạy migrations 011–013 trước khi dùng.
+Chi tiết tại [Trang quản trị](../docs/license-payos-setup.md#trang-quản-trị).
 
 ## Xem giao diện như đang ở trong 3ds Max (chỉ khi dev)
 

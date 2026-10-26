@@ -96,10 +96,11 @@ export class R2CatalogRepository {
       select x.id,$1,$2,x.key,x.payload from jsonb_to_recordset($3::jsonb) as x(id text,key text,payload jsonb) on conflict(id) do nothing`,[this.config.bucket,this.config.rootPrefix,JSON.stringify(records)]);
     return {accepted:result.rowCount,duplicates:filtered.length-result.rowCount,ignored:events.length-filtered.length};
   }
-  async sync(provider,{signal}={}) {
+  async sync(provider,{signal,onStarted}={}) {
     const lock=await this.acquireLock();if(!lock)return {skipped:true,reason:'SYNC_IN_PROGRESS'};
     let syncId;
     try {
+      onStarted?.();
       await this.ensureSource(lock.client);
       await lock.client.query(`update catalog_sync_runs set status='failed',finished_at=now(),error_code='SYNC_INTERRUPTED' where provider=$1 and root_folder_id=$2 and status='running'`,this.source);
       syncId=(await lock.client.query("insert into catalog_sync_runs(provider,root_folder_id,status) values($1,$2,'running') returning id",this.source)).rows[0].id;
@@ -114,33 +115,21 @@ export class R2CatalogRepository {
   }
   async processPending(provider,{signal,limit=50}={}) {
     const lock=await this.acquireLock();if(!lock)return {skipped:true};
-    let processed=0,failed=0;
     try {
       const {rows}=await lock.client.query(`select * from r2_event_inbox where bucket=$1 and root_prefix=$2 and status='pending' and next_attempt_at<=now() order by received_at,id limit $3`,[this.config.bucket,this.config.rootPrefix,limit]);
-      const groups=new Map();
-      for(const row of rows) {
-        const key=row.object_key;
-        const scope=key.endsWith('/')?key:key.slice(0,key.lastIndexOf('/')+1);
-        groups.set(scope,[...(groups.get(scope)||[]),row.id]);
+      if(!rows.length)return {processed:0,failed:0};
+      const eventIds=rows.map(row=>row.id);
+      try {
+        // Hints trigger a complete current-state scan so cross-folder renames keep their model IDs.
+        const objects=await provider.listObjects(this.config.rootPrefix,{signal});
+        const report=await this.publish(lock.client,objects,this.config.rootPrefix,{eventIds,fullSync:true});
+        return {...report,processed:eventIds.length,failed:0};
+      } catch(error) {
+        await lock.client.query(`update r2_event_inbox set attempts=attempts+1,last_error=$2,
+          status=case when attempts+1>=10 then 'dead' else 'pending' end,
+          next_attempt_at=now()+make_interval(secs=>least(3600,power(2,least(attempts+1,12))::integer)) where id=any($1::text[])`,[eventIds,safeCode(error)]);
+        return {processed:0,failed:eventIds.length};
       }
-      for(const [scope,eventIds] of groups) {
-        try {
-          // Events are hints: always list current R2 metadata, never apply stale payload state.
-          const objects=await provider.listObjects(scope,{signal});
-          const aliveAncestors=[];
-          const relative=scope.slice(this.config.rootPrefix.length);
-          for(const ancestor of folderPaths(relative)) {
-            if(await provider.hasObjects(`${this.config.rootPrefix}${ancestor}/`,{signal}))aliveAncestors.push(ancestor);
-          }
-          await this.publish(lock.client,objects,scope,{eventIds,aliveAncestors});processed+=eventIds.length;
-        } catch(error) {
-          await lock.client.query(`update r2_event_inbox set attempts=attempts+1,last_error=$2,
-            status=case when attempts+1>=10 then 'dead' else 'pending' end,
-            next_attempt_at=now()+make_interval(secs=>least(3600,power(2,least(attempts+1,12))::integer)) where id=any($1::text[])`,[eventIds,safeCode(error)]);
-          failed+=eventIds.length;
-        }
-      }
-      return {processed,failed};
     } finally{await lock.release();}
   }
   async retryDead() {

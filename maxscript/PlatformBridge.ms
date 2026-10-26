@@ -13,6 +13,24 @@ fn pbJsonStr s = (
     "\"" + t + "\""
 )
 
+-- Document identity is independent of the window title: two folders may contain the same filename,
+-- and reset/new/reopen can replace an Untitled document without changing its title.
+global gPlatformDocumentToken
+fn pbAdvanceDocumentToken = (
+    gPlatformDocumentToken = ((dotNetClass "System.Guid").NewGuid()).ToString "N"
+)
+fn pbCurrentScenePath = (maxFilePath + maxFileName)
+fn pbTargetInfoJson = (
+    "{\"scenePath\":" + (pbJsonStr (pbCurrentScenePath())) +
+    ",\"documentToken\":" + (pbJsonStr gPlatformDocumentToken) +
+    ",\"objectCount\":" + (objects.count as string) + ",\"selectedCount\":" + (selection.count as string) + "}"
+)
+pbAdvanceDocumentToken()
+callbacks.removeScripts id:#PlatformDocumentIdentity
+callbacks.addScript #filePreOpen "pbAdvanceDocumentToken()" id:#PlatformDocumentIdentity persistent:false
+callbacks.addScript #systemPreNew "pbAdvanceDocumentToken()" id:#PlatformDocumentIdentity persistent:false
+callbacks.addScript #systemPreReset "pbAdvanceDocumentToken()" id:#PlatformDocumentIdentity persistent:false
+
 -- Web input là untrusted: mọi số đều clamp về khoảng hợp lệ, thiếu thì lấy default.
 fn pbNum args key defVal minV maxV = (
     local s = args.Param key
@@ -111,6 +129,14 @@ fn pbSceneScriptsProtected = (
 )
 
 fn pbHandleImportFile id args sink = (
+    -- Runs on Max's UI thread immediately before merge; no document switch can slip between
+    -- this guard and mergeMAXFile/importFile through another queued UI request.
+    local expectedToken = args.Param "expectedDocumentToken"
+    local expectedPath = args.Param "expectedScenePath"
+    if expectedToken == undefined or expectedPath == undefined or expectedToken != gPlatformDocumentToken or expectedPath != (pbCurrentScenePath()) then (
+        sink.PostError id "TARGET_SCENE_CHANGED" "Scene đã chọn đã đóng hoặc đổi file. Chọn scene và thử lại."
+        return undefined
+    )
     local p = args.Param "path"
     if p == undefined or not (doesFileExist p) then (
         sink.PostError id "INVALID_PARAMS" "File import không tồn tại"
@@ -188,6 +214,8 @@ fn pbOnRequest sender args = (
 
     try (
         case m of (
+            -- Native-only agent request; not present in the web bridge allowlist.
+            "scene.targetInfo": sender.PostResultJson id (pbTargetInfoJson())
             "scene.getInfo": (
                 gPlatformForm.PostResultJson id (
                     "{\"objects\":" + (objects.count as string) +
@@ -232,12 +260,9 @@ fn pbDllPath = (
     else @"D:\Project\3d-max\plugin-csharp\MaxWebViewHost\MaxWebViewHost\bin\Debug\MaxWebViewHost.dll"
 )
 
--- Phase 4: host nạp website thật qua URL (Vite dev server), không còn nạp file HTML cố định.
--- Đổi 3 giá trị này khi target staging/production.
-global gPlatformStartUrl = "http://localhost:5173"
-global gPlatformTrustedOrigins = "http://localhost:5173,http://localhost:5001"
-global gPlatformEnvironmentName = "development"
-global gPlatformApiBase = "http://localhost:5173"   -- store-api qua proxy Vite; phải nằm trong gPlatformTrustedOrigins
+-- Giao diện được đóng gói trong app/. Native đọc máy chủ từ plugin-config.json.
+-- Máy khách chỉ cần plugin, WebView2 và kết nối Internet.
+global gPlatformEnvironmentName = "3DsMood"
 
 -- Agent chạy trong MỌI Max (scripts\Startup\Platform-Agent.ms gọi hàm này) để panel ở Max khác import vào được scene này.
 global gPlatformAgent
@@ -264,17 +289,15 @@ fn openPlatformPanel = (
 
     (dotNetClass "System.Reflection.Assembly").LoadFrom dllPath
     local cls = dotNetClass "MaxWebViewHost.MaxWebViewForm"
-    cls.StartUrl = gPlatformStartUrl
-    cls.TrustedOrigins = gPlatformTrustedOrigins
     cls.EnvironmentName = gPlatformEnvironmentName
-    cls.ApiBase = gPlatformApiBase
+    cls.UsePackagedApp = true
     cls.HostVersion = "3ds Max build " + ((maxVersion())[1] as string)
 
     gPlatformForm = cls.ShowWindow()
     dotNet.removeAllEventHandlers gPlatformForm          -- chạy lại không bị đăng ký trùng
     dotNet.addEventHandler gPlatformForm "SceneRequestReceived" pbOnRequest
     pbStartAgent()    -- Max chứa panel cũng nhận được lệnh (khi panel đang trỏ vào chính nó thì đi đường local, agent chỉ để dự phòng)
-    format "[bridge] panel mở, StartUrl = %\n" gPlatformStartUrl
+    format "[bridge] packaged app panel mở\n"
     gPlatformForm
 )
 

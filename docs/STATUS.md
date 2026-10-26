@@ -1,12 +1,36 @@
 # STATUS — đã làm tới đâu, còn gì
 
-> Cập nhật lần cuối: **2026-10-25** — License Lifetime + payOS, D12 giữ quyền của máy khi đổi tài khoản. Phần roadmap cũ bên dưới được giữ làm lịch sử; D11 thay mô hình license từng model.
+> Cập nhật lần cuối: **2026-10-26** — bỏ credential admin dùng chung, thu hồi bootstrap admin cũ; R2 catalog, License Lifetime + payOS, tải/import chỉ cho tài khoản sở hữu license. Phần roadmap cũ bên dưới được giữ làm lịch sử.
 > Plan đầy đủ: [`product-roadmap.md`](product-roadmap.md) · Cách chạy: [`../apps/README.md`](../apps/README.md)
 > **Khi xong một việc: đổi `[ ]` thành `[x]`, ghi ngày, và sửa dòng "Cập nhật lần cuối".**
 
 Chú giải: `[x]` xong và đã kiểm tra · `[~]` xong một phần / chưa kiểm tra đủ · `[ ]` chưa làm.
 
-## Google Drive catalog (2026-10-25)
+## Tài khoản và giao diện admin (2026-10-25)
+
+- [x] Migration 011–013: tạo schema admin, không cấp credential mặc định; migration 013 hạ quyền bootstrap admin cũ và thu hồi session. Operator cấp quyền bằng UUID đã xác minh trong `LICENSE_ADMIN_USER_IDS`.
+- [x] Đăng nhập username mở dashboard riêng; người dùng thường tiếp tục dùng catalog và chỉ xem preview khi chưa mua license.
+- [x] Tra cứu tài khoản/license/thiết bị, cấp thủ công, tạm khóa/mở khóa, thu hồi vĩnh viễn, tra cứu thanh toán và audit.
+- [x] Đổi tên đăng nhập/mật khẩu cần mật khẩu hiện tại; thu hồi mọi session cũ trong transaction và cấp session mới.
+- [x] Quyền admin đối chiếu DB/server allowlist mỗi request; đăng ký không được tự gán role; slot thiết bị chỉ xem.
+- [x] Backend 121/121, frontend 48/48, Playwright 11/11 và Vite build pass; coverage phần admin/auth đạt 98,60% dòng và 86,79% nhánh.
+- [x] Database dev đã áp dụng migration 011–013; migration 013 hạ quyền bootstrap admin cũ và thu hồi session, giữ nguyên bản ghi tài khoản.
+
+Hướng dẫn tại [Trang quản trị](license-payos-setup.md#trang-quản-trị).
+
+## Cloudflare R2 catalog (2026-10-25)
+
+- [x] Read-only `ListObjectsV2` diagnostic: 146 objects, 73 folders, 135 models (11 ready, 60 missing preview, 64 missing archive), no conflicts. Catalog sync uses only listed metadata; no production object writes or deletes.
+- [x] Migrations 009–010 and PostgreSQL catalog are ready. `initialSyncComplete=true`, version 1, 135 model records. A repeated full scan found `objectsChanged=0`, left the version unchanged, and did not rewrite unchanged catalog rows.
+- [x] API starts the first scan asynchronously and polls the full prefix every 600 seconds by default. Paginated scans use bounded batches, serialize through a PostgreSQL advisory lock, preserve the last good snapshot on failure, and mark missing keys removed only after a complete listing.
+- [x] Admin-only `POST /api/admin/catalog/sync` and **Sync R2 Now** control accept the database ADMIN role or legacy `LICENSE_ADMIN_USER_IDS`; first-login admins must change their initial password.
+- [x] Catalog changes publish through a shared PostgreSQL `LISTEN/NOTIFY` connection to SSE clients. React refreshes nested categories, models, previews, and availability on change and after EventSource reconnect.
+- [x] R2 pairing covers nested folders and empty-folder markers; unambiguous full-path folder renames preserve model IDs. Tests cover nested category creation, deletion, metadata changes, failed scans, no-change scans, admin authorization, shared SSE notifications, and React refresh.
+- [x] Webhook adapter remains disabled by default and is not required. No Cloudflare Worker, Queue, Event Notifications, Tunnel, billing, or R2 object settings were changed; Workers Paid is not required.
+- [x] Backend tests 121/121, frontend tests 48/48, Playwright E2E 11/11, and Vite production build pass (including the new admin flows).
+
+See [R2 polling setup and operations](r2-catalog.md).
+## Google Drive catalog — historical, superseded by R2 (2026-10-25)
 
 - [x] Provider SDK v3, recursive scan/pagination/resource keys/retry; không fallback local.
 - [x] Migration 008 và bốn bảng catalog riêng; snapshot transaction/advisory lock/stable IDs.
@@ -26,7 +50,7 @@ Xem [hướng dẫn](google-drive-catalog.md) và [báo cáo kiểm chứng](goo
 - [x] Express/PostgreSQL: một Lifetime/account, hai slot bất biến, challenge và phiên thiết bị, bảo vệ import ticket/download.
 - [x] payOS SDK: order, xác minh webhook, transaction/idempotency và reconciliation; test bằng mock, không giao dịch thật.
 - [x] React: mua/My License/activation, khôi phục proof; C# net48 CNG/TPM + DPAPI và bridge có kiểm tra origin/schema.
-- [x] D12: máy đã kích hoạt tiếp tục dùng qua tài khoản khác sau signed VERIFY; key chỉ cho chủ sở hữu, không tạo thêm slot.
+- [x] D12 mới: signed VERIFY có thể xác nhận thiết bị nhưng tải/import chỉ được phép khi tài khoản hiện tại sở hữu license ACTIVE; preview vẫn xem được.
 - [x] PAID tự đóng modal QR sau khi tải được key chính chủ và hiển thị My License, không chờ proof TPM; backend 68 tests, frontend 22 tests đạt trong lần bổ sung này.
 - [x] State license phía client gắn ngay với tài khoản hiện tại, không hiển thị key của tài khoản trước trong lúc chuyển account.
 - [x] Migration 003–007 đã chạy trên database dev/test riêng; rollback đã kiểm tra trên schema thử. D12 không cần migration mới.
@@ -218,3 +242,32 @@ Chi tiết kỹ thuật: [`web-in-3dsmax-integration-plan.md`](web-in-3dsmax-int
 - Mọi thứ trong `apps/` mới chỉ chạy thử trên **macOS**.
 - Sau khi model đã vào scene Max thì không chặn được việc lưu ra file khác; license chỉ kiểm soát
   ai được lấy file nguồn (xem `product-roadmap.md` §3.4).
+
+## Windows runtime — sửa lỗi merge (2026-10-26)
+
+- Đã chạy luồng thật trong 3ds Max 2022 với API/Vite cục bộ và database test riêng: đăng nhập,
+  license Lifetime, kích hoạt thiết bị TPM, cấp/dùng import ticket và merge model catalog.
+  Không tạo thanh toán thật.
+- Nguyên nhân `ASSET_IMPORT_FAILED` ở bản đã cài: chỉ có host/WebView2 DLL, thiếu SharpCompress
+  và các dependency archive. Test chạy trực tiếp trên thư mục đã cài tái hiện
+  `FileNotFoundException: SharpCompress 0.50.7`. Triển khai đầy đủ output và mở lại Max sửa được lỗi.
+  Khi cập nhật phải đóng mọi Max và cài cả gói; không chỉ chép `MaxWebViewHost.dll`.
+- `plugin-csharp/tests/run-package-tests.ps1 -PackageDirectory <Platform>` chạy host đã đóng gói
+  trong CLR process riêng, kiểm giải nén ZIP/RAR/7z mà không mượn DLL từ thư mục test.
+  `installer/build-installer.ps1` bắt buộc chạy test này trên stage trước khi tạo payload.
+- Retest model thật `2111370.5b7ac43878188` (2 MB): client báo `Đã import`, Max có 10 entity
+  được chọn và geometry hiển thị trong viewport. Đã lưu scene kết quả. Asset dùng V-Ray chưa
+  cài trên máy test; cảnh báo missing renderer/material cần người dùng xử lý, không tự chuyển
+  vật liệu hoặc xóa asset thiếu. Điều này chưa xác nhận chất lượng render V-Ray.
+- Client có selector native cho scene đích: tên file, PID và đường dẫn đầy đủ. Nhiều Max
+  bắt buộc chọn rõ đích; đổi focus không đổi lựa chọn. Mở/new/reset file thay document token;
+  path/token được adapter kiểm ngay trước merge, không fallback sang scene khác khi đích mất.
+  Refresh bất đồng bộ được dùng chung và chờ xong trước khi chụp đích import.
+- Kiểm chứng hai Max thật, cùng model trên: không chọn đích thì cả scene giữ nguyên;
+  chọn B qua pipe làm A giữ 1 object, B tăng 0→10; đổi selector sang A làm A tăng 1→11,
+  B giữ 10. Client báo `Đã import` ở cả hai lượt. Hai scene kết quả đã được lưu.
+- Regression thực tế Max 2022: reset Untitled và mở lại cùng path đổi token; stale path/token
+  bị từ chối trước mutation; fixture `.max` merge thành công; security guard vẫn fail closed.
+  C# selection suite: 19 PASS; WebView2/IPC/Form suite: 23 PASS (gồm race mở Max thứ hai
+  trong lúc metadata đang chờ); archive security suite: 15 PASS; package smoke: ZIP/RAR/7z PASS.
+  Release x64 và installer build đã qua, gói đầy đủ được triển khai lại vào runtime test.

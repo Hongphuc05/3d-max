@@ -57,17 +57,24 @@ namespace MaxWebViewHost
         private readonly string directory;
         private readonly string keyName;
         private readonly bool preferTpm;
+        private readonly string legacyDirectory;
 
         public DeviceIdentityService() : this(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "3DsMood", "DeviceIdentity", "v1"), ProductionKeyName, true) { }
+            "MaxWebViewHost", "DeviceIdentity", "v1"), ProductionKeyName, true,
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "3DsMood", "DeviceIdentity", "v1")) { }
 
         // Only the standalone test harness supplies another directory/key name.
         internal DeviceIdentityService(string directory, string keyName, bool preferTpm)
+            : this(directory, keyName, preferTpm, null) { }
+
+        internal DeviceIdentityService(string directory, string keyName, bool preferTpm, string legacyDirectory)
         {
             this.directory = directory;
             this.keyName = keyName;
             this.preferTpm = preferTpm;
+            this.legacyDirectory = legacyDirectory;
         }
 
         public PublicDeviceIdentity GetIdentity()
@@ -112,8 +119,7 @@ namespace MaxWebViewHost
                     var metadata = ReadOrCreate();
                     using (var key = OpenExisting(metadata))
                     {
-                        if (KeyHash(key) != metadata.PublicKeyHash || key.ExportPolicy != CngExportPolicies.None)
-                            throw Lost();
+                        ValidateBinding(metadata, key);
                         return action(metadata, key);
                     }
                 }
@@ -129,6 +135,20 @@ namespace MaxWebViewHost
         {
             var path = Path.Combine(directory, "identity.dat");
             if (File.Exists(path)) return ReadMetadata(path);
+            if (!string.IsNullOrEmpty(legacyDirectory))
+            {
+                var legacyPath = Path.Combine(legacyDirectory, "identity.dat");
+                if (File.Exists(legacyPath))
+                {
+                    // Moving protected metadata does not create a new identity or claim a slot.
+                    // Both DPAPI and the existing non-exportable key must validate before writing.
+                    var previous = ReadMetadata(legacyPath);
+                    using (var previousKey = OpenExisting(previous)) ValidateBinding(previous, previousKey);
+                    CreatePrivateDirectory();
+                    WriteMetadataAtomically(path, previous);
+                    return previous;
+                }
+            }
             // Do not generate a fresh UUID against an already existing private key.
             if (Exists(TpmProvider) || Exists(CngProvider.MicrosoftSoftwareKeyStorageProvider)) throw Lost();
             CreatePrivateDirectory();
@@ -147,15 +167,36 @@ namespace MaxWebViewHost
                     Version = 1, DeviceId = Guid.NewGuid().ToString("D"),
                     Protection = protection, PublicKeyHash = KeyHash(key)
                 };
-                var clear = Encoding.UTF8.GetBytes(new JavaScriptSerializer().Serialize(metadata));
-                byte[] encrypted;
-                try { encrypted = ProtectedData.Protect(clear, Entropy, DataProtectionScope.CurrentUser); }
-                finally { Array.Clear(clear, 0, clear.Length); }
-                // CreateNew never overwrites another process's identity or a damaged existing file.
-                using (var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None,
-                    4096, FileOptions.WriteThrough)) stream.Write(encrypted, 0, encrypted.Length);
+                WriteMetadataAtomically(path, metadata);
                 return metadata;
             }
+        }
+
+        private static void ValidateBinding(IdentityMetadata metadata, CngKey key)
+        {
+            if (KeyHash(key) != metadata.PublicKeyHash || key.ExportPolicy != CngExportPolicies.None) throw Lost();
+        }
+
+        private static void WriteMetadataAtomically(string path, IdentityMetadata metadata)
+        {
+            var clear = Encoding.UTF8.GetBytes(new JavaScriptSerializer().Serialize(metadata));
+            byte[] encrypted;
+            try { encrypted = ProtectedData.Protect(clear, Entropy, DataProtectionScope.CurrentUser); }
+            finally { Array.Clear(clear, 0, clear.Length); }
+            var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                    4096, FileOptions.WriteThrough))
+                {
+                    stream.Write(encrypted, 0, encrypted.Length);
+                    stream.Flush(true);
+                }
+                // Rename in the same private directory is atomic. File.Move never replaces
+                // an existing identity, including an invalid or concurrently created one.
+                File.Move(temporary, path);
+            }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
         }
 
         private IdentityMetadata ReadMetadata(string path)

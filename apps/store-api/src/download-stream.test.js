@@ -50,8 +50,8 @@ test('client cancellation aborts upstream and releases concurrency slot', async 
 });
 
 test('provider failures expose safe error codes only', async () => {
-  await fixture({openDownload:async()=>{throw Object.assign(new Error('secret URL'),{code:'DRIVE_PERMISSION_DENIED',status:403});}}, {},async url=>{
-    const res=await fetch(url);assert.equal(res.status,403);assert.deepEqual(await res.json(),{error:'DRIVE_PERMISSION_DENIED'});
+  await fixture({openDownload:async()=>{throw Object.assign(new Error('secret URL'),{code:'R2_ACCESS_DENIED',status:403});}}, {},async url=>{
+    const res=await fetch(url);assert.equal(res.status,403);assert.deepEqual(await res.json(),{error:'R2_ACCESS_DENIED'});
   });
 });
 

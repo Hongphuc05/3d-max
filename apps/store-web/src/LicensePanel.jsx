@@ -1,29 +1,20 @@
 import { useEffect, useState } from 'react';
-import * as api from './api.js';
 import { useAuth } from './auth.jsx';
 import { useLicense } from './license.jsx';
-import { licenseError } from './license-flow.js';
 import Purchase from './Purchase.jsx';
-import { getDeviceIdentity } from './integrations/3dsmax/bridge.js';
 
 const button = 'rounded-md bg-accent px-4 py-2 text-sm font-bold text-accent-ink disabled:opacity-50';
 const secondary = 'rounded-md border border-line px-3 py-2 text-sm hover:bg-raised disabled:opacity-50';
 const warning = 'Mỗi license có tối đa 2 thiết bị cố định. Không xóa, đổi hoặc chuyển slot. Cài lại Windows, thay phần cứng hoặc mất khóa thiết bị có thể làm mất quyền dùng slot đó; không tự động cấp lại.';
 function Activation() {
-  const { activate, loading, session, error, refresh } = useLicense();
+  const { activate, loading, license, session, identity, error, refresh } = useLicense();
   const [key, setKey] = useState('');
-  const [identity, setIdentity] = useState(null);
-  const [identityError, setIdentityError] = useState('');
-  useEffect(() => {
-    let cancelled = false;
-    getDeviceIdentity().then((value) => { if (!cancelled) setIdentity(value); },
-      (e) => { if (!cancelled) setIdentityError(licenseError(e)); });
-    return () => { cancelled = true; };
-  }, []);
   const submit = async (e) => { e.preventDefault(); if (await activate(key)) setKey(''); };
+  const verified = license?.status === 'ACTIVE' && session?.license?.status === 'ACTIVE'
+    && session.license.id === license.id;
   return <section className="space-y-3 rounded-lg border border-line p-4">
     <h3 className="font-bold">Kích hoạt thiết bị</h3>
-    {session ? <>
+    {verified ? <>
       <p className="text-sm text-accent" role="status">Thiết bị đã được xác minh. Có thể Download &amp; import.</p>
       <p className="text-xs text-mute">Plugin tự xác minh lại bằng khóa Windows; không cần nhập lại license trong lần mở sau.</p>
     </> : <form className="space-y-3" onSubmit={submit}>
@@ -31,11 +22,10 @@ function Activation() {
         <input required value={key} onChange={(e) => setKey(e.target.value)} maxLength={128} autoComplete="off" spellCheck={false}
           placeholder="3DM-…" className="mt-1 w-full rounded-md border border-line bg-base px-3 py-2 font-mono focus:border-accent" />
       </label>
-      <button className={button} disabled={loading || !identity}>{loading ? 'Đang xác minh…' : 'Kích hoạt máy này'}</button>
+      <button className={button} disabled={loading || !key.trim()}>{loading ? 'Đang xác minh…' : 'Kích hoạt máy này'}</button>
       <button type="button" className={`${secondary} ml-2`} disabled={loading} onClick={() => refresh()}>Xác minh lại máy đã kích hoạt</button>
     </form>}
     {identity?.keyProtection === 'SOFTWARE' && <p className="text-sm text-warn">Máy này dùng Windows CNG + DPAPI qua phần mềm, mức bảo vệ thấp hơn khóa TPM.</p>}
-    {identityError && <p role="alert" className="text-sm text-danger">{identityError}</p>}
     {error && <p role="alert" className="text-sm text-danger">{error}</p>}
   </section>;
 }
@@ -68,10 +58,10 @@ export default function LicensePanel({ onLogin }) {
           </li>)}</ul>
           {!devices.length && <p className="text-sm text-mute">Chưa gắn thiết bị nào.</p>}
         </section>}
-        {max && canImport && session?.license.id !== license?.id && <section className="space-y-2 rounded-lg border border-line p-4">
-          <h3 className="font-bold text-accent">Máy này đã được kích hoạt</h3>
-          <p className="text-sm">Bạn có thể Download &amp; import bằng license đã gắn với máy này, kể cả khi đổi tài khoản.</p>
-          <p className="text-xs text-mute">Key và danh sách slot chỉ hiển thị cho tài khoản sở hữu license. Đổi tài khoản không tạo thêm slot.</p>
+        {max && session?.license?.status === 'ACTIVE' && session.license.id !== license?.id && <section className="space-y-2 rounded-lg border border-line p-4">
+          <h3 className="font-bold text-accent">Máy này đã được kích hoạt bằng license của tài khoản khác</h3>
+          <p className="text-sm">Tài khoản đang đăng nhập cần có license riêng để Download &amp; import.</p>
+          <p className="text-xs text-mute">Bạn vẫn có thể xem preview và mua license cho tài khoản này.</p>
         </section>}
         {max && (license?.status === 'ACTIVE' || canImport) && <Activation />}
         {(!max || (license?.status !== 'ACTIVE' && !canImport)) && error && <p role="alert" className="text-sm text-danger">{error}</p>}

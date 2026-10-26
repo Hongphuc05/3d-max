@@ -3,10 +3,10 @@ const errorCode=error=>/^R2_[A-Z0-9_]+$/.test(error?.code || '')?error.code:'R2_
 export function createSyncWorker({repository,provider,config={},logger=console,onChanged=()=>{},scheduler=globalThis}) {
   let syncing=null,processing=null,controller=null,pollTimer=null,eventTimer=null,started=false;
   const notify=report=>{if(report?.changed)onChanged(report);return report;};
-  const sync=()=>{
+  const sync=({onStarted}={})=>{
     if(syncing)return syncing;
     controller=new AbortController();
-    syncing=repository.sync(provider,{signal:controller.signal}).then(notify).finally(()=>{syncing=null;controller=null;});
+    syncing=repository.sync(provider,{signal:controller.signal,onStarted}).then(notify).finally(()=>{syncing=null;controller=null;});
     return syncing;
   };
   const processPending=()=>{

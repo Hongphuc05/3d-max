@@ -15,6 +15,7 @@ export function createPaymentRouter({ service, requireUser = authenticated, muta
   router.get('/product', (_req, res) => res.json({ product: service.product() }));
   router.use(requireUser, authenticated);
   router.post('/create', mutationGuard, rateLimit, emptyBody, async (req, res) => res.json({ order: await service.create(req.user) }));
+  router.get('/:orderId/status', async (req, res) => res.json({ order: await service.check(req.user.id, req.params.orderId) }));
   router.get('/:orderId', async (req, res) => res.json({ order: await service.get(req.user.id, req.params.orderId) }));
   router.post('/:orderId/reconcile', mutationGuard, rateLimit, emptyBody,
     async (req, res) => res.json({ order: await service.reconcile(req.user.id, req.params.orderId) }));

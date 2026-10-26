@@ -1,6 +1,6 @@
 // Shared flow used by the UI and tested with a native bridge/API fixture.
-export async function proveDevice({ api, native, licenseKey }) {
-  const identity = await native.getDeviceIdentity();
+export async function proveDevice({ api, native, licenseKey, identity: knownIdentity }) {
+  const identity = knownIdentity || await native.getDeviceIdentity();
   const purpose = licenseKey === undefined ? 'VERIFY' : 'ACTIVATE';
   const challenge = await api.deviceChallenge({ ...identity, purpose });
   const { signature } = await native.signDeviceChallenge(challenge.challengeId, challenge.message);

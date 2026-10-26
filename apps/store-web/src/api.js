@@ -41,6 +41,16 @@ export const register = (email, password) => request('POST', '/auth/register', {
 export const login = (email, password) => request('POST', '/auth/login', { body: { email, password } });
 export const logout = () => request('POST', '/auth/logout', { body: {} });
 
+export const adminOverview = (signal) => get('/admin/overview', null, signal);
+export const adminUsers = (params, signal) => get('/admin/users', params, signal);
+export const adminUser = (id, signal) => get(`/admin/users/${encodeURIComponent(id)}`, null, signal);
+export const adminOrders = (params, signal) => get('/admin/orders', params, signal);
+export const adminAudit = (params, signal) => get('/admin/audit', params, signal);
+export const updateAdminAccount = (body) => request('PATCH', '/admin/account', { body });
+export const issueAdminLicense = (userId) => request('POST', '/admin/licenses/issue', { body: { userId } });
+export const resumeAdminLicense = (userId) => request('POST', '/admin/licenses/resume', { body: { userId } });
+export const revokeAdminLicense = (userId, status, reason) => request('POST', '/admin/licenses/revoke', { body: { userId, status, reason } });
+
 export const myLicense = () => get('/licenses/me');
 export const licenseDevices = () => get('/licenses/devices');
 export const deviceChallenge = (body) => request('POST', '/devices/challenge', { body });
@@ -49,6 +59,7 @@ export const verifyDevice = (body) => request('POST', '/devices/verify', { body 
 export const lifetimeProduct = () => get('/payments/product');
 export const createPayment = (signal) => request('POST', '/payments/create', { body: {}, signal });
 export const paymentOrder = (id, signal) => get(`/payments/${encodeURIComponent(id)}`, null, signal);
+export const activePaymentOrder = (id, signal) => get(`/payments/${encodeURIComponent(id)}/status`, null, signal);
 export const reconcilePayment = (id, signal) => request('POST', `/payments/${encodeURIComponent(id)}/reconcile`, { body: {}, signal });
 
 // Khong co Download tren trinh duyet (O7). Trong 3ds Max: xin ticket 1 lan roi giao cho host tai + import.

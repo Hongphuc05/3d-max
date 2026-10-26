@@ -4,15 +4,49 @@
 
 Một account có một Lifetime license, tối đa hai slot cố định. Không có API xóa/reset/chuyển slot.
 Cài lại Windows, mất khóa hoặc đổi phần cứng có thể mất khả năng sử dụng slot vĩnh viễn.
-Đăng nhập dùng JWT HS256 trong cookie `sid` HttpOnly; quyền tải/import còn cần license ACTIVE và cookie thiết bị `dsid`.
-Theo D12, máy đã kích hoạt tiếp tục dùng được khi đổi sang tài khoản khác trên cùng danh tính Windows.
-Plugin tự ký challenge để khôi phục slot ACTIVE khớp cả UUID và public-key hash; không nhập lại key hay tạo thêm slot.
-Key, bốn ký tự cuối và danh sách slot chỉ hiển thị trong tài khoản sở hữu. Tài khoản sử dụng máy không nhận quyền sở hữu license.
+Đăng nhập dùng JWT HS256 trong cookie `sid` HttpOnly; quyền tải/import cần license ACTIVE thuộc tài khoản đang đăng nhập,
+ID license phải khớp với phiên thiết bị `dsid`. Máy có thể xác minh binding của tài khoản khác, nhưng xác minh đó không cấp
+quyền tải/import. Người chưa mua license chỉ xem preview và có thể mua Lifetime cho tài khoản của mình.
+Plugin tự ký challenge để xác minh slot khớp cả UUID và public-key hash; thao tác này không nhập lại key hay tạo slot.
+Key đầy đủ chỉ hiển thị trong tài khoản sở hữu. Admin được xem bốn ký tự cuối và danh sách slot để hỗ trợ khách hàng.
 Thêm slot mới bằng ACTIVATE vẫn yêu cầu key thuộc tài khoản đang đăng nhập, tối đa hai slot cố định mỗi license.
 Không hỗ trợ offline license. Revoke/suspend license chặn tất cả phiên/ticket đang dùng license đó;
 logout thu hồi phiên/ticket của tài khoản vừa đăng xuất.
 
 ## Development
+
+### Plugin là app đóng gói
+
+Máy khách không chạy `npm`, Vite hoặc frontend server. Build bộ cài trên máy phát triển:
+
+```powershell
+# Backend local để kiểm tra hiện tại:
+./installer/build-installer.ps1 -ApiBaseUrl http://127.0.0.1:4000 -AllowLoopbackForTesting
+# Kết quả: installer/PlatformSetup-Test.exe
+
+# Khi triển khai backend HTTPS thật:
+./installer/build-installer.ps1 -ApiBaseUrl https://YOUR-BACKEND-DOMAIN
+# Kết quả: installer/PlatformSetup.exe
+```
+
+Bộ cài chứa React production build, DLL và `plugin-config.json`. Native phục vụ giao diện
+tại origin riêng và chuyển `/api/`, `/previews/` tới backend đã cấu hình. Backend không cần
+cho phép CORS với origin nội bộ. Không nhúng secret server hoặc mật khẩu vào client.
+Backend local chỉ dùng cho máy đang chạy backend; phát hành cho máy khác cần địa chỉ HTTPS
+có thể truy cập từ Internet.
+
+Plugin kiểm tra `/api/health` trước khi tải giao diện và kiểm tra lại mỗi 15 giây. Không kết nối
+được thì hiện yêu cầu kết nối Internet và nút thử lại, giữ dữ liệu đăng nhập. Giao diện được
+khôi phục khi máy chủ hoạt động trở lại. Catalog của app kiểm tra mỗi 15 giây khi hiển thị.
+
+Cookie `sid`/`dsid` được bảo vệ bằng DPAPI theo Windows user và theo backend tại
+`%LOCALAPPDATA%/MaxWebViewHost/Sessions/v1`; logout xóa dữ liệu local trước khi gọi server.
+Không lưu mật khẩu. Đổi server không tự gửi phiên của server cũ sang server mới.
+Danh tính thiết bị lưu tại `%LOCALAPPDATA%/MaxWebViewHost/DeviceIdentity/v1` và giữ khóa CNG/TPM
+cũ. Migration từ đường dẫn `3DsMood/DeviceIdentity/v1` chỉ diễn ra sau khi DPAPI và khóa cũ
+khớp; không tạo lại UUID, ghi đè identity hỏng hoặc cấp slot mới.
+
+### Chạy backend và web trong môi trường phát triển
 
 Backend cần `JWT_SECRET`: secret riêng đúng 32 byte ngẫu nhiên dạng base64, chỉ lưu phía server.
 Tạo bằng `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"` rồi lưu vào `.env`
@@ -27,7 +61,8 @@ Không cần migration cho JWT vì giữ kiểu session ID và các khóa ngoạ
    Không sửa `pg_hba.conf` của service đang dùng để né mật khẩu; không chạy test lên database thật.
 3. Tạo **hai** giá trị riêng bằng `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"`.
    Gán vào `LICENSE_HMAC_SECRET` và `LICENSE_ENCRYPTION_KEY`. Không gửi lên React, ghi log hay commit.
-4. Chạy `npm run dev` ở API (4000), rồi ở web (5173). Plugin load `http://localhost:5173`.
+4. Chạy `npm run dev` ở API (4000), rồi ở web (5173) nếu phát triển giao diện trong trình duyệt.
+   Plugin phát hành dùng giao diện đã build trong bộ cài, không tải Vite trên máy khách.
 5. `GET /api/health` báo riêng DB, licensing, payments, catalog. Không có catalog vẫn dùng được license API;
    không cần sửa `SOURCE_DIR` cho phần này. Dữ liệu model giữ cơ chế hiện hữu.
 
@@ -57,14 +92,39 @@ Nếu cluster riêng đã dừng, ở repo root:
 
 Không xóa `storage` vì chứa database và secret cần để đọc license dev. Cluster này chỉ dành cho local dev/test.
 
-## Cấp thử qua admin
+## Trang quản trị
 
-Đăng ký tài khoản thử bằng auth API/UI, tra UUID trong `users`, điền UUID tài khoản admin vào
-`LICENSE_ADMIN_USER_IDS` ở environment phía server. Đăng nhập tài khoản đó rồi gọi
-`POST /api/admin/licenses/issue` với `{ "userId": "UUID-tai-khoan-nhan" }` và cookie `sid`.
-Client không có trường role/admin. Danh sách rỗng từ chối tất cả. My License của account nhận sẽ hiển thị key.
-Endpoint `/revoke` nhận `userId`, `status` là `SUSPENDED` hoặc `REVOKED`, `reason` tùy chọn.
-Revoke là vĩnh viễn; không có endpoint khôi phục hay thay thiết bị.
+Không có tài khoản hoặc mật khẩu quản trị mặc định. Để cấp quyền admin lần đầu:
+
+1. Đăng ký tài khoản chủ sở hữu qua giao diện như một khách hàng bình thường.
+2. Xác minh email/UUID của tài khoản qua PostgreSQL. Ví dụ:
+   `select id from users where email=lower('owner@example.com');`
+3. Thêm đúng UUID vào `LICENSE_ADMIN_USER_IDS` trong cấu hình môi trường/secret manager của backend.
+4. Khởi động lại API rồi đăng xuất/đăng nhập lại. Chỉ operator có quyền sửa cấu hình backend mới cấp được quyền này.
+
+Xóa UUID khỏi allowlist và khởi động lại sẽ thu hồi quyền. Migration 013 hạ quyền tài khoản bootstrap dùng
+credential chung từ các bản cũ và thu hồi session của tài khoản đó; dữ liệu tài khoản liên quan được giữ lại.
+Đăng nhập bằng nút Đăng nhập trên web/plugin; ô đầu tiên nhận email hoặc tên đăng nhập. Sau khi được cấp quyền,
+admin có thể đổi username/password trong giao diện quản trị, luôn phải nhập mật khẩu hiện tại.
+
+Các mục trong giao diện:
+
+- **Tổng quan:** số khách hàng, license ACTIVE, đơn PAID, tổng tiền PAID; trạng thái catalog và Sync R2 Now.
+- **Tài khoản & license:** tìm bằng email/UUID; xem license, hai slot cố định, đơn và lịch sử gần đây.
+  Có thể cấp Lifetime thủ công, tạm khóa, mở khóa license đang SUSPENDED hoặc thu hồi vĩnh viễn.
+- **Thanh toán:** tra cứu email/mã đơn và lọc trạng thái; số tiền và trạng thái lấy từ server.
+- **Lịch sử thao tác:** người thực hiện, tài khoản liên quan, thời điểm và lý do thao tác license.
+- **Thông tin đăng nhập:** đổi tên đăng nhập và/hoặc mật khẩu, bắt buộc nhập mật khẩu hiện tại.
+
+Mật khẩu được hash bằng scrypt. Đổi thông tin thu hồi toàn bộ session cũ và tạo session mới cho trình duyệt hiện tại.
+Migration chạy một lần, restart không tạo lại credential. Quyền allowlist độc lập với username; xóa UUID khỏi
+`LICENSE_ADMIN_USER_IDS` vẫn thu hồi quyền. Đăng ký công khai luôn tạo khách hàng;
+client không được tự gán role. Admin vẫn phải có license chính chủ và chứng minh thiết bị để gọi API tải/import.
+
+Full key của khách hàng không xuất hiện trong trang admin. Slot thiết bị chỉ xem; không có API reset/xóa/chuyển.
+`REVOKED` là vĩnh viễn, không thể mở khóa hay cấp key khác cho cùng account. `SUSPENDED` có thể mở khóa;
+plugin cần xác minh thiết bị lại vì thao tác khóa đã xóa device session trước đó.
+Tài khoản khách nhận license do admin cấp sẽ thấy key trong My License.
 
 ## payOS và HTTPS
 
@@ -181,8 +241,8 @@ npm run test:e2e
 ```
 
 Các bài UI kiểm QR, callback giả, khôi phục đơn, tự mở key sau PAID,
-cleanup/bounded polling và khôi phục quyền máy qua tài khoản khác mà không lộ key.
-Các bài HTTP kiểm chữ ký/cookie sai, revoke/logout và số slot không tăng khi VERIFY qua tài khoản khác.
+cleanup/bounded polling và chặn tải khi tài khoản không sở hữu license trên máy.
+Các bài HTTP kiểm chữ ký/cookie sai, revoke/logout, ticket cũ và từ chối tải khi VERIFY qua tài khoản khác.
 Không có script lint/typecheck riêng trong package hiện tại.
 
 Thử ngân hàng thật sau khi operator phê duyệt: cấu hình môi trường HTTPS và đăng ký webhook, dùng account chưa sở hữu license,

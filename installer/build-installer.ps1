@@ -1,13 +1,36 @@
 # Build plugin + dong goi thanh PlatformSetup.exe.
 # Chay: powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
 # (comment khong dau: PowerShell 5.1 doc file khong BOM theo ANSI)
+param(
+    [string]$ApiBaseUrl = $env:PLATFORM_API_BASE_URL,
+    [switch]$AllowLoopbackForTesting
+)
 $ErrorActionPreference = 'Stop'
+
+$apiUri = $null
+if (-not [Uri]::TryCreate($ApiBaseUrl, [UriKind]::Absolute, [ref]$apiUri) -or
+    $apiUri.UserInfo -or $apiUri.Query -or $apiUri.Fragment -or $apiUri.AbsolutePath -ne '/' -or
+    ($apiUri.Scheme -ne 'https' -and -not ($AllowLoopbackForTesting -and $apiUri.IsLoopback -and $apiUri.Scheme -eq 'http')) -or
+    ($apiUri.IsLoopback -and -not $AllowLoopbackForTesting)) {
+    throw 'Provide -ApiBaseUrl with the production HTTPS backend origin. Loopback is allowed only with -AllowLoopbackForTesting.'
+}
 
 $root  = Split-Path $PSScriptRoot -Parent
 $proj  = Join-Path $root 'plugin-csharp\MaxWebViewHost\MaxWebViewHost\MaxWebViewHost.csproj'
 $setup = Join-Path $PSScriptRoot 'Setup\Setup.csproj'
 $stage = Join-Path $PSScriptRoot 'stage'
 $out   = Join-Path $PSScriptRoot 'PlatformSetup.exe'
+if ($AllowLoopbackForTesting) { $out = Join-Path $PSScriptRoot 'PlatformSetup-Test.exe' }
+
+# Build-time only. The client receives static assets and never needs Node/npm.
+Write-Host '==> Build bundled app'
+Push-Location (Join-Path $root 'apps\store-web')
+try {
+    & npm.cmd ci --no-audit --no-fund
+    if ($LASTEXITCODE -ne 0) { throw 'Frontend dependency restore failed.' }
+    & npm.cmd run build
+    if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed.' }
+} finally { Pop-Location }
 
 $msbuild = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
     -latest -products * -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe |
@@ -28,7 +51,9 @@ $bin = Join-Path $root 'plugin-csharp\MaxWebViewHost\MaxWebViewHost\bin\Release'
 
 # --- 2. stage dung layout se nam trong thu muc user cua Max ---
 Write-Host "==> Stage"
-if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+$resolvedStage = [IO.Path]::GetFullPath($stage)
+if ((Split-Path $resolvedStage -Parent) -ne [IO.Path]::GetFullPath($PSScriptRoot) -or (Split-Path $resolvedStage -Leaf) -ne 'stage') { throw 'Unsafe installer staging path.' }
+if (Test-Path -LiteralPath $resolvedStage) { Remove-Item -LiteralPath $resolvedStage -Recurse -Force }
 $pdir = Join-Path $stage 'Platform'
 New-Item -ItemType Directory -Path $pdir, (Join-Path $stage 'usermacros'), (Join-Path $stage 'Startup') -Force | Out-Null
 
@@ -38,8 +63,16 @@ Copy-Item -LiteralPath (Join-Path $bin 'ThirdPartyNotices.txt') -Destination $pd
 Copy-Item (Join-Path $bin 'runtimes') $pdir -Recurse
 Copy-Item (Join-Path $root 'maxscript\PlatformBridge.ms') $pdir
 Copy-Item (Join-Path $root 'frontend') (Join-Path $pdir 'frontend') -Recurse
+Copy-Item (Join-Path $root 'apps\store-web\dist') (Join-Path $pdir 'app') -Recurse
+$configuration = @{ apiBaseUrl = $apiUri.GetLeftPart([UriPartial]::Authority); allowLoopbackForTesting = [bool]$AllowLoopbackForTesting }
+[IO.File]::WriteAllText((Join-Path $pdir 'plugin-config.json'), ($configuration | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
 Copy-Item (Join-Path $root 'maxscript\usermacros\Platform-OpenPanel.mcr') (Join-Path $stage 'usermacros')
 Copy-Item (Join-Path $root 'maxscript\startup\Platform-Agent.ms') (Join-Path $stage 'Startup')
+
+# Exercise the staged host in an isolated CLR process, so missing transitive
+# archive dependencies cannot be hidden by the developer/test output folder.
+Write-Host "==> Verify staged archive runtime (ZIP/RAR/7z)"
+& (Join-Path $root 'plugin-csharp\tests\run-package-tests.ps1') -PackageDirectory $pdir
 
 # --- 3. zip -> nhung vao installer duoi dang embedded resource ---
 Write-Host "==> Zip payload"

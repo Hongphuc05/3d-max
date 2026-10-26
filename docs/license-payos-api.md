@@ -4,8 +4,11 @@ Base `/api`. JSON, cookie `sid` chứa JWT HS256, HttpOnly; request ghi có Orig
 Response lỗi `{ "error": "UPPERCASE_CODE" }`, không stack/secret. Rate limit trả 429 và Retry-After.
 Mọi response API no-store. Key plaintext chỉ trả cho chính chủ qua HTTPS trong My License.
 
-Auth: `POST /auth/register`, `POST /auth/login` nhận `{email,password}`, trả `{user}` và cookie JWT `sid`.
-`GET /auth/me` trả `{user:{id,email}}`; `POST /auth/logout` nhận `{}` và thu hồi session ngay.
+Auth: `POST /auth/register` nhận `{email,password}`, luôn tạo khách hàng.
+`POST /auth/login` nhận `{email,password}`; trường `email` có thể chứa tên đăng nhập admin.
+Hai route trả `{user}` và cookie JWT `sid`. `GET /auth/me` trả `{user:{id,email}}` cho khách hàng;
+admin nhận thêm `{role:'ADMIN',username,mustChangeCredentials}`. Role được đọc từ DB hoặc legacy server allowlist.
+`POST /auth/logout` nhận `{}` và thu hồi session ngay.
 JWT tối đa 30 ngày; bắt buộc chữ ký, issuer/audience, expiry và session PostgreSQL còn hoạt động.
 Không gửi token trong JSON/Authorization/localStorage. Cookie cũ trước khi chuyển JWT cần đăng nhập lại.
 
@@ -22,11 +25,26 @@ Không gửi token trong JSON/Authorization/localStorage. Cookie cũ trước kh
 | GET `/payments/:orderId` | sid chính chủ | `{order}` |
 | POST `/payments/:orderId/reconcile` | sid chính chủ; `{}` | `{order}` sau truy vấn provider |
 | POST `/webhooks/payos` | SDK signature, không cookie | `{received:true,result}`; không cấp khi đơn không tồn tại |
-| POST `/admin/licenses/issue` | sid + UUID server allowlist; `{userId}` | 201 `{license}` (không raw key của người khác) |
+| GET `/admin/overview` | sid admin | `{stats:{users,activeLicenses,paidOrders,revenueVnd},catalog}` |
+| GET `/admin/users?q=&page=` | sid admin | `{items:[{id,email,createdAt,license,deviceCount}],total,page,limit}` |
+| GET `/admin/users/:id` | sid admin | `{user,license,devices,orders,audit}`; tối đa 25 đơn/50 audit gần đây |
+| GET `/admin/orders?q=&status=&page=` | sid admin | `{items:[{id,userId,email,orderCode,amountVnd,status,createdAt,paidAt,fulfillmentResult}],total,page,limit}` |
+| GET `/admin/audit?page=` | sid admin | `{items:[{id,eventType,actorEmail,targetEmail,licenseId,createdAt,details}],total,page,limit}` |
+| PATCH `/admin/account` | sid admin, kể cả first login; `{username,currentPassword,newPassword?}` | `{user}`; thu hồi mọi session cũ, Set-Cookie sid mới |
+| POST `/admin/licenses/issue` | sid admin; `{userId}` | 201 `{license}` (không raw key của người khác) |
 | POST `/admin/licenses/revoke` | admin; `{userId,status?,reason?}` | `{license}`; mặc định REVOKED |
+| POST `/admin/licenses/resume` | admin; `{userId}` | `{license}` ACTIVE; chỉ mở license SUSPENDED, không mở REVOKED |
 | POST `/products/:slug/import-ticket` | sid + dsid, license ACTIVE; `{}` | `{assetId,ticket}` TTL tối đa5 phút |
 | GET `/products/:slug/download` | sid + dsid, license ACTIVE | file gốc, cơ chế cũ |
 | GET `/downloads/stream/:ticket` | ticket một lần | native tải file; server kiểm tra lại auth/license/device |
+
+Admin first login có `mustChangeCredentials=true`: các route quản trị trả 403 `ADMIN_CREDENTIALS_CHANGE_REQUIRED`
+cho tới khi đổi mật khẩu ban đầu qua `/admin/account`. Username 3–64 ký tự `[a-z0-9][a-z0-9_.-]*`, chuẩn hóa chữ thường;
+mật khẩu mới 8–128 ký tự, khác mật khẩu ban đầu trong lần đổi đầu. Body không nhận trường role/userId.
+Sai mật khẩu hiện tại trả 403 `INVALID_CURRENT_PASSWORD`, username trùng trả 409 `USERNAME_TAKEN`.
+List dùng page từ 1, 25 bản ghi/trang; `q` tối đa 254 ký tự. Response admin chỉ chứa last4 và metadata;
+không trả full key license, password hash, public key thiết bị, payload thanh toán hoặc checkout URL.
+`/resume` trả 409 `LICENSE_REVOCATION_PERMANENT` cho REVOKED và `LICENSE_NOT_SUSPENDED` cho trạng thái khác.
 
 Order: `{id,orderCode,productCode,amountVnd,currency,status,checkoutUrl,qrCode,expiresAt,bankBin,accountNumber,accountName,description,createdAt,paidAt,fulfillmentResult}`.
 Giá cố định 2000 VND; `productCode` là `3DSMOOD_LIFETIME`. `expiresAt` là timestamp ISO, thời hạn khoảng 15 phút.
@@ -35,8 +53,8 @@ Giá cố định 2000 VND; `productCode` là `3DSMOOD_LIFETIME`. `expiresAt` l�
 Status PENDING/PAID/FAILED/CANCELLED/EXPIRED. Fulfillment LICENSE_ISSUED/ALREADY_LICENSED, null khi chưa trả.
 GET order còn trả `entitlement:null` hoặc `{id,type,status,deviceLimit:2,deviceCount}` bên trong order khi đã PAID.
 Endpoint `/licenses/me` và `/licenses/devices` chỉ trả license/key và fixed slots thuộc tài khoản hiện tại.
-Quyền sử dụng máy đã kích hoạt có thể đến từ `license` trong phiên thiết bị đã được server xác minh,
-kể cả khi `/licenses/me` trả null; frontend giữ hai trạng thái này riêng.
+Phiên thiết bị có thể xác nhận binding của license khác ngay cả khi `/licenses/me` trả null;
+thông tin đó không cấp quyền tải/import. Archive API vẫn yêu cầu license ACTIVE của chính tài khoản đang đăng nhập.
 Order ID của người khác =>404. POST create/reconcile không nhận trường ngoài body rỗng.
 
 Create tái sử dụng đơn PENDING chưa hết hạn, khóa theo account xuyên các API process. Đơn cũ hết hạn cho phép mua lại;
@@ -73,12 +91,11 @@ gắn auth session + account. Kể cả chữ ký sai cũng đốt nonce; activa
 `dsid` TTL15 phút, hash SHA256 lưu DB; frontend tự VERIFY định kỳ8 phút và khi mở lại.
 Logout xóa auth session, kéo theo dsid; revoke/suspend xóa dsid và chặn proof/ticket cũ.
 
-Theo D12, `VERIFY` cho phép tài khoản đã đăng nhập khôi phục slot ACTIVE có sẵn bằng cặp device UUID
-và public-key hash khớp, dù license thuộc tài khoản khác. Server kiểm chữ ký challenge trước khi chọn binding;
-VERIFY không tạo slot. Nếu máy có nhiều binding ACTIVE, ưu tiên license của tài khoản hiện tại.
-`ACTIVATE` vẫn yêu cầu tài khoản sở hữu license và key hợp lệ để thêm slot, tối đa hai slot cố định.
-Phiên ghi tài khoản sử dụng riêng với chủ sở hữu license; cookie/ticket không thể mượn sang tài khoản hoặc phiên khác.
-Response phiên cho tài khoản không sở hữu bỏ cả `key` và `last4`; `/licenses/me` không trả key của chủ license khác.
+Theo D12, `VERIFY` có thể khôi phục device binding ACTIVE bằng cặp UUID và public-key hash chính xác,
+kể cả khi license thuộc tài khoản khác; thao tác này không cho phép tải/import. Các route archive yêu cầu
+license ACTIVE của tài khoản hiện tại và ID khớp với device session. Ticket stream kiểm tra lại chủ sở hữu
+license. `ACTIVATE` vẫn yêu cầu key của tài khoản hiện tại để thêm slot, tối đa hai slot cố định.
+Response phiên của tài khoản không sở hữu bỏ cả `key` và `last4`; `/licenses/me` không trả key chủ cũ.
 
 Bridge envelope `{id,version:1,method,params}`. Method mới:
 `device.getIdentity` với `{}`, và `device.signChallenge` với `{challengeId,message}`.

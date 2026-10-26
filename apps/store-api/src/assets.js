@@ -63,7 +63,7 @@ export function assetRouter(cat, srcDir, { repository, sendArchive } = {}) {
            join licenses l on l.id=ds.license_id
            join license_devices d on d.id=ds.device_id and d.license_id=l.id
            where ds.user_id=t.user_id and ds.auth_session_id=t.auth_session_id
-           and ds.license_id=t.license_id and ds.device_id=t.device_id
+           and ds.license_id=t.license_id and ds.device_id=t.device_id and l.user_id=t.user_id
            and ds.expires_at>now() and s.expires_at>now() and l.status='ACTIVE') returning t.product_id`,
         [sha(req.params.ticket)]);
       const p = rows[0] && await find(rows[0].product_id);

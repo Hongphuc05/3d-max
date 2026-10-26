@@ -4,7 +4,7 @@ const id = 'a050d4c7-3898-4a0a-9bd2-10902797b937';
 const user = { id: 'fixture-account', email: 'buyer@example.test' };
 // All merchant/bank operations are mocked. This exercises the shipped React UI in Chromium.
 async function fixture(page, { expired = false, activatedHost = false } = {}) {
-  const state = { paid: false, creates: 0, reads: 0, user };
+  const state = { paid: false, creates: 0, reads: 0, user, keyGate: null, activeChecks: 0 };
   if (activatedHost) await page.addInitScript(() => {
     const listeners = [];
     const identity = { deviceId: '10c638cf-63d6-492f-8f03-d6d9868b72aa',
@@ -21,20 +21,23 @@ async function fixture(page, { expired = false, activatedHost = false } = {}) {
   });
   await page.route('**/api/**', async route => {
     const path = new URL(route.request().url()).pathname;
+    if (path === '/api/catalog/events') return route.fulfill({ status: 204, body: '' });
     const license = state.paid ? { id: 'license', type: 'LIFETIME', status: 'ACTIVE', key: 'fixture-key' } : null;
     let json;
     if (path === '/api/auth/me') json = { user: state.user };
+    else if (path === '/api/admin/catalog/sync/permission') json = { allowed: false };
     else if (path === '/api/health') json = { ok: true };
     else if (path === '/api/categories') json = [];
-    else if (path === '/api/catalog/version') json = {provider:'google_drive',version:0,state:'empty'};
+    else if (path === '/api/catalog/version') json = {provider:'r2',version:0,state:'empty'};
     else if (path === '/api/products') json = { items: [], total: 0 };
-    else if (path === '/api/licenses/me') json = { license };
+    else if (path === '/api/licenses/me') { if (state.paid && state.keyGate) await state.keyGate; json = { license }; }
     else if (path === '/api/licenses/devices') json = { devices: [] };
     else if (path === '/api/devices/challenge' && activatedHost) json = { challengeId: 'challenge', message: 'fixture-challenge' };
     else if (path === '/api/devices/verify' && activatedHost) json = { license: { id: 'owner-license', type: 'LIFETIME', status: 'ACTIVE' },
       device: { deviceId: '10c638cf-63d6-492f-8f03-d6d9868b72aa' }, expiresAt: new Date(Date.now() + 900000).toISOString() };
     else if (path === '/api/payments/product') json = { product: { amountVnd: 2000, available: true } };
     else if (path.startsWith('/api/payments/')) {
+      if (path.endsWith('/status')) state.activeChecks++;
       if (path.endsWith('/create')) state.creates++;
       else state.reads++;
       json = { order: { id, orderCode: 1000000000001, amountVnd: 2000, currency: 'VND',
@@ -67,8 +70,15 @@ test('buy, local QR, reload pending, polling confirms license and stops after cl
   await page.waitForTimeout(4500);
   expect(state.reads).toBe(reads);
   await page.getByRole('button', { name: 'Tiếp tục đơn thanh toán' }).click();
+  let releaseKey;
+  state.keyGate = new Promise(resolve => { releaseKey = resolve; });
   state.paid = true;
-  await expect(page.getByRole('heading', { name: 'Thanh toán 3DsMood Lifetime' })).toHaveCount(0, { timeout: 10000 });
+  await expect(page.getByRole('heading', { name: 'Thanh toán 3DsMood Lifetime' })).toHaveCount(0, { timeout: 2500 });
+  expect(state.activeChecks).toBeGreaterThan(0);
+  await expect(page.getByText('Thanh toán thành công. Đang tải key license từ máy chủ…', { exact: true })).toBeVisible();
+  await expect(page.getByText('fixture-key', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Mua Lifetime', exact: true })).toHaveCount(0);
+  releaseKey();
   await expect(page.getByText('fixture-key', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: '3DsMood Lifetime - Active' })).toBeVisible();
   await expect(page.getByText('Thiết bị đã gắn (0/2)', { exact: true })).toBeVisible();
@@ -83,17 +93,19 @@ test('forged return flags cannot grant a license, expired QR is hidden', async (
   await expect(page.getByRole('heading', { name: '3DsMood Lifetime - Active' })).toHaveCount(0);
 });
 
-test('activated plugin machine stays entitled for another account without owner key', async ({ page }) => {
+test('activated plugin machine does not grant another account downloads without its own license', async ({ page }) => {
   const state = await fixture(page, { activatedHost: true });
   await page.goto('/license');
-  await expect(page.getByRole('heading', { name: 'Máy này đã được kích hoạt', exact: true })).toBeVisible();
-  await expect(page.getByText('Thiết bị đã được xác minh. Có thể Download & import.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Máy này đã được kích hoạt bằng license của tài khoản khác', exact: true })).toBeVisible();
+  await expect(page.getByText('Tài khoản đang đăng nhập cần có license riêng để Download & import.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Mua Lifetime', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Sao chép mã license', exact: true })).toHaveCount(0);
   await expect(page.getByPlaceholder('3DM-…')).toHaveCount(0);
   state.user = { id: 'another-account', email: 'another@example.test' };
   await page.reload();
   await expect(page.getByText('another@example.test', { exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Máy này đã được kích hoạt', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Máy này đã được kích hoạt bằng license của tài khoản khác', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Mua Lifetime', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Sao chép mã license', exact: true })).toHaveCount(0);
   expect(state.creates).toBe(0);
 });

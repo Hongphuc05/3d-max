@@ -2,6 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { pollPayment } from './payment-poll.js';
 
+test('an open checkout checks immediately and refreshes every second while pending', async () => {
+  const delays = [];
+  let scheduled;
+  const stop = pollPayment({ fetchOrder: async () => ({ order: { status: 'PENDING' } }),
+    onOrder: () => {}, onError: assert.fail, onTimeout: assert.fail,
+    schedule: (fn, delay) => { scheduled = fn; delays.push(delay); return 1; }, unschedule: () => {} });
+  assert.deepEqual(delays, [0]);
+  await scheduled();
+  assert.deepEqual(delays, [0, 1000]);
+  stop();
+});
+
 test('polling is sequential, stops on PAID and aborts on cleanup', async () => {
   let scheduled, activeSignal, calls = 0;
   const orders = [];

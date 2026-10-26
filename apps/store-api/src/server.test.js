@@ -17,8 +17,9 @@ before(async () => {
   process.env.PAYOS_CLIENT_ID = '';
   process.env.PAYOS_API_KEY = '';
   process.env.PAYOS_CHECKSUM_KEY = '';
-  process.env.CATALOG_PROVIDER = 'google_drive';
-  process.env.GOOGLE_DRIVE_API_KEY = '';
+  process.env.CATALOG_PROVIDER = 'r2';
+  process.env.R2_READ_ACCESS_KEY_ID = '';
+  process.env.R2_READ_SECRET_ACCESS_KEY = '';
   const db = await import('./db.js'); pool = db.pool;
   await db.migrate();
   const { app } = await import('./server.js');
@@ -38,9 +39,9 @@ test('assembled API health and disabled payments work without model catalog', { 
     catalogAvailable: false, licensingAvailable: true, paymentsAvailable: false });
   assert.equal((await fetch(base + '/api/products')).status, 200);
   const status = await (await fetch(base + '/api/catalog/version')).json();
-  assert.equal(status.provider,'google_drive');
+  assert.equal(status.provider,'r2');
   assert.equal(status.state,'configuration_required');
-  assert.equal(JSON.stringify(status).includes('apiKey'),false);
+  assert.equal(JSON.stringify(status).includes('secretAccessKey'),false);
   assert.equal((await fetch(base + '/api/licenses/me')).status, 401);
   assert.equal((await (await fetch(base + '/api/payments/product')).json()).product.available, false);
   const webhook = await fetch(base + '/api/webhooks/payos', {

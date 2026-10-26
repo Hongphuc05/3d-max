@@ -142,6 +142,21 @@ export function createPaymentService({ pool, licenseService, config, provider })
       status: license.status, deviceLimit: 2, deviceCount: license.device_count } : null };
   }
 
+  async function check(userId, orderId) {
+    requireEnabled();
+    await withPaymentLock(pool, userId, async client => {
+      const order = await ownedOrder(client, userId, orderId);
+      if (order.status !== 'PENDING') return;
+      // An open checkout verifies payOS directly instead of waiting for the
+      // minute-long recovery sweep. Persist the claim to bound provider calls
+      // across browser tabs and API replicas, including when the provider fails.
+      const claimed = (await client.query(`update orders set reconciled_at=now() where id=$1
+        and (reconciled_at is null or reconciled_at < now()-interval '2 seconds') returning *`, [order.id])).rows[0];
+      if (claimed) await reconcileOrder(client, claimed);
+    }, { wait: false });
+    return get(userId, orderId);
+  }
+
   async function reconcilePending({ limit = 20 } = {}) {
     requireEnabled();
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw paymentError('INVALID_REQUEST');
@@ -166,7 +181,7 @@ export function createPaymentService({ pool, licenseService, config, provider })
   return {
     product: () => ({ name: '3DsMood Lifetime', licenseType: 'LIFETIME', amountVnd: LIFETIME_PRICE_VND,
       currency: 'VND', available: Boolean(config.enabled && provider) }),
-    create, webhook, get, reconcilePending,
+    create, webhook, get, check, reconcilePending,
     reconcile: async (userId, orderId) => {
       requireEnabled();
       return withPaymentLock(pool, userId, async (client) => {

@@ -12,6 +12,7 @@ import { createSyncWorker } from './r2/sync.js';
 import { createCatalogEventBus } from './r2/events.js';
 import { createArchiveSender } from './download-stream.js';
 import { catalogEventStream } from './r2-http.js';
+import { isAdminUser } from './admin/access.js';
 
 const empty = () => ({ products: [], categories: [], bySlug: new Map(), files: new Map(), version: 0 });
 export class LocalCatalogProvider {
@@ -31,10 +32,7 @@ export async function createCatalogRuntime({ pool, env = process.env, logger = c
   const repository=new R2CatalogRepository({pool,config});
   const eventBus=createCatalogEventBus({pool,logger});
   const provider=config.configured ? r2Provider || new R2Provider({config}) : null;
-  const canAdminSync=user=>{
-    const adminIds=new Set((env.LICENSE_ADMIN_USER_IDS || '').split(',').map(value=>value.trim().toLowerCase()).filter(Boolean));
-    return Boolean(user?.id && adminIds.has(String(user.id).toLowerCase()));
-  };
+  const canAdminSync=user=>isAdminUser(user,env) && !user.mustChangeCredentials;
   const worker=provider ? createSyncWorker({repository,provider,config,logger}) : null;
   const status=async()=>{
     const value=await repository.status();
@@ -104,8 +102,19 @@ export function catalogRouter(runtime) {
     if(!runtime.canAdminSync?.(req.user))return res.status(403).json({error:'FORBIDDEN'});
     if(!runtime.worker)return res.status(503).json({error:runtime.config.errors[0] || 'CATALOG_SYNC_UNAVAILABLE'});
     if(runtime.worker.syncing)return res.status(409).json({error:'SYNC_IN_PROGRESS'});
-    void runtime.worker.sync().catch(()=>{});
-    res.status(202).json({accepted:true});
+    let accepted=false;
+    try {
+      const result=await runtime.worker.sync({onStarted:()=>{
+        accepted=true;
+        res.status(202).json({accepted:true});
+      }});
+      if(!accepted) {
+        if(result?.skipped)return res.status(409).json({error:result.reason || 'SYNC_IN_PROGRESS'});
+        res.status(202).json({accepted:true});
+      }
+    } catch {
+      if(!accepted)res.status(503).json({error:'CATALOG_SYNC_FAILED'});
+    }
   });
   router.post('/admin/catalog/retry-dead-events',rateLimit({limit:5}),requireJson,requireAuth,async(req,res)=>{
     if(!runtime.canAdminSync?.(req.user))return res.status(403).json({error:'FORBIDDEN'});

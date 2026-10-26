@@ -1,0 +1,15 @@
+name = "3dsmood-r2-consumer"
+main = "worker.mjs"
+compatibility_date = "2026-10-25"
+workers_dev = false
+
+# Configure BACKEND_R2_EVENT_URL in Worker Settings > Variables and Secrets.
+# Configure R2_EVENT_WEBHOOK_SECRET as a secret, never a checked-in variable.
+[[queues.consumers]]
+queue = "3dsmood-r2-events"
+max_batch_size = 10
+max_batch_timeout = 1
+max_retries = 10
+max_concurrency = 5
+retry_delay = 30
+dead_letter_queue = "3dsmood-r2-events-dlq"

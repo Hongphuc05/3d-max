@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Pipes;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
@@ -26,6 +27,15 @@ internal static class WebViewTransportTests
     [STAThread]
     private static void Main()
     {
+        Assert(MaxWebViewForm.StartUrl == "https://app.3dsmood.local/", "shipping host starts from the bundled app, without a development server");
+        Assert(MaxWebViewForm.IsArchiveDependencyFailure(new FileNotFoundException("dependency", "SharpCompress, Version=0.50.7.0")), "missing archive assembly is classified without exposing its path");
+        Assert(MaxWebViewForm.IsArchiveDependencyFailure(new InvalidDataException("wrapped", new FileLoadException("dependency", "System.Memory.dll"))), "wrapped dependency load failures remain actionable");
+        Assert(!MaxWebViewForm.IsArchiveDependencyFailure(new FileNotFoundException("package", "package.bin")), "missing model package is not misreported as missing dependency");
+        AgentRejectsUnselectedTargets();
+        ImportWaitsForPendingTargetRefresh();
+        DeviceOperationsDoNotInheritCallerExecutionContext();
+        AssetImportFormatPriority();
+
         var probe = new TcpListener(IPAddress.Loopback, 0);
         probe.Start();
         var port = ((IPEndPoint)probe.LocalEndpoint).Port;
@@ -57,6 +67,7 @@ internal static class WebViewTransportTests
         Environment.SetEnvironmentVariable("WEBVIEW2_USER_DATA_FOLDER", Path.Combine(root, "browser"));
         var keyName = "3DsMood.WebViewTest." + Guid.NewGuid().ToString("N");
         MaxWebViewForm.StartUrl = origin;
+        MaxWebViewForm.UsePackagedApp = false;
         MaxWebViewForm.TrustedOrigins = origin;
         var identity = new DeviceIdentityService(root, keyName, true);
         using (var form = new MaxWebViewForm { Opacity = 0, ShowInTaskbar = false })
@@ -131,6 +142,94 @@ internal static class WebViewTransportTests
             catch (IOException) { System.Threading.Thread.Sleep(250); }
             catch (UnauthorizedAccessException) { System.Threading.Thread.Sleep(250); }
         }
+    }
+
+    private static void AssetImportFormatPriority()
+    {
+        var field = typeof(MaxWebViewForm).GetField("ImportExtensions", BindingFlags.NonPublic | BindingFlags.Static);
+        var extensions = field == null ? null : (string[])field.GetValue(null);
+        Assert(extensions != null && extensions.Length == 3
+            && extensions[0] == ".fbx" && extensions[1] == ".obj" && extensions[2] == ".max",
+            "asset import prefers FBX and OBJ before MAX when the archive contains alternatives");
+    }
+
+    private static void AgentRejectsUnselectedTargets()
+    {
+        var agent = PlatformAgent.Start();
+        var dispatches = 0;
+        var documentToken = new string('a', 32);
+        agent.SceneRequestReceived += (sender, args) =>
+        {
+            if (args.Method == "scene.targetInfo")
+                agent.PostResultJson(args.Id, Json.Serialize(new { scenePath = @"D:\First\Same.max", documentToken, objectCount = 3, selectedCount = 1 }));
+            else dispatches++;
+        };
+        var pid = System.Diagnostics.Process.GetCurrentProcess().Id;
+        var started = System.Diagnostics.Process.GetCurrentProcess().StartTime.ToUniversalTime().Ticks;
+        using (var pipe = new NamedPipeClientStream(".", PlatformAgent.PipeNameFor(pid), PipeDirection.InOut))
+        {
+            pipe.Connect(3000);
+            var writer = new StreamWriter(pipe) { AutoFlush = true };
+            writer.WriteLine(Json.Serialize(new { id = "old-client", path = Path.Combine(PlatformAgent.CacheRoot, "fixture.max") }));
+            var reply = Json.Deserialize<Dictionary<string, object>>(new StreamReader(pipe).ReadLine());
+            Assert(!(bool)reply["ok"] && (string)((Dictionary<string, object>)reply["error"])["code"] == "INVALID_PARAMS",
+                "actual agent pipe rejects legacy imports without explicit target identity");
+        }
+        var stale = Json.Deserialize<Dictionary<string, object>>(PlatformAgent.SendImportAsync(pid, "stale-target",
+            Path.Combine(PlatformAgent.CacheRoot, "fixture.max"), 1, @"D:\First\Same.max", documentToken).GetAwaiter().GetResult());
+        Assert(!(bool)stale["ok"] && (string)((Dictionary<string, object>)stale["error"])["code"] == "TARGET_SCENE_CHANGED",
+            "actual agent pipe rejects a stale target before scene dispatch");
+        Assert(dispatches == 0, "invalid or stale target requests cannot mutate a scene");
+        var infoTask = PlatformAgent.ReadSceneTargetAsync(new ImportTarget(pid, started, "Same.max - Autodesk 3ds Max 2022"));
+        var wait = System.Diagnostics.Stopwatch.StartNew();
+        while (!infoTask.IsCompleted && wait.ElapsedMilliseconds < 5000) { Application.DoEvents(); System.Threading.Thread.Sleep(5); }
+        var info = infoTask.GetAwaiter().GetResult();
+        Assert(info.ScenePath == @"D:\First\Same.max" && info.DocumentToken == documentToken,
+            "actual private agent metadata returns full file path and document generation from the UI adapter");
+    }
+
+    private static void ImportWaitsForPendingTargetRefresh()
+    {
+        var first = new ImportTarget(101, 1001, "Same.max", @"D:\First\Same.max", new string('a', 32));
+        var second = new ImportTarget(202, 2002, "Same.max", @"D:\Second\Same.max", new string('b', 32));
+        var visible = new[] { first };
+        var pending = new TaskCompletionSource<ImportTarget>();
+        var block = false;
+        var resolutions = 0;
+        using (var form = new MaxWebViewForm(() => visible, target =>
+        {
+            resolutions++;
+            return block ? pending.Task : Task.FromResult(target);
+        }))
+        {
+            Assert(Pump(form.CaptureImportTargetAsync()).ProcessId == 101, "single available Max is initially auto-selected");
+            block = true;
+            var timerRefresh = form.RefreshTargetsAsync();
+            visible = new[] { first, second };
+            var importing = form.CaptureImportTargetAsync();
+            Assert(!importing.IsCompleted, "import waits for the in-flight target refresh instead of reading cached Current");
+            pending.SetResult(first);
+            Assert(Pump(importing) == null, "second Max appearing during pending refresh requires explicit client choice");
+            Assert(resolutions == 2 && timerRefresh.IsCompleted, "concurrent target refresh callers share the pending metadata work");
+        }
+    }
+
+    private static T Pump<T>(Task<T> task)
+    {
+        var wait = System.Diagnostics.Stopwatch.StartNew();
+        while (!task.IsCompleted && wait.ElapsedMilliseconds < 5000) { Application.DoEvents(); System.Threading.Thread.Sleep(5); }
+        if (!task.IsCompleted) throw new TimeoutException("Test UI task did not complete");
+        return task.GetAwaiter().GetResult();
+    }
+
+    private static void DeviceOperationsDoNotInheritCallerExecutionContext()
+    {
+        var ambient = new System.Threading.AsyncLocal<string>();
+        ambient.Value = "webview-callback-context";
+        string observed = "not-run";
+        MaxWebViewForm.RunDeviceOperation(() => observed = ambient.Value).GetAwaiter().GetResult();
+        Assert(observed == null, "device operations do not inherit the WebView callback execution context");
+        ambient.Value = null;
     }
 
     private static async Task<Dictionary<string, object>> Request(WebView2 web, string id, string method, object parameters)

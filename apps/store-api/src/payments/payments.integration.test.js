@@ -33,7 +33,7 @@ test('real PostgreSQL payment transactions with mock payOS (isolated schema)', {
     for (const file of readdirSync(dir).filter(f => f.endsWith('.sql')).sort()) {
       await pool.query(readFileSync(new URL(file, dir), 'utf8'));
     }
-    let creates = [];
+    let creates = [], gets = 0;
     const remote = new Map();
     const provider = { verifyWebhook: sdk.verifyWebhook, isNotFound: e => e.status === 404,
       create: async input => {
@@ -42,7 +42,7 @@ test('real PostgreSQL payment transactions with mock payOS (isolated schema)', {
           paymentLinkId: `link_${input.orderCode}`, checkoutUrl: `https://pay.payos.vn/web/link_${input.orderCode}`, qrCode: 'fixture-qr', status: 'PENDING', bin: '970422', accountNumber: '123456', accountName: 'FIXTURE', description: input.description };
         remote.set(input.orderCode, { ...link, id: link.paymentLinkId, amountPaid: 0, amountRemaining: input.amount, transactions: [] });
         return link;
-      }, get: async code => { if (!remote.has(code)) throw Object.assign(new Error(), { status: 404 }); return remote.get(code); } };
+      }, get: async code => { gets++; if (!remote.has(code)) throw Object.assign(new Error(), { status: 404 }); return remote.get(code); } };
     const licenseService = { issueLifetimeLicense };
     const service = createPaymentService({ pool, licenseService, provider, config });
     const user = async () => (await pool.query('insert into users(email,password_hash) values($1,$2) returning id,email', [`${randomUUID()}@test.example`, 'not-a-real-password'])).rows[0];
@@ -58,6 +58,60 @@ test('real PostgreSQL payment transactions with mock payOS (isolated schema)', {
       assert.equal(a.accountNumber, '123456'); assert.ok(a.expiresAt);
       assert.equal(a.productCode, '3DSMOOD_LIFETIME');
       await assert.rejects(service.get((await user()).id, a.id), { code: 'ORDER_NOT_FOUND' });
+    });
+    await t.test('active checkout verifies bank payment immediately instead of waiting for the background sweep', async () => {
+      const owner = await user(), order = await service.create(owner);
+      remote.set(order.orderCode, { ...remote.get(order.orderCode), status: 'PAID', amountPaid: 2000, amountRemaining: 0,
+        transactions: [{ reference: `active_${order.orderCode}`, amount: 2000 }] });
+      assert.equal((await service.get(owner.id, order.id)).status, 'PENDING');
+      const confirmed = await service.check(owner.id, order.id);
+      assert.equal(confirmed.status, 'PAID');
+      assert.equal(confirmed.entitlement.status, 'ACTIVE');
+      assert.equal(await countLicenses(owner.id), 1);
+    });
+    await t.test('active checks coalesce provider calls across replicas and never reconcile another account order', async () => {
+      const owner = await user(), order = await service.create(owner), other = await user();
+      const replica = createPaymentService({ pool, provider, config, licenseService });
+      const before = gets;
+      await assert.rejects(service.check(other.id, order.id), { code: 'ORDER_NOT_FOUND' });
+      assert.equal(gets, before);
+      const checked = await Promise.all([service.check(owner.id, order.id), replica.check(owner.id, order.id), service.check(owner.id, order.id)]);
+      assert.ok(checked.every(result => result.status === 'PENDING'));
+      assert.equal(gets, before + 1);
+      await service.check(owner.id, order.id);
+      assert.equal(gets, before + 1);
+      await pool.query("update orders set reconciled_at=now()-interval '3 seconds' where id=$1", [order.id]);
+      remote.set(order.orderCode, { ...remote.get(order.orderCode), status: 'PAID', amountPaid: 2000, amountRemaining: 0,
+        transactions: [{ reference: `active_throttle_${order.orderCode}`, amount: 2000 }] });
+      assert.equal((await replica.check(owner.id, order.id)).status, 'PAID');
+      await service.check(owner.id, order.id);
+      assert.equal(gets, before + 2);
+    });
+    await t.test('active checkout never fulfills a mismatched provider payment and bounds retries after failure', async () => {
+      const owner = await user(), order = await service.create(owner);
+      remote.set(order.orderCode, { ...remote.get(order.orderCode), status: 'PAID', amountPaid: 2000, amountRemaining: 0,
+        transactions: [{ reference: `invalid_active_${order.orderCode}`, amount: 1 }] });
+      const before = gets;
+      await assert.rejects(service.check(owner.id, order.id), { code: 'PAYMENT_DATA_MISMATCH' });
+      assert.equal(await countLicenses(owner.id), 0);
+      assert.equal((await service.check(owner.id, order.id)).status, 'PENDING');
+      assert.equal(gets, before + 1);
+    });
+    await t.test('an active status request returns promptly while another provider check is still in flight', async () => {
+      const owner = await user(), order = await service.create(owner);
+      let entered, release, timeout;
+      const providerEntered = new Promise(resolve => { entered = resolve; });
+      const providerGate = new Promise(resolve => { release = resolve; });
+      const slow = createPaymentService({ pool, config, licenseService, provider: { ...provider,
+        get: async code => { entered(); await providerGate; return provider.get(code); } } });
+      const first = slow.check(owner.id, order.id);
+      await providerEntered;
+      try {
+        const next = await Promise.race([service.check(owner.id, order.id), new Promise((_resolve, reject) => {
+          timeout = setTimeout(() => reject(new Error('active status waited behind an in-flight provider call')), 1000);
+        })]);
+        assert.equal(next.status, 'PENDING');
+      } finally { clearTimeout(timeout); release(); await first; }
     });
     await t.test('old pending price cannot override the new fixed 2000 VND purchase', async () => {
       const owner = await user();

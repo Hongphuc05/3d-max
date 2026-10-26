@@ -4,6 +4,8 @@ import { Router } from 'express';
 import { pool } from './db.js';
 import { requireJson } from './security.js';
 import { SESSION_SECONDS, signSessionJwt, verifySessionJwt, validateJwtConfiguration } from './auth-jwt.js';
+import { publicUser } from './admin/access.js';
+import { inTransaction } from './licensing/service.js';
 
 const scryptAsync = promisify(scrypt);
 const COOKIE = 'sid';
@@ -51,14 +53,18 @@ function cookieOf(req, name) {
   return null;
 }
 
-async function startSession(req, res, userId) {
+export async function createSession(req, userId, db = pool) {
   const sessionId = randomBytes(32);
   const expires = new Date(Date.now() + SESSION_SECONDS * 1000);
   const token = await signSessionJwt(userId, sessionId, expires);
-  await pool.query(
+  await db.query(
     'insert into sessions (id, user_id, expires_at, user_agent) values ($1, $2, $3, $4)',
     [sessionId, userId, expires, String(req.headers['user-agent'] || '').slice(0, 300)],
   );
+  return { token, expires };
+}
+
+export function setSessionCookie(res, { token, expires }) {
   res.cookie(COOKIE, token, {
     httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/', expires,
   });
@@ -70,11 +76,11 @@ export async function currentUser(req) {
   const claims = await verifySessionJwt(token);
   if (!claims) return null;
   const { rows } = await pool.query(
-    `select u.id, u.email from sessions s join users u on u.id = s.user_id
+    `select u.id, u.email, u.role, u.username, u.must_change_credentials from sessions s join users u on u.id = s.user_id
      where s.id = $1 and s.user_id = $2 and s.expires_at > now()`, [claims.sessionId, claims.userId]);
-  // Keep the auth binding private: public /me only returns id and email.
+  // Read admin privileges from PostgreSQL on every request, never JWT claims.
   if (rows[0]) req.auth = { sessionId: claims.sessionId };
-  return rows[0] || null;
+  return rows[0] ? publicUser(rows[0]) : null;
 }
 
 export async function requireAuth(req, res, next) {
@@ -115,7 +121,7 @@ authRouter.post('/register', requireJson, requireAuthConfiguration, async (req, 
       if (e.code === '23505') return res.status(409).json({ error: 'EMAIL_TAKEN' });
       throw e;
     }
-    await startSession(req, res, user.id);
+    setSessionCookie(res, await createSession(req, user.id));
     res.status(201).json({ user });
   } catch (e) { next(e); }
 });
@@ -124,16 +130,25 @@ authRouter.post('/login', requireJson, requireAuthConfiguration, async (req, res
   try {
     const { email, password } = clean(req.body);
     if (blocked(email, req.ip)) return res.status(429).json({ error: 'TOO_MANY_ATTEMPTS' });
-    if (validate({ email, password })) return res.status(401).json({ error: 'INVALID_CREDENTIALS' });
-    const row = (await pool.query('select id, email, password_hash from users where email = $1', [email])).rows[0];
-    const ok = await verifyPassword(password, row ? row.password_hash : await dummyHash);
-    if (!row || !ok) {
+    if (email.length > 254 || !email || password.length < 1 || password.length > 128) {
+      addFail(email, req.ip);
+      return res.status(401).json({ error: 'INVALID_CREDENTIALS' });
+    }
+    const result = await inTransaction(async db => {
+      // Serialize session issuance with account credential changes. A login that
+      // checked the old password cannot create a session after a password reset.
+      const row = (await db.query(`select id,email,password_hash,role,username,must_change_credentials
+        from users where (role='USER' and email=$1) or username=$1 for share`, [email])).rows[0];
+      const ok = await verifyPassword(password, row ? row.password_hash : await dummyHash);
+      return row && ok ? { user: publicUser(row), session: await createSession(req, row.id, db) } : null;
+    });
+    if (!result) {
       addFail(email, req.ip);
       return res.status(401).json({ error: 'INVALID_CREDENTIALS' }); // cung 1 thong bao cho ca 2 truong hop
     }
     fails.delete(`e:${email}`);
-    await startSession(req, res, row.id);
-    res.json({ user: { id: row.id, email: row.email } });
+    setSessionCookie(res, result.session);
+    res.json({ user: result.user });
   } catch (e) { next(e); }
 });
 

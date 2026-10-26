@@ -4,8 +4,9 @@ import { pool } from '../db.js';
 import { requireAuth } from '../auth.js';
 import { requireJson } from '../security.js';
 import { uuid, objectBody, licenseError } from './errors.js';
-import { getLicenseByAccount, getActivatedDevices, publicLicense, issueLifetimeLicense, revokeLicense, inTransaction, audit } from './service.js';
+import { getLicenseByAccount, getActivatedDevices, publicLicense, issueLifetimeLicense, revokeLicense, resumeLicense, inTransaction, audit } from './service.js';
 import { createDeviceChallenge, activateDevice, verifyDevice, getDeviceSession } from './devices.js';
+import { requireAdmin } from '../admin/access.js';
 
 // Shared PostgreSQL counters apply across API instances. Fixed one-minute buckets.
 function limit(scope, maximum) {
@@ -46,6 +47,10 @@ export async function requireLicensedDevice(req, _res, next) {
   try {
     if (!req.user) throw licenseError('UNAUTHENTICATED', 401);
     const session = await getDeviceSession(req.user.id, sessionId(req), cookie(req));
+    const ownedLicense = await getLicenseByAccount(req.user.id);
+    if (ownedLicense?.status !== 'ACTIVE' || ownedLicense.id !== session.license.id) {
+      throw licenseError('LICENSE_REQUIRED', 403);
+    }
     req.license = session.license;
     req.licensedDevice = session.device;
     next();
@@ -74,14 +79,8 @@ deviceRouter.get('/session', async (req, res) => {
   res.json(await getDeviceSession(req.user.id, sessionId(req), cookie(req)));
 });
 
-function requireLicenseAdmin(req, _res, next) {
-  const admins = (process.env.LICENSE_ADMIN_USER_IDS || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean);
-  if (!admins.includes(req.user.id.toLowerCase())) return next(licenseError('FORBIDDEN', 403));
-  next();
-}
-
 export const adminLicenseRouter = Router();
-adminLicenseRouter.use(requireAuth, noStore, requireLicenseAdmin, limit('admin-license', 10));
+adminLicenseRouter.use(requireAuth, noStore, requireAdmin, limit('admin-license', 10));
 adminLicenseRouter.post('/issue', requireJson, async (req, res) => {
   const input = objectBody(req.body, ['userId']);
   const userId = uuid(input.userId, 'INVALID_USER_ID');
@@ -96,6 +95,10 @@ adminLicenseRouter.post('/revoke', requireJson, async (req, res) => {
   const input = objectBody(req.body, ['userId','status','reason']);
   const row = await revokeLicense(uuid(input.userId), req.user.id, input.status, input.reason);
   res.json({ license: publicLicense(row) });
+});
+adminLicenseRouter.post('/resume', requireJson, async (req, res) => {
+  const input = objectBody(req.body, ['userId']);
+  res.json({ license: publicLicense(await resumeLicense(uuid(input.userId), req.user.id)) });
 });
 
 // Start from server lifecycle, not import time (keeps test processes independent).

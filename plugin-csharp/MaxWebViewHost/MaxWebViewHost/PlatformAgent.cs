@@ -109,14 +109,37 @@ namespace MaxWebViewHost
             Dictionary<string, object> msg;
             try { msg = _json.Deserialize<Dictionary<string, object>>(line); }
             catch { return Err("INVALID_PARAMS", "JSON hỏng"); }
+            if (msg == null) return Err("INVALID_PARAMS", "JSON hỏng");
 
-            object idObj, pathObj;
+            object idObj, paramsObj, methodObj, versionObj, startedObj;
             msg.TryGetValue("id", out idObj);
-            msg.TryGetValue("path", out pathObj);
+            msg.TryGetValue("params", out paramsObj);
+            msg.TryGetValue("method", out methodObj);
+            msg.TryGetValue("version", out versionObj);
+            msg.TryGetValue("targetStartedTicks", out startedObj);
             var id = idObj as string;
+            var parameters = paramsObj as Dictionary<string, object>;
+            long started;
+            if (id == null || !IdRx.IsMatch(id) || !Equals(versionObj, 2) || parameters == null
+                || !long.TryParse(Convert.ToString(startedObj, System.Globalization.CultureInfo.InvariantCulture), out started))
+                return Err("INVALID_PARAMS", "Agent cần giao thức chọn scene phiên bản 2. Cập nhật plugin và mở lại tất cả 3ds Max.");
+            using (var process = System.Diagnostics.Process.GetCurrentProcess())
+                if (process.StartTime.ToUniversalTime().Ticks != started)
+                    return Err("TARGET_SCENE_CHANGED", "Process 3ds Max đã chọn đã đóng hoặc khởi động lại.");
+            if (Equals(methodObj, "sceneInfo") && parameters.Count == 0)
+                return await DispatchSceneAsync(id, "scene.targetInfo", parameters, TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+
+            object pathObj = null;
+            object expectedPathObj, expectedTokenObj;
+            parameters.TryGetValue("path", out pathObj);
+            parameters.TryGetValue("expectedScenePath", out expectedPathObj);
+            parameters.TryGetValue("expectedDocumentToken", out expectedTokenObj);
             var path = pathObj as string;
-            if (id == null || !IdRx.IsMatch(id) || string.IsNullOrEmpty(path))
-                return Err("INVALID_PARAMS", "Thiếu id/path");
+            Guid parsedToken;
+            if (!Equals(methodObj, "import") || parameters.Count != 3 || string.IsNullOrEmpty(path)
+                || !(expectedPathObj is string) || ((string)expectedPathObj).Length > 4096
+                || !(expectedTokenObj is string) || !Guid.TryParseExact((string)expectedTokenObj, "N", out parsedToken))
+                return Err("INVALID_PARAMS", "Thiếu định danh document đã chọn.");
 
             string full;
             try { full = Path.GetFullPath(path); } catch { return Err("INVALID_PARAMS", "Path không hợp lệ"); }
@@ -126,6 +149,14 @@ namespace MaxWebViewHost
                 || !File.Exists(full))
                 return Err("INVALID_PARAMS", "File import không hợp lệ");
 
+            return await DispatchSceneAsync(id, "asset.importFile", new Dictionary<string, object>
+            {
+                { "path", full }, { "expectedScenePath", expectedPathObj }, { "expectedDocumentToken", expectedTokenObj }
+            }, ImportTimeout).ConfigureAwait(false);
+        }
+
+        private async Task<string> DispatchSceneAsync(string id, string method, Dictionary<string, object> parameters, TimeSpan timeout)
+        {
             var handler = SceneRequestReceived;
             if (handler == null) return Err("HOST_NOT_READY", "Agent chưa có handler");
 
@@ -133,12 +164,16 @@ namespace MaxWebViewHost
             if (!_pending.TryAdd(id, tcs)) return Err("INVALID_PARAMS", "Id trùng");
             try
             {
-                var p = new Dictionary<string, object> { { "path", full } };
-                _ui.BeginInvoke(new Action(() => handler(this, new SceneRequestEventArgs
+                _ui.BeginInvoke(new Action(() =>
                 {
-                    Id = id, Method = "asset.importFile", ParamsJson = _json.Serialize(p), Params = p
-                })));
-                var done = await Task.WhenAny(tcs.Task, Task.Delay(ImportTimeout)).ConfigureAwait(false);
+                    try
+                    {
+                        handler(this, new SceneRequestEventArgs
+                        { Id = id, Method = method, ParamsJson = _json.Serialize(parameters), Params = parameters });
+                    }
+                    catch { tcs.TrySetResult(Err("MAX_OPERATION_FAILED", "Adapter không thực hiện được yêu cầu scene.")); }
+                }));
+                var done = await Task.WhenAny(tcs.Task, Task.Delay(timeout)).ConfigureAwait(false);
                 return done == tcs.Task ? tcs.Task.Result : Err("TIMEOUT", "Max đích không phản hồi");
             }
             finally { TaskCompletionSource<string> _; _pending.TryRemove(id, out _); }
@@ -171,16 +206,49 @@ namespace MaxWebViewHost
 
         /// <summary>Gửi lệnh import tới Max pid. Trả về envelope JSON {"ok":..,"result"|"error":..}.
         /// Ném TimeoutException nếu không kết nối được (Max đó đã đóng / chưa có agent) hoặc không phản hồi.</summary>
-        public static async Task<string> SendImportAsync(int pid, string id, string path)
+        public static Task<string> SendImportAsync(int pid, string id, string path, long targetStartedTicks, string expectedScenePath, string expectedDocumentToken)
+        {
+            return SendRequestAsync(pid, new Dictionary<string, object>
+            {
+                { "id", id }, { "version", 2 }, { "method", "import" }, { "targetStartedTicks", targetStartedTicks },
+                { "params", new Dictionary<string, object> { { "path", path }, { "expectedScenePath", expectedScenePath }, { "expectedDocumentToken", expectedDocumentToken } } }
+            }, ImportTimeout + TimeSpan.FromSeconds(15));
+        }
+
+        public static Task<string> SendSceneInfoAsync(int pid, long targetStartedTicks)
+        {
+            return SendRequestAsync(pid, new Dictionary<string, object>
+            {
+                { "id", Guid.NewGuid().ToString("N") }, { "version", 2 }, { "method", "sceneInfo" },
+                { "targetStartedTicks", targetStartedTicks }, { "params", new Dictionary<string, object>() }
+            }, TimeSpan.FromSeconds(3));
+        }
+
+        internal static async Task<ImportTarget> ReadSceneTargetAsync(ImportTarget process)
+        {
+            var reply = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(
+                await SendSceneInfoAsync(process.ProcessId, process.StartedTicks).ConfigureAwait(false));
+            object ok, value;
+            if (reply == null || !reply.TryGetValue("ok", out ok) || !Equals(ok, true) || !reply.TryGetValue("result", out value))
+                throw new InvalidDataException("Target agent metadata unavailable.");
+            var result = value as Dictionary<string, object>;
+            object path, token;
+            Guid parsed;
+            if (result == null || !result.TryGetValue("scenePath", out path) || !(path is string) || ((string)path).Length > 4096
+                || !result.TryGetValue("documentToken", out token) || !(token is string) || !Guid.TryParseExact((string)token, "N", out parsed))
+                throw new InvalidDataException("Target agent metadata invalid.");
+            return new ImportTarget(process.ProcessId, process.StartedTicks, process.SceneTitle, (string)path, (string)token);
+        }
+
+        private static async Task<string> SendRequestAsync(int pid, Dictionary<string, object> request, TimeSpan timeout)
         {
             using (var c = new NamedPipeClientStream(".", PipeNameFor(pid), PipeDirection.InOut, PipeOptions.Asynchronous))
             {
-                await c.ConnectAsync(3000).ConfigureAwait(false);
+                await c.ConnectAsync(1000).ConfigureAwait(false);
                 var w = new StreamWriter(c) { AutoFlush = true };
-                await w.WriteLineAsync(new JavaScriptSerializer().Serialize(
-                    new Dictionary<string, object> { { "id", id }, { "path", path } })).ConfigureAwait(false);
+                await w.WriteLineAsync(new JavaScriptSerializer().Serialize(request)).ConfigureAwait(false);
                 var read = new StreamReader(c).ReadLineAsync();
-                var done = await Task.WhenAny(read, Task.Delay(ImportTimeout + TimeSpan.FromSeconds(15))).ConfigureAwait(false);
+                var done = await Task.WhenAny(read, Task.Delay(timeout)).ConfigureAwait(false);
                 if (done != read) throw new TimeoutException();
                 return read.Result;
             }

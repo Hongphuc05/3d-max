@@ -29,8 +29,8 @@ writeFileSync(path.join(dir, 'catalog.json'), JSON.stringify({ products: [{
 }] }));
 
 let server, base;
-let driveFetches = 0;
-let driveModel = { id: 'abc123abc123', slug, archiveId: 'private-drive-id', archiveExtension: '.rar', canDownload: true };
+let storageFetches = 0;
+let catalogModel = { id: 'abc123abc123', slug, archiveId: 'private-storage-key', archiveExtension: '.rar', canDownload: true };
 before(async () => {
   if (!cleanupDatabase) return;
   await migrate();
@@ -41,9 +41,9 @@ before(async () => {
   app.use('/api/devices', deviceRouter);
   app.use('/api/admin/licenses', adminLicenseRouter);
   app.use('/api', assetRouter(load(path.join(dir, 'catalog.json')), dir));
-  app.use('/drive-api', assetRouter(null, null, {
-    repository: { find: async id => [slug, 'abc123abc123'].includes(id) ? driveModel : null },
-    sendArchive: async (_req, res) => { driveFetches++; res.send('DRIVE-STREAM'); },
+  app.use('/r2-api', assetRouter(null, null, {
+    repository: { find: async id => [slug, 'abc123abc123'].includes(id) ? catalogModel : null },
+    sendArchive: async (_req, res) => { storageFetches++; res.send('R2-STREAM'); },
   }));
   app.use(errorHandler);
   await new Promise(resolve => { server = app.listen(0, '127.0.0.1', resolve); });
@@ -111,30 +111,30 @@ async function ticket(c) {
 }
 const stream = value => fetch(`${base}/api/downloads/stream/${value}`);
 
-dbTest('Drive transport authorizes before fetching and redeems one ticket once', async () => {
+dbTest('R2 transport authorizes before fetching and redeems one ticket once', async () => {
   const anon = client(), unlicensed = await account(), owner = await licensed();
-  const route = `/drive-api/products/${slug}`;
+  const route = `/r2-api/products/${slug}`;
   for (const [c, status] of [[anon,401],[unlicensed,403]]) {
     assert.equal((await c.call('GET', route+'/download')).status,status);
     assert.equal((await c.call('POST', route+'/import-ticket',{})).status,status);
   }
-  assert.equal(driveFetches,0);
+  assert.equal(storageFetches,0);
   const bad=client();bad.cookies.set('sid','invalid.jwt.signature');
   assert.equal((await bad.call('GET',route+'/download')).status,401);
   const issued=await owner.call('POST',route+'/import-ticket',{});
   assert.equal(issued.status,200);
   const value=(await issued.json()).ticket;
-  const results=await Promise.all([1,2].map(()=>fetch(`${base}/drive-api/downloads/stream/${value}`)));
+  const results=await Promise.all([1,2].map(()=>fetch(`${base}/r2-api/downloads/stream/${value}`)));
   assert.deepEqual(results.map(r=>r.status).sort(),[200,404]);
-  assert.equal(driveFetches,1);
+  assert.equal(storageFetches,1);
   const deleted=(await (await owner.call('POST',route+'/import-ticket',{})).json()).ticket;
-  driveModel=null;
-  assert.equal((await fetch(`${base}/drive-api/downloads/stream/${deleted}`)).status,404);
-  assert.equal(driveFetches,1);
-  driveModel={id:'abc123abc123',slug,canDownload:false};
+  catalogModel=null;
+  assert.equal((await fetch(`${base}/r2-api/downloads/stream/${deleted}`)).status,404);
+  assert.equal(storageFetches,1);
+  catalogModel={id:'abc123abc123',slug,canDownload:false};
   assert.equal((await owner.call('POST',route+'/import-ticket',{})).status,403);
   assert.equal((await owner.call('GET',route+'/download')).status,403);
-  assert.equal(driveFetches,1);
+  assert.equal(storageFetches,1);
 });
 
 dbTest('download and tickets require login plus licensed device proof', async () => {
@@ -200,7 +200,7 @@ dbTest('device cookie cannot be borrowed by another account or another auth sess
   assert.equal((await pool.query('select count(*) from license_devices where license_id=$1', [c.license.id])).rows[0].count, '1');
 });
 
-dbTest('activated machine retains entitlement across accounts without revealing the owner key or adding slots', async () => {
+dbTest('activated machine does not grant downloads or imports to an account without its own license', async () => {
   const owner = await licensed(), guest = await account(), unrelated = await account();
   guest.cookies.set('dsid', owner.cookies.get('dsid'));
   assert.equal((await ticketResponse(guest)).status, 403, 'a copied cookie is not a machine proof');
@@ -215,20 +215,30 @@ dbTest('activated machine retains entitlement across accounts without revealing 
   assert.equal((await (await guest.call('GET', '/api/licenses/me')).json()).license, null);
   assert.deepEqual((await (await guest.call('GET', '/api/licenses/devices')).json()).devices, []);
   assert.equal((await (await owner.call('GET', '/api/licenses/me')).json()).license.key, owner.key);
-  assert.equal((await guest.call('GET', `/api/products/${slug}/download`)).status, 200);
-  assert.equal((await stream(await ticket(guest))).status, 200);
+  const beforeDeniedRequest = storageFetches;
+  assert.equal((await guest.call('GET', `/api/products/${slug}/download`)).status, 403);
+  assert.equal((await ticketResponse(guest)).status, 403);
+  assert.equal(storageFetches, beforeDeniedRequest, 'an account without its own license must not read an archive');
+
+  // A ticket issued before the ownership gate was deployed must also fail closed.
+  const oldTicket = randomBytes(32).toString('base64url');
+  const legacyDeviceSession = (await pool.query('select auth_session_id,license_id,device_id from device_sessions where user_id=$1', [guest.user.id])).rows[0];
+  await pool.query(`insert into import_tickets (id,user_id,product_id,expires_at,auth_session_id,license_id,device_id)
+    values ($1,$2,$3,now()+interval '5 minutes',$4,$5,$6)`,
+  [sha(oldTicket), guest.user.id, 'abc123abc123', legacyDeviceSession.auth_session_id, legacyDeviceSession.license_id, legacyDeviceSession.device_id]);
+  assert.equal((await stream(oldTicket)).status, 404);
+  assert.equal(storageFetches, beforeDeniedRequest);
   assert.equal((await pool.query('select count(*) from license_devices where license_id=$1', [owner.license.id])).rows[0].count, '1');
   assert.equal((await pool.query('select count(*) from licenses where user_id=$1', [guest.user.id])).rows[0].count, '0');
   unrelated.cookies.set('dsid', guest.cookies.get('dsid'));
   assert.equal((await ticketResponse(unrelated)).status, 403);
-  const value = await ticket(guest);
   await guest.call('POST', '/api/auth/logout', {});
-  assert.equal((await stream(value)).status, 404);
+  assert.equal((await stream(oldTicket)).status, 404);
   await guest.call('POST', '/api/auth/login', { email: guest.user.email, password: 'password-fixture-only' });
   await activate(guest, owner.pc, 'VERIFY');
-  const revokeTicket = await ticket(guest);
+  assert.equal((await ticketResponse(guest)).status, 403);
+  assert.equal((await guest.call('GET', `/api/products/${slug}/download`)).status, 403);
   await revokeLicense(owner.user.id, owner.user.id);
-  assert.equal((await stream(revokeTicket)).status, 404);
   assert.equal((await ticketResponse(guest)).status, 403);
   assert.equal((await guest.call('GET', '/api/devices/session')).status, 403);
 });

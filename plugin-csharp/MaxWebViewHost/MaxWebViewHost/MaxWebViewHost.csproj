@@ -66,9 +66,13 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="MaxWebViewForm.cs" />
+    <Compile Include="ImportTargetSelection.cs" />
     <Compile Include="ArchivePackage.cs" />
     <Compile Include="BridgePolicy.cs" />
     <Compile Include="DeviceIdentityService.cs" />
+    <Compile Include="PluginConfiguration.cs" />
+    <Compile Include="PackagedAppRuntime.cs" />
+    <Compile Include="SessionCookieStore.cs" />
     <Compile Include="PlatformAgent.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

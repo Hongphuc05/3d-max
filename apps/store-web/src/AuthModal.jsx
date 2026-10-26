@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from './auth.jsx';
 
 const MESSAGES = {
-  INVALID_CREDENTIALS: 'Email hoặc mật khẩu không đúng.',
+  INVALID_CREDENTIALS: 'Email, tên đăng nhập hoặc mật khẩu không đúng.',
   TOO_MANY_ATTEMPTS: 'Thử sai quá nhiều lần. Vui lòng đợi 15 phút rồi thử lại.',
   EMAIL_TAKEN: 'Email này đã được đăng ký.',
   INVALID_EMAIL: 'Email không hợp lệ.',
@@ -46,9 +46,11 @@ export default function AuthModal({ onClose }) {
               className={`flex-1 rounded py-2 ${mode === m ? 'bg-accent text-accent-ink' : 'text-mute'}`}>{label}</button>
           ))}
         </div>
-        <input className={input} type="email" required autoFocus autoComplete="email" placeholder="Email"
+        <input className={input} type={mode === 'login' ? 'text' : 'email'} required autoFocus
+          autoComplete={mode === 'login' ? 'username' : 'email'} aria-label={mode === 'login' ? 'Email hoặc tên đăng nhập' : 'Email'}
+          placeholder={mode === 'login' ? 'Email hoặc tên đăng nhập' : 'Email'} maxLength={254}
           value={email} onChange={(e) => setEmail(e.target.value)} />
-        <input className={input} type="password" required minLength={8} maxLength={128} placeholder="Mật khẩu (tối thiểu 8 ký tự)"
+        <input className={input} type="password" required minLength={mode === 'login' ? 1 : 8} maxLength={128} placeholder={mode === 'login' ? 'Mật khẩu' : 'Mật khẩu (tối thiểu 8 ký tự)'}
           autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
           value={password} onChange={(e) => setPassword(e.target.value)} />
         {error && <p role="alert" className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}

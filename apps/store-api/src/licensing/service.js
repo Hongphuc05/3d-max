@@ -114,3 +114,15 @@ export async function revokeLicense(userId, actorUserId, status = 'REVOKED', rea
     return result;
   });
 }
+
+export async function resumeLicense(userId, actorUserId) {
+  return inTransaction(async db => {
+    const row = (await db.query('select * from licenses where user_id=$1 for update', [uuid(userId)])).rows[0];
+    if (!row) throw licenseError('LICENSE_NOT_FOUND', 404);
+    if (row.status === 'REVOKED') throw licenseError('LICENSE_REVOCATION_PERMANENT', 409);
+    if (row.status !== 'SUSPENDED') throw licenseError('LICENSE_NOT_SUSPENDED', 409);
+    const active = (await db.query("update licenses set status='ACTIVE',revoked_at=null where id=$1 returning *", [row.id])).rows[0];
+    await audit(db, uuid(actorUserId), row.id, 'LICENSE_RESUMED');
+    return active;
+  });
+}

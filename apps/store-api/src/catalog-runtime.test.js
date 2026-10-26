@@ -105,7 +105,13 @@ test('manual R2 reconciliation is restricted to server-allowlisted administrator
   const previous=env.LICENSE_ADMIN_USER_IDS;env.LICENSE_ADMIN_USER_IDS=user.id;
   try{
     assert.deepEqual(await (await permission(cookie)).json(),{allowed:true});
-    assert.equal((await call(cookie)).status,202);await runtime.worker.sync();
+    const lock=await runtime.repository.acquireLock();
+    try {
+      const busy=await call(cookie);
+      assert.equal(busy.status,409);
+      assert.deepEqual(await busy.json(),{error:'SYNC_IN_PROGRESS'});
+    } finally {await lock.release();}
+    assert.equal((await call(cookie)).status,202);
   }finally{
     if(previous===undefined)delete env.LICENSE_ADMIN_USER_IDS;else env.LICENSE_ADMIN_USER_IDS=previous;
   }
@@ -150,4 +156,18 @@ test('unambiguous full-path folder rename retains the existing model ID', {skip:
   assert.equal(after.id,before.id);assert.equal(after.folderPath,'Renamed/Seat');
   const categories=await (await fetch(base+'/api/categories/tree')).json();
   assert.equal(categories[0].path,'Renamed');
+});
+
+test('optional webhook reconciliation retains model IDs across full-path folder renames', {skip:!enabled},async()=>{
+  source=[object('3DSMOOD/Original/Seat/Seat.JPG','same-preview'),object('3DSMOOD/Original/Seat/Seat.RAR','same-archive')];
+  await runtime.worker.sync();
+  const before=(await (await fetch(base+'/api/models')).json()).items[0];
+  source=[object('3DSMOOD/Renamed/Seat/Seat.JPG','same-preview'),object('3DSMOOD/Renamed/Seat/Seat.RAR','same-archive')];
+  const event={account:env.R2_ACCOUNT_ID,bucket:env.R2_BUCKET,action:'PutObject',
+    object:{key:'3DSMOOD/Renamed/Seat/Seat.JPG',size:42,eTag:'same-preview'},eventTime:new Date().toISOString()};
+  await runtime.repository.ingestEvents([event]);
+  const result=await runtime.worker.processPending();
+  assert.equal(result.processed,1);
+  const after=(await (await fetch(base+'/api/models')).json()).items[0];
+  assert.equal(after.id,before.id);assert.equal(after.folderPath,'Renamed/Seat');
 });

@@ -20,7 +20,7 @@ export function createArchiveSender(provider, { maxConcurrent = 4, timeoutMs = 3
       const result = await provider.openDownload(model, { signal: controller.signal });
       upstream = result.data;
       if (controller.signal.aborted) throw failure('DOWNLOAD_CANCELLED', 499);
-      if (result.status && result.status !== 200) throw failure('DRIVE_DOWNLOAD_FAILED', 502);
+      if (result.status && result.status !== 200) throw failure('STORAGE_DOWNLOAD_FAILED', 502);
       const length = result.headers?.get?.('content-length') ?? result.headers?.['content-length'];
       const expected = /^\d+$/.test(String(length)) ? BigInt(length) : model.size != null ? BigInt(model.size) : null;
       let received = 0n;

@@ -7,11 +7,6 @@ import { isMaxHost } from './integrations/3dsmax/bridge.js';
 import { enqueue, useJob } from './queue.js';
 import { useLicense } from './license.jsx';
 
-const ICONS = {
-  Architecture: 'home', Bathroom: 'bathroom', Childroom: 'children-park', Decoration: 'decoration',
-  Furniture: 'Furniture', Kitchen: 'Kitchen', Lighting: 'Lighting', Material: 'Material',
-  'Other models': 'othermodel', Plants: 'plant', Technology: 'tech',
-};
 export const rendererLabel = (r) => ({ vray: 'V-Ray', corona: 'Corona' }[r] || r);
 export const subKey = (c, s) => `${c}/${s}`;
 
@@ -27,27 +22,30 @@ const toggle = (set, keys, on) => {
   return next;
 };
 
-function FolderFilter({ folder, parent, subs, setSubs, open, setOpen }) {
+function FolderFilter({ folder, parent, ancestors = [], subs, setSubs, open, setOpen }) {
   const key = categoryKey(folder, parent);
   const keys = categoryKeys(folder, parent);
   const selected = keys.filter(value => subs.has(value)).length;
   const children = folder.children || [];
   const expanded = open.has(key);
+  // Removing a child also removes broad ancestor selections; sibling selections
+  // remain, so an ancestor filter cannot silently select that child again.
+  const select = on => setSubs(toggle(subs, on ? keys : [...keys, ...ancestors], on));
   return (
     <li>
       <div className="flex items-center gap-2 rounded-md px-1.5 py-1.5 text-sm hover:bg-raised">
         <Check checked={selected === keys.length} partial={selected > 0 && selected < keys.length}
-          onChange={() => setSubs(toggle(subs, keys, selected < keys.length))} />
+          onChange={() => select(selected < keys.length)} />
         <button className="flex min-w-0 flex-1 items-center gap-2 text-left" aria-expanded={children.length ? expanded : undefined}
-          onClick={() => children.length ? setOpen(toggle(open, [key], !expanded)) : setSubs(toggle(subs, [key], !subs.has(key)))}>
-          {ICONS[folder.name] && <img src={`/categories/${ICONS[folder.name]}.svg`} alt="" className="size-4 opacity-60 invert" />}
+          onClick={() => children.length ? setOpen(toggle(open, [key], !expanded)) : select(!subs.has(key))}>
+          <Icon name="cube" className="size-4 shrink-0 text-mute" />
           <span className="flex-1 truncate" title={folder.path || folder.name}>{folder.name}</span>
           <span className="font-mono text-[10px] text-mute">{folder.count}</span>
           {children.length > 0 && <Icon name="chevron" className={`size-3.5 text-mute transition ${expanded ? 'rotate-90' : ''}`} />}
         </button>
       </div>
       {expanded && children.length > 0 && <ul className="mb-1 ml-3 border-l border-line pl-1">
-        {children.map(child => <FolderFilter key={categoryKey(child, key)} folder={child} parent={key}
+        {children.map(child => <FolderFilter key={categoryKey(child, key)} folder={child} parent={key} ancestors={[...ancestors, key]}
           subs={subs} setSubs={setSubs} open={open} setOpen={setOpen} />)}
       </ul>}
     </li>
@@ -92,19 +90,21 @@ export function Filters({ categories, subs, setSubs, renderers, setRenderers, re
 // Tren trinh duyet khong co Download (O7) -> component nay khong render.
 export function DownloadButton({ p, onLogin, big }) {
   const { user } = useAuth();
-  const { canImport, loading, setOpen } = useLicense();
+  const { canImport, license, loading, setOpen } = useLicense();
   const job = useJob(p.slug);
   const base = `w-full rounded-md font-bold transition disabled:cursor-default ${big ? 'py-3 text-sm' : 'py-1.5 text-xs'}`;
   const solid = `${base} bg-accent text-accent-ink hover:brightness-110`;
   const ghost = `${base} border border-line text-mute`;
   const go = (e) => { e.stopPropagation(); if (canImport) enqueue(p); else setOpen(true); };
 
-  if (p.downloadable === false) return <button disabled className={ghost}>Tạm không thể tải</button>;
+  if (p.downloadable === false || (p.status && p.status !== 'ready')) return <button disabled className={ghost}>Tạm không thể tải</button>;
   if (user === undefined) return <button disabled className={ghost}>…</button>;
   if (!user) return <button onClick={(e) => { e.stopPropagation(); onLogin(); }} className={ghost + ' hover:text-fg'}>Đăng nhập để tải</button>;
   if (job?.status === 'queued') return <button disabled className={ghost}>Trong hàng đợi</button>;
   if (job?.status === 'running') return <button disabled className={`${ghost} animate-pulse text-accent`}>Đang tải…</button>;
-  if (!canImport) return <button onClick={(e) => { e.stopPropagation(); setOpen(true); }} className={ghost + ' hover:text-fg'}>{loading ? 'Đang xác minh license…' : 'Kích hoạt license để tải'}</button>;
+  if (!canImport) return <button onClick={(e) => { e.stopPropagation(); setOpen(true); }} className={ghost + ' hover:text-fg'}>
+    {loading ? 'Đang xác minh license…' : license?.status === 'ACTIVE' ? 'Kích hoạt license để tải' : license ? 'License không hoạt động' : 'Mua license để tải'}
+  </button>;
   if (job?.status === 'failed') return <button onClick={go} className={`${base} border border-danger/50 text-danger hover:bg-danger/10`}>Lỗi · Thử lại</button>;
   if (job?.status === 'done') return <button onClick={go} className={`${base} border border-accent/50 text-accent hover:bg-accent/10`}>✓ Đã import · Lại</button>;
   return <button onClick={go} className={solid}>{big ? 'Download & import vào 3ds Max' : 'Download'}</button>;
@@ -120,7 +120,15 @@ function Preview({ source, name, lazy = false }) {
     className={`aspect-square size-full object-contain transition duration-300 group-hover:scale-105 ${loaded ? 'opacity-100' : 'opacity-0'}`} />;
 }
 
+const availabilityLabels = {
+  missing_preview: 'Thiếu ảnh preview',
+  missing_archive: 'Thiếu file archive',
+  conflict: 'Cần kiểm tra file trùng',
+};
+
 export function Card({ p, active, onOpen, onLogin }) {
+  const unavailable = p.downloadable === false || Boolean(p.status && p.status !== 'ready');
+  const availability = availabilityLabels[p.status] || (unavailable ? 'Model chưa thể tải' : null);
   return (
     <div className={`group flex flex-col overflow-hidden rounded-lg border bg-panel transition ${active ? 'border-accent' : 'border-line hover:border-mute/60'}`}>
       <button onClick={() => onOpen(p)} className="relative aspect-square overflow-hidden bg-white">
@@ -138,7 +146,8 @@ export function Card({ p, active, onOpen, onLogin }) {
         </div>
       </button>
       <div className="p-2">
-        {isMaxHost() ? <DownloadButton p={p} onLogin={onLogin} /> : <div className="font-mono text-xs font-bold text-accent">Trong license Lifetime</div>}
+        {availability && <div role="status" className="mb-2 rounded border border-warn/30 bg-warn/10 px-2 py-1 font-mono text-[11px] font-bold text-warn">{availability}</div>}
+        {isMaxHost() ? <DownloadButton p={p} onLogin={onLogin} /> : !unavailable && <div className="font-mono text-xs font-bold text-accent">Trong license Lifetime</div>}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import { paymentError } from './validation.js';
 
-export async function withPaymentLock(pool, userId, work) {
+export async function withPaymentLock(pool, userId, work, { wait = true } = {}) {
   const client = await pool.connect();
   let locked = false;
   let releaseError;
@@ -8,7 +8,11 @@ export async function withPaymentLock(pool, userId, work) {
   client.on('error', connectionError);
   try {
     // Session lock spans the durable insert and remote call, including across API instances.
-    await client.query("select pg_advisory_lock(hashtextextended('payment:' || $1, 0))", [userId]);
+    if (wait) await client.query("select pg_advisory_lock(hashtextextended('payment:' || $1, 0))", [userId]);
+    else {
+      const result = await client.query("select pg_try_advisory_lock(hashtextextended('payment:' || $1, 0)) as locked", [userId]);
+      if (!result.rows[0].locked) return;
+    }
     locked = true;
     return await work(client);
   } finally {

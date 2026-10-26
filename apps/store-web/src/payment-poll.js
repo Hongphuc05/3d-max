@@ -1,6 +1,6 @@
 // One request at a time; finite retries and a timeout even on a stalled network.
 export function pollPayment({ fetchOrder, onOrder, onError, onTimeout,
-  interval = 4000, maxAttempts = 300, schedule = setTimeout, unschedule = clearTimeout }) {
+  interval = 1000, maxAttempts = 1200, schedule = setTimeout, unschedule = clearTimeout }) {
   let cancelled = false;
   let attempts = 0;
   let controller;
@@ -19,6 +19,6 @@ export function pollPayment({ fetchOrder, onOrder, onError, onTimeout,
     finally { clearTimeout(timeout); }
     if (!cancelled) timer = schedule(poll, interval);
   };
-  timer = schedule(poll, interval);
+  timer = schedule(poll, 0);
   return () => { cancelled = true; unschedule(timer); controller?.abort(); };
 }

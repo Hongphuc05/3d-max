@@ -16,10 +16,9 @@ const MESSAGES = {
   TIMEOUT: 'Quá thời gian chờ 3ds Max.',
   HOST_UNSUPPORTED: 'Chỉ tải được trong plugin 3ds Max.',
   MODEL_DOWNLOAD_RESTRICTED: 'Model này hiện không được phép tải từ nguồn.',
-  DRIVE_DOWNLOAD_RESTRICTED: 'Chủ sở hữu Drive đang giới hạn tải file này.',
-  DRIVE_QUOTA_EXCEEDED: 'Google Drive đang giới hạn lượt tải. Hãy thử lại sau.',
-  DRIVE_AUTOMATED_REQUESTS_BLOCKED: 'Google tạm chặn yêu cầu tự động từ mạng máy chủ. Hãy chờ rồi thử lại.',
-  DRIVE_FILE_OR_RESOURCE_KEY_NOT_FOUND: 'File nguồn không còn khả dụng. Catalog sẽ được cập nhật trong lần đồng bộ tiếp theo.',
+  R2_OBJECT_NOT_FOUND: 'File nguồn không còn khả dụng. Catalog đang được cập nhật.',
+  MODEL_NOT_READY: 'Model chưa có đủ preview và archive hợp lệ để tải.',
+  R2_UNAVAILABLE: 'Kho model tạm thời không khả dụng. Hãy thử lại sau.',
   DOWNLOAD_BUSY: 'Máy chủ đang đủ lượt tải đồng thời. Hãy thử lại sau.',
 };
 const errorText = (e) => MESSAGES[e.code] || e.message || 'Có lỗi xảy ra.';

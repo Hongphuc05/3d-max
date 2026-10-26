@@ -43,10 +43,10 @@ export default function Purchase() {
   }, [userId]);
 
   const paid = order?.status === 'PAID';
-  useEffect(() => { if (paid) refresh(); }, [paid, refresh]);
+  useEffect(() => { if (paid) refresh(false); }, [paid, refresh]);
   const keyReady = Boolean(license?.key);
   useEffect(() => {
-    if (!paid || !keyReady) return;
+    if (!paid) return;
     setOpen(false);
     sessionStorage.removeItem(`3dm-order:${userId}`);
     if (orderIdFromLocation(location.search) === order.id) {
@@ -55,11 +55,11 @@ export default function Purchase() {
       for (const name of ['orderId', 'orderCode', 'id', 'status', 'cancel', 'success', 'code']) url.searchParams.delete(name);
       window.history.replaceState(null, '', url.pathname + url.search + url.hash);
     }
-  }, [paid, keyReady, order?.id, userId]);
+  }, [paid, order?.id, userId]);
   useEffect(() => {
     if (!open || order?.status !== 'PENDING') return;
     return pollPayment({
-      fetchOrder: signal => api.paymentOrder(order.id, signal),
+      fetchOrder: signal => api.activePaymentOrder(order.id, signal),
       onOrder: next => { setOrder(next); setError(''); },
       onError: e => setError(licenseError(e)),
       onTimeout: () => setError('Đã tạm dừng tự kiểm tra. Nhấn Kiểm tra thanh toán để đối soát đơn.'),
@@ -87,17 +87,17 @@ export default function Purchase() {
     {paid && keyReady && <p role="status" className="text-sm text-accent">Thanh toán thành công. Key license của bạn đã sẵn sàng trong My License.</p>}
     {paid && order.fulfillmentResult === 'ALREADY_LICENSED' && <p className="text-sm text-warn">Tài khoản đã có license trước đơn này. Liên hệ hỗ trợ để xử lý khoản thanh toán trùng.</p>}
     {paid && !keyReady && <div className="space-y-2 text-sm">
-      <p>Đã thanh toán. Đang tải key license từ máy chủ…</p>
-      {licenseLoadError && <><p role="alert" className="text-danger">{licenseLoadError}</p><button className={paymentButton} disabled={loading} onClick={() => refresh()}>Thử tải lại license</button></>}
+      <p role="status">Thanh toán thành công. Đang tải key license từ máy chủ…</p>
+      {licenseLoadError && <><p role="alert" className="text-danger">{licenseLoadError}</p><button className={paymentButton} disabled={loading} onClick={() => refresh(false)}>Thử tải lại license</button></>}
     </div>}
-    {license ? <p className="text-sm text-accent">Bạn đã sở hữu 3DsMood Lifetime.</p> : canImport ? <p className="text-sm text-accent">Máy này đã có quyền sử dụng Lifetime. Key chỉ hiển thị trong tài khoản sở hữu.</p> : <button className={paymentButton}
+    {license ? <p className="text-sm text-accent">Bạn đã sở hữu 3DsMood Lifetime.</p> : canImport ? <p className="text-sm text-accent">Máy này đã có quyền sử dụng Lifetime. Key chỉ hiển thị trong tài khoản sở hữu.</p> : !paid && <button className={paymentButton}
       disabled={!userId || !product?.available || loading || busy}
       onClick={() => order?.status === 'PENDING' ? setOpen(true) : run(api.createPayment)}>
       {busy ? 'Đang xử lý…' : order?.status === 'PENDING' ? 'Tiếp tục đơn thanh toán' : 'Mua Lifetime'}
     </button>}
     {product && !product.available && <p className="text-sm text-warn">Thanh toán tạm thời chưa khả dụng. Vui lòng thử lại sau.</p>}
     {error && !open && <p role="alert" className="text-sm text-danger">{error}</p>}
-    {open && order && <PaymentDialog order={order} busy={busy || (paid && loading)} error={error || (paid ? licenseLoadError : '')} onClose={() => setOpen(false)}
-      onCheck={() => paid ? refresh() : run(signal => api.reconcilePayment(order.id, signal))} />}
+    {open && order && !paid && <PaymentDialog order={order} busy={busy} error={error} onClose={() => setOpen(false)}
+      onCheck={() => run(signal => api.reconcilePayment(order.id, signal))} />}
   </section>;
 }

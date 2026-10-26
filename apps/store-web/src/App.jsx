@@ -12,6 +12,7 @@ import { useJobs } from './queue.js';
 import { useLicense } from './license.jsx';
 import LicensePanel from './LicensePanel.jsx';
 import { CatalogSyncButton } from './CatalogSyncButton.jsx';
+import AdminDashboard from './AdminDashboard.jsx';
 
 const PAGE = 30;
 const SORTS = {
@@ -46,6 +47,18 @@ function Account({ onLogin }) {
 }
 
 export default function App() {
+  const { user, restoreError, retrySession } = useAuth();
+  if (user === undefined && restoreError) return <div className="grid h-screen place-items-center bg-base p-6 text-center">
+    <div className="max-w-md space-y-4">
+      <p role="alert" className="text-sm text-warn">{restoreError}</p>
+      <button onClick={retrySession} className="rounded-md bg-accent px-4 py-2 text-sm font-bold text-accent-ink">Thử lại</button>
+    </div>
+  </div>;
+  if (user === undefined) return <div role="status" className="grid h-screen place-items-center text-sm text-mute">Đang kiểm tra đăng nhập…</div>;
+  return user?.role === 'ADMIN' ? <AdminDashboard key={user.id} /> : <StoreApp />;
+}
+
+function StoreApp() {
   const [subs, setSubs] = useState(() => new Set());
   const [renderers, setRenderers] = useState(() => new Set());
   const [text, setText] = useState('');
