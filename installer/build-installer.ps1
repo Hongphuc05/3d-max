@@ -2,25 +2,38 @@
 # Chay: powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
 # (comment khong dau: PowerShell 5.1 doc file khong BOM theo ANSI)
 param(
-    [string]$ApiBaseUrl = $env:PLATFORM_API_BASE_URL,
-    [switch]$AllowLoopbackForTesting
+    [string]$LicensePublicKeyPath = $env:PLATFORM_LICENSE_PUBLIC_KEY_PATH,
+    [switch]$TestBuild
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'BuildCatalogValidation.ps1')
 
-$apiUri = $null
-if (-not [Uri]::TryCreate($ApiBaseUrl, [UriKind]::Absolute, [ref]$apiUri) -or
-    $apiUri.UserInfo -or $apiUri.Query -or $apiUri.Fragment -or $apiUri.AbsolutePath -ne '/' -or
-    ($apiUri.Scheme -ne 'https' -and -not ($AllowLoopbackForTesting -and $apiUri.IsLoopback -and $apiUri.Scheme -eq 'http')) -or
-    ($apiUri.IsLoopback -and -not $AllowLoopbackForTesting)) {
-    throw 'Provide -ApiBaseUrl with the production HTTPS backend origin. Loopback is allowed only with -AllowLoopbackForTesting.'
-}
+$root = Split-Path $PSScriptRoot -Parent
+$library = Join-Path $root 'library\public'
+$catalogFile = Join-Path $library 'catalog.json'
+if (-not (Test-Path -LiteralPath $catalogFile -PathType Leaf)) { throw 'Bundled catalog.json is missing.' }
+$catalog = Get-Content -LiteralPath $catalogFile -Raw -Encoding UTF8 | ConvertFrom-Json
+if (-not (Test-PublishedCatalogDocument $catalog)) { throw 'Bundled catalog is invalid or empty.' }
+& node (Join-Path $root 'library\validate-catalog.mjs') $catalogFile
+if ($LASTEXITCODE -ne 0) { throw 'Bundled catalog or previews failed validation.' }
+if (-not $LicensePublicKeyPath -or -not (Test-Path -LiteralPath $LicensePublicKeyPath -PathType Leaf)) { throw 'Provide -LicensePublicKeyPath with the owner tool public XML key.' }
+if ((Get-Item -LiteralPath $LicensePublicKeyPath).Length -gt 16384) { throw 'Public key file is too large.' }
+$publicKeyXml = [IO.File]::ReadAllText((Resolve-Path -LiteralPath $LicensePublicKeyPath))
+if ($publicKeyXml -match '<!DOCTYPE|<!ENTITY|<\s*(D|P|Q|DP|DQ|InverseQ)\s*>|PRIVATE KEY') { throw 'Private keys and XML entities must never be packaged.' }
+$rsa = New-Object Security.Cryptography.RSACryptoServiceProvider
+try {
+    $rsa.PersistKeyInCsp = $false
+    $rsa.FromXmlString($publicKeyXml)
+    if (-not $rsa.PublicOnly -or $rsa.KeySize -lt 2048 -or $rsa.KeySize -gt 4096) { throw 'Expected an RSA public key of 2048 to 4096 bits.' }
+    $publicKeyXml = $rsa.ToXmlString($false)
+} finally { $rsa.Dispose() }
 
 $root  = Split-Path $PSScriptRoot -Parent
 $proj  = Join-Path $root 'plugin-csharp\MaxWebViewHost\MaxWebViewHost\MaxWebViewHost.csproj'
 $setup = Join-Path $PSScriptRoot 'Setup\Setup.csproj'
 $stage = Join-Path $PSScriptRoot 'stage'
 $out   = Join-Path $PSScriptRoot 'PlatformSetup.exe'
-if ($AllowLoopbackForTesting) { $out = Join-Path $PSScriptRoot 'PlatformSetup-Test.exe' }
+if ($TestBuild) { $out = Join-Path $PSScriptRoot 'PlatformSetup-Test.exe' }
 
 # Build-time only. The client receives static assets and never needs Node/npm.
 Write-Host '==> Build bundled app'
@@ -64,7 +77,10 @@ Copy-Item (Join-Path $bin 'runtimes') $pdir -Recurse
 Copy-Item (Join-Path $root 'maxscript\PlatformBridge.ms') $pdir
 Copy-Item (Join-Path $root 'frontend') (Join-Path $pdir 'frontend') -Recurse
 Copy-Item (Join-Path $root 'apps\store-web\dist') (Join-Path $pdir 'app') -Recurse
-$configuration = @{ apiBaseUrl = $apiUri.GetLeftPart([UriPartial]::Authority); allowLoopbackForTesting = [bool]$AllowLoopbackForTesting }
+New-Item -ItemType Directory -Path (Join-Path $pdir 'library') -Force | Out-Null
+Copy-Item -LiteralPath $catalogFile -Destination (Join-Path $pdir 'library\catalog.json')
+Copy-Item -LiteralPath (Join-Path $library 'previews') -Destination (Join-Path $pdir 'library\previews') -Recurse
+$configuration = @{ licensePublicKeyXml = $publicKeyXml }
 [IO.File]::WriteAllText((Join-Path $pdir 'plugin-config.json'), ($configuration | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
 Copy-Item (Join-Path $root 'maxscript\usermacros\Platform-OpenPanel.mcr') (Join-Path $stage 'usermacros')
 Copy-Item (Join-Path $root 'maxscript\startup\Platform-Agent.ms') (Join-Path $stage 'Startup')

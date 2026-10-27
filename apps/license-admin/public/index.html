@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow, noarchive" />
+    <meta name="theme-color" content="#101713" />
+    <title>3DSMOOD · Quản trị license</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="3DSMOOD quản trị">
+          <span class="brand-mark" aria-hidden="true">3D</span>
+          <span><strong>3DSMOOD</strong><small>LICENSE CONTROL</small></span>
+        </a>
+        <span id="connection-status" class="connection"><span class="dot"></span>Đang kiểm tra phiên</span>
+      </header>
+
+      <section id="login-view" class="login-view card" hidden>
+        <div class="eyebrow">KHU VỰC QUẢN TRỊ</div>
+        <h1>Đăng nhập</h1>
+        <p class="muted">Công cụ này chỉ dành cho quản trị viên. Hãy giữ riêng cả địa chỉ trang và mật khẩu.</p>
+        <form id="login-form" class="stack">
+          <label for="admin-password">Mật khẩu quản trị</label>
+          <input id="admin-password" name="password" type="password" autocomplete="current-password" required maxlength="256" />
+          <button class="button primary" type="submit">Đăng nhập <span aria-hidden="true">→</span></button>
+          <p id="login-message" class="message" role="status" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <section id="dashboard-view" hidden>
+        <div class="welcome-row">
+          <div>
+            <div class="eyebrow">BẢNG ĐIỀU KHIỂN</div>
+            <h1>Quản lý license</h1>
+            <p class="muted">Tạo license để khách kích hoạt plugin ngoại tuyến.</p>
+          </div>
+          <button id="logout-button" class="button quiet" type="button">Đăng xuất</button>
+        </div>
+
+        <div class="dashboard-grid">
+          <section class="card license-card">
+            <div class="section-heading">
+              <span class="icon-badge" aria-hidden="true">⌁</span>
+              <div><div class="eyebrow">CẤP QUYỀN OFFLINE</div><h2>Tạo license</h2></div>
+            </div>
+            <p class="muted">License gắn với mã máy, không hết hạn và không cần mạng để xác minh.</p>
+            <form id="license-form" class="stack">
+              <label for="machine-code">Mã máy khách gửi</label>
+              <input id="machine-code" name="machineCode" type="text" inputmode="text" autocomplete="off" placeholder="MAX-…" required maxlength="68" />
+              <label for="license-id">Mã ghi chú nội bộ <span class="optional">không bắt buộc</span></label>
+              <input id="license-id" name="licenseId" type="text" autocomplete="off" placeholder="vd. customer-2026-01" maxlength="80" />
+              <button id="issue-button" class="button primary" type="submit">Ký và tạo license <span aria-hidden="true">↗</span></button>
+              <p id="license-message" class="message" role="status" aria-live="polite"></p>
+            </form>
+            <div id="license-result" class="result-panel" hidden>
+              <div class="result-header"><div><div class="eyebrow">LICENSE ĐÃ TẠO</div><strong id="license-result-id"></strong></div><button id="copy-button" class="button secondary" type="button">Sao chép</button></div>
+              <textarea id="license-token" readonly spellcheck="false" aria-label="License token"></textarea>
+              <p class="note">Gửi token này cho khách qua kênh riêng. Hãy giữ bản ghi mã tham chiếu trong sổ quản lý của bạn.</p>
+            </div>
+          </section>
+        </div>
+        <footer class="footer">3DSMOOD · Công cụ riêng cho quản trị viên</footer>
+      </section>
+    </main>
+  </body>
+</html>

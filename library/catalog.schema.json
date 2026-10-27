@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "3DS Mood static catalog version 1",
+  "type": "object",
+  "required": ["version", "items"],
+  "properties": {
+    "version": { "const": 1 },
+    "items": {
+      "type": "array", "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "category", "preview", "driveFileId", "fileName", "sha256"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$", "description": "Unique, case insensitive; stable across updates." },
+          "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "category": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "preview": { "type": "string", "maxLength": 500, "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*[\\\\%?#:])(?!.*//).+\\.(?:png|jpg|jpeg|webp)$", "description": "Relative to catalog.json; publication validator also checks local file existence." },
+          "driveFileId": { "type": "string", "pattern": "^[A-Za-z0-9_-]{10,200}$" },
+          "fileName": { "type": "string", "maxLength": 200, "pattern": "^[^/\\\\%?#:]+\\.(?:zip|rar|7z|max|fbx|obj)$" },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "entryFile": { "type": "string", "maxLength": 500, "pattern": "^(?!/)(?!.*(?:^|/)\\.{1,2}(?:/|$))(?!.*[\\\\%?#:])(?!.*//).+\\.(?:max|fbx|obj)$" }
+        }
+      }
+    }
+  }
+}

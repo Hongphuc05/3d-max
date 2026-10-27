@@ -1,6 +1,5 @@
 // CHI DUNG KHI DEV: mo http://localhost:5173/?mockMax=1 de xem giao dien nhu dang chay trong 3ds Max
-// (nut Download, hang doi, thanh trang thai) ngay tren trinh duyet. Gia lap window.chrome.webview nen
-// di qua dung code bridge.js that. Ticket van xin tu backend that (can dang nhap), chi buoc tai/import la gia.
+// Gia lap license/catalog/import qua bridge.js; du lieu mau chi ton tai trong DEV.
 // Khong co trong ban build production (main.jsx chi import khi import.meta.env.DEV).
 export function installMockHost() {
   const listeners = new Set();
@@ -10,10 +9,18 @@ export function installMockHost() {
   window.chrome = window.chrome || {};
   window.chrome.webview = {
     addEventListener: (type, f) => type === 'message' && listeners.add(f),
-    postMessage({ id, method }) {
+    postMessage({ id, method, params }) {
       const ok = (result, delay = 120) => send({ id, ok: true, result }, delay);
       const fail = (code, message, delay = 120) => send({ id, ok: false, error: { code, message } }, delay);
       switch (method) {
+        case 'library.status':
+          return ok({ machineCode: 'DEMO-MACHINE-NOT-A-REAL-CODE', licensed: false });
+        case 'library.activate':
+          return params.license === 'demo' ? ok({ machineCode: 'DEMO-MACHINE-NOT-A-REAL-CODE', licensed: true })
+            : fail('LICENSE_INVALID', 'Bản demo: nhập demo để thử giao diện.');
+        case 'library.refresh':
+          return ok({ items: [{ id: 'demo-chair', name: 'Ghế minh họa (DEV)', category: 'Demo' }], offline: false,
+            message: 'Dữ liệu minh họa DEV; không phải model thật từ Drive.' });
         case 'host.getInfo':
           return ok({ host: '3dsmax', hostVersion: '3ds Max (mock)', pluginVersion: '0.0.0-mock', protocolVersion: 1 });
         case 'scene.getInfo':

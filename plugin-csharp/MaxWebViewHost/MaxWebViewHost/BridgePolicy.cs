@@ -10,11 +10,12 @@ namespace MaxWebViewHost
     internal static class BridgePolicy
     {
         private static readonly Regex RequestId = new Regex("^[A-Za-z0-9_-]{1,80}$", RegexOptions.CultureInvariant);
-        private static readonly Regex AssetId = new Regex("^[0-9a-fA-F]{12,24}$", RegexOptions.CultureInvariant);
+        private static readonly Regex AssetId = new Regex("^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$", RegexOptions.CultureInvariant);
         private static readonly Regex Ticket = new Regex("^[A-Za-z0-9_-]{16,128}$", RegexOptions.CultureInvariant);
         internal static readonly string[] Methods = {
             "host.ping", "host.getInfo", "scene.getInfo", "scene.getSelection", "scene.createBox",
-            "design.create", "asset.import", "device.getIdentity", "device.signChallenge"
+            "design.create", "asset.import", "device.getIdentity", "device.signChallenge",
+            "library.status", "library.activate", "library.refresh"
         };
 
         internal static bool IsTrusted(string value, Uri[] origins, string diagnosticUri)
@@ -82,9 +83,10 @@ namespace MaxWebViewHost
                     return p.Count == 2 && HasOnly(p, "challengeId", "message")
                         && Text(p, "challengeId", 36) && Text(p, "message", 512);
                 case "asset.import":
-                    return p.Count == 2 && HasOnly(p, "assetId", "ticket")
-                        && Text(p, "assetId", 24) && AssetId.IsMatch((string)p["assetId"])
-                        && Text(p, "ticket", 128) && Ticket.IsMatch((string)p["ticket"]);
+                    return p.Count == 1 && HasOnly(p, "assetId")
+                        && Text(p, "assetId", 80) && AssetId.IsMatch((string)p["assetId"]);
+                case "library.activate":
+                    return p.Count == 1 && HasOnly(p, "license") && Text(p, "license", 12000);
                 case "scene.createBox":
                     return HasOnly(p, "size") && Number(p, "size", 1, 10000);
                 case "design.create":

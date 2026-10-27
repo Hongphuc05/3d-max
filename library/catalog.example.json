@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "your-model-001",
+      "name": "Tên model của bạn — ví dụ cần thay",
+      "category": "Danh mục của bạn",
+      "preview": "previews/your-model-001-v1.jpg",
+      "driveFileId": "REPLACE_WITH_DRIVE_FILE_ID",
+      "fileName": "your-model-001.zip",
+      "sha256": "REPLACE_WITH_LOWERCASE_SHA256_OF_DOWNLOADED_ARCHIVE",
+      "entryFile": "your-model-001/scene.max"
+    }
+  ]
+}

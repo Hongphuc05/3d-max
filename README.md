@@ -3,34 +3,33 @@
 Nhúng web platform vào Autodesk 3ds Max qua một C#/.NET plugin host chứa WebView2
 và một bridge hai chiều, typed, có allowlist giữa JavaScript và Max API.
 
-**Mô hình:** một license Lifetime/tài khoản, tối đa hai thiết bị cố định; thanh toán payOS đã xác minh hoặc admin cấp thử.
-**Target:** 3ds Max 2022 · .NET Framework 4.8 · sản phẩm thương mại
-**Source hiện tại:** React/Vite, Express/PostgreSQL, C# CNG/DPAPI + WebView2.
-**Online catalog:** [Cloudflare R2 private → scheduled PostgreSQL polling, SSE và licensed streaming](docs/r2-catalog.md).
-Hướng dẫn mới: **[License + payOS setup](docs/license-payos-setup.md)** · **[API](docs/license-payos-api.md)** ·
-**[Báo cáo triển khai](LICENSE_PAYOS_IMPLEMENTATION_REPORT.md)**. Roadmap cũ về license từng model được thay bởi D11.
+**Mô hình hiện tại:** license vĩnh viễn theo mã máy, xác minh offline; chủ sở hữu xác nhận chuyển khoản và cấp license riêng.
+**Target:** 3ds Max 2022 · .NET Framework 4.8 · React/Vite + C# WebView2.
+**Thư viện:** danh sách và ảnh được đóng gói trong plugin; model tải từ Google Drive khi import.
 
-## Chạy thử
+Hướng dẫn vận hành hiện tại: **[License offline và cập nhật thư viện](docs/offline-library.md)**.
+Các tài liệu R2/payOS và backend được giữ để tham khảo hệ thống cũ, không thuộc luồng khách hàng mới.
 
+## Build và cài đặt
+
+```powershell
+powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1 `
+  -LicensePublicKeyPath 'C:\LibraryOwnerKeys\library-public.xml'
+installer\PlatformSetup.exe
 ```
-powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1 -ApiBaseUrl https://YOUR-BACKEND-DOMAIN
-installer\PlatformSetup.exe          # đóng 3ds Max trước khi chạy
-```
 
-Trong Max: `Customize > Customize User Interface > tab Toolbars`, Category `Platform`,
-kéo `Mở Platform Design Library` vào một toolbar rồi bấm.
+Tạo khóa và cấp license bằng [CLI nội bộ](tools/license-owner/README.md) hoặc triển khai [giao diện admin Vercel](apps/license-admin/README.md); private key luôn ở ngoài repo và bộ cài.
+Đóng Max trước khi cài. Trong Max: `Customize > Customize User Interface > Toolbars`, Category `Platform`,
+kéo nút mở thư viện vào toolbar. Khách copy mã máy, nhận license từ chủ sở hữu và dán vào plugin.
+UI, danh sách, preview và xác minh license dùng offline; tải model từ Drive cần mạng.
 
-Giao diện React được build và đóng gói trong bộ cài. Máy khách không cần Node.js,
-npm hay web dev server; cần WebView2 và Internet để kết nối backend đã cấu hình.
-Plugin chỉ tải giao diện sau khi kiểm tra kết nối, giữ phiên đăng nhập tối đa 30 ngày
-theo thời hạn server và tự xác minh lại thiết bị đã kích hoạt. Dữ liệu đăng nhập được
-bảo vệ bằng Windows DPAPI, khóa thiết bị bằng CNG/TPM.
-
+Catalog đóng gói có 360 model. Thay đổi model hoặc preview cần build và bàn giao plugin mới. Xem [hướng dẫn thư viện](docs/offline-library.md) và [cấu hình admin web](apps/license-admin/README.md).
 ## Cấu trúc
 
 | Thư mục | Nội dung |
 |---|---|
-| `source/3DSMOOD/` | Dữ liệu catalog gốc (360 sản phẩm, ~10 GB), gitignored |
+| `library/` | Schema, validator, catalog và preview đóng gói trong plugin |
+| `tools/license-owner/` | Công cụ nội bộ tạo khóa và cấp license; không đóng gói cho khách |
 | `apps/` | Web store mới — `store-web`, `store-api` (Phase A). Cách chạy: [apps/README.md](apps/README.md) |
 | `frontend/` | Trang demo/diagnostic của PoC. HTML thuần, không build step |
 | `plugin-csharp/` | Plugin host: WebView2 + bridge. Không tham chiếu `Autodesk.Max` |
@@ -45,8 +44,8 @@ Bắt đầu tại **[docs/README.md](docs/README.md)** để đọc theo đúng
 | File | Nội dung |
 |---|---|
 | [docs/README.md](docs/README.md) | Mục lục và trạng thái hiện tại |
-| [docs/STATUS.md](docs/STATUS.md) | **Tiến độ**: đã làm tới đâu, còn gì (checklist) |
-| [docs/product-roadmap.md](docs/product-roadmap.md) | **Plan tổng**: tech stack, license, Phase A (web) → Phase B (Max) |
+| [docs/STATUS.md](docs/STATUS.md) | Checklist của kế hoạch web store cũ |
+| [docs/product-roadmap.md](docs/product-roadmap.md) | Roadmap kiến trúc lịch sử; luồng hiện tại ở `docs/offline-library.md` |
 | [docs/decisions.md](docs/decisions.md) | D1–D8 (khóa/đề xuất), O1–O8 còn mở, R1–R8 risks |
 | [docs/architecture.md](docs/architecture.md) | Ranh giới web platform, native PoC và kiến trúc mục tiêu |
 | [docs/current-platform-audit.md](docs/current-platform-audit.md) | Audit stack/flow từ source hiện tại |
@@ -61,5 +60,4 @@ Bắt đầu tại **[docs/README.md](docs/README.md)** để đọc theo đúng
 
 ## Bước tiếp theo
 
-Cấu hình secrets, giá Lifetime và webhook HTTPS theo [hướng dẫn](docs/license-payos-setup.md).
-Không tạo giao dịch thật hoặc đăng ký webhook production trong bộ test tự động.
+Thực hiện các bước cấu hình chủ sở hữu còn thiếu trong [hướng dẫn thư viện](docs/offline-library.md).

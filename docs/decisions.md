@@ -61,6 +61,8 @@ trách nhiệm vá lỗ hổng Chromium. Với sản phẩm thương mại, Ever
 
 ## D11 — Lifetime theo tài khoản + payOS (2026-10-24)
 
+> Đã được thay thế cho plugin khách hàng bởi D15 bên dưới. Giữ nội dung này để tra cứu hệ thống cũ.
+
 Theo yêu cầu triển khai trong `goal.md`, **thay thế D5/D8 về license từng sản phẩm**:
 mỗi tài khoản có tối đa một license Lifetime, tối đa hai slot thiết bị cố định. Không có
 reset, deactivate, transfer hoặc tự chuyển slot khi mất khóa/cài lại Windows. payOS là
@@ -74,6 +76,8 @@ PostgreSQL giữ metadata và giao dịch; lưu trữ model/catalog/import engin
 Cookie HttpOnly hiện hữu tiếp tục giữ đăng nhập. Không tự tạo thanh toán thật trong test.
 
 ## D12 — Tải và import chỉ cho tài khoản sở hữu license (2026-10-25)
+
+> Đã được thay thế cho plugin khách hàng bởi D15 bên dưới.
 
 **Quyết định mới của người dùng, thay thế chính sách D12 trước đó:** tài khoản đang đăng nhập phải
 sở hữu license ACTIVE mới được tải archive hoặc import model. Xác minh được một thiết bị đã gắn với
@@ -90,6 +94,8 @@ thuộc đúng user để ticket cũ không vượt qua chính sách mới. Key 
 admin được tra cứu last4 và metadata slot theo D14. Logout thu hồi phiên/ticket, revoke/suspend chặn tải.
 
 ## D14 — Tài khoản admin và giao diện quản trị (2026-10-25)
+
+> Luồng backend cũ, không dùng để cấp license của plugin D15.
 
 Không phát hành tài khoản hoặc mật khẩu admin mặc định. Operator cấp quyền cho tài khoản chủ sở hữu đã xác minh
 bằng UUID trong `LICENSE_ADMIN_USER_IDS`; thay đổi cấu hình này có hiệu lực sau khi API khởi động lại.
@@ -222,3 +228,26 @@ qua `MaxCustomControls` là đường đi phổ biến nhưng có quirk về foc
 Quyền phân phối thương mại của model trong `source/` (R4 — **Phúc xác nhận đã có quyền, 2026-10-06**), copy sau import (R5), webhook
 thanh toán (R6), RAR/7z (R7), phụ thuộc renderer/version (R8). Chi tiết:
 [roadmap §6](product-roadmap.md#6-rủi-ro-chính).
+
+## D15 — License offline theo máy, GitHub Pages + Google Drive (2026-10-26)
+
+**Lịch sử:** Phần catalog/preview Pages dưới đây được thay thế bởi D16.
+
+Theo yêu cầu mới của chủ sở hữu, luồng plugin khách hàng thay D11/D12/D14: không tài khoản,
+mật khẩu, backend, R2 hoặc payOS. Chủ sở hữu xác nhận chuyển khoản bên ngoài plugin rồi
+ký license vĩnh viễn gắn mã máy bằng công cụ riêng. Plugin chỉ giữ khóa công khai,
+xác minh offline và kiểm tra lại quyền tại native import. Khóa bí mật nằm ngoài repo và
+bộ cài; cấp lại khi mã máy đổi, không có thu hồi từ xa cho license offline vĩnh viễn.
+
+GitHub Pages phục vụ catalog JSON version 1 và preview tĩnh. Google Drive phục vụ file
+model chia sẻ công khai; native host tải, kiểm tra SHA-256, giải nén an toàn và dùng
+luồng import/scene hiện có. Catalog và preview gần nhất được cache cho khi mất mạng.
+Thay catalog/preview không cần build lại plugin. URL Drive không hiển thị trong UI,
+nhưng tải trực tiếp từ link công khai không phải kiểm soát truy cập thực sự.
+
+Giữ D1 (.NET Framework 4.8 / Max 2022), ranh giới bridge và bộ cài hiện có.
+Hướng dẫn vận hành: [offline-library.md](offline-library.md).
+
+## D16 — Đóng gói thư viện trong plugin (2026-10-27)
+
+Danh sách model và ảnh preview được đóng gói trong plugin để xem offline ngay sau khi cài. File model được tải từ Google Drive khi import và kiểm tra checksum. Mọi thay đổi catalog hoặc ảnh cần build và bàn giao plugin mới. Admin giữ đăng nhập và ký license phía server, không còn chức năng quét hoặc xuất bản catalog. Không dùng GitHub Actions, Pages hay R2 cho việc cập nhật thư viện.

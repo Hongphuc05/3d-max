@@ -91,6 +91,15 @@ internal static class NativeSecurityTests
         string code;
         const string valid = "{\"id\":\"test-1\",\"version\":1,\"method\":\"device.getIdentity\",\"params\":{}}";
         Assert(BridgePolicy.TryParse(valid, out parsed, out code), "typed version one envelope accepted");
+        Assert(BridgePolicy.TryParse(valid.Replace("device.getIdentity", "library.status"), out parsed, out code), "offline library status accepted");
+        Assert(BridgePolicy.TryParse(valid.Replace("device.getIdentity", "library.refresh"), out parsed, out code), "catalog refresh accepted");
+        var import = valid.Replace("device.getIdentity", "asset.import").Replace("\"params\":{}", "\"params\":{\"assetId\":\"chair-01\"}");
+        Assert(BridgePolicy.TryParse(import, out parsed, out code), "catalog ID-only import accepted");
+        Assert(!BridgePolicy.TryParse(import.Replace("chair-01", "../chair"), out parsed, out code), "catalog traversal ID rejected");
+        Assert(!BridgePolicy.TryParse(import.Replace("\"chair-01\"", "\"chair-01\",\"url\":\"https://evil.test\""), out parsed, out code), "import cannot provide URL");
+        var activate = valid.Replace("device.getIdentity", "library.activate").Replace("\"params\":{}", "\"params\":{\"license\":\"signed-token\"}");
+        Assert(BridgePolicy.TryParse(activate, out parsed, out code), "license activation accepted");
+        Assert(!BridgePolicy.TryParse(activate.Replace("signed-token", new string('x', 12001)), out parsed, out code), "oversized license rejected");
         Assert(!BridgePolicy.TryParse(valid.Replace("\"version\":1", "\"version\":2"), out parsed, out code), "unknown bridge version rejected");
         Assert(!BridgePolicy.TryParse(valid.Replace("\"params\":{}", "\"params\":[]"), out parsed, out code), "array params rejected");
         Assert(!BridgePolicy.TryParse(valid.Replace("\"params\":{}", "\"params\":{\"privateKey\":\"bad\"}"), out parsed, out code), "unexpected method params rejected");

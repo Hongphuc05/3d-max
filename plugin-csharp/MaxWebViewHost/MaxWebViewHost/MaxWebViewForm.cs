@@ -54,7 +54,8 @@ namespace MaxWebViewHost
             "host.ping", "host.getInfo",
             "scene.getInfo", "scene.getSelection", "scene.createBox",
             "design.create",
-            "asset.import", "device.getIdentity", "device.signChallenge"
+            "asset.import", "device.getIdentity", "device.signChallenge",
+            "library.status", "library.activate", "library.refresh"
         };
 
         /// <summary>Origin của backend 3DS Mood, nơi host tải asset. Phải nằm trong TrustedOrigins.
@@ -64,7 +65,7 @@ namespace MaxWebViewHost
         // Bounded streaming download; single-use tickets intentionally do not resume.
         private const long MaxPackageBytes = 2L * 1024 * 1024 * 1024;
         private static readonly string[] ImportExtensions = { ".fbx", ".obj", ".max" };
-        private static readonly HttpClient Http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromMinutes(30) };
+        private static readonly HttpClient Http = SecureHttpTransport.CreateClient(false, true, TimeSpan.FromMinutes(30));
         private readonly System.Threading.CancellationTokenSource _lifetime = new System.Threading.CancellationTokenSource();
 
         private static MaxWebViewForm _instance;
@@ -75,6 +76,7 @@ namespace MaxWebViewHost
         private Task _targetRefreshTask = Task.CompletedTask;
         private readonly Func<ImportTarget[]> _discoverTargets;
         private readonly Func<ImportTarget, Task<ImportTarget>> _readTarget;
+        private readonly Func<GoogleDriveDownloader> _createDownloader;
         private string _targetSignature;
         private readonly Timer _focusTimer = new Timer { Interval = 1000 };
         private readonly Label _target = new Label
@@ -97,7 +99,8 @@ namespace MaxWebViewHost
 
         private readonly WebView2 _web = new WebView2 { Dock = DockStyle.Fill };
         private PackagedAppRuntime _packagedApp;
-        private Uri _configuredApiOrigin;
+        private OfflineLicenseService _offlineLicense;
+        private StaticCatalogService _catalog;
         private readonly Timer _connectionTimer = new Timer { Interval = 15000 };
         private bool _checkingConnection;
         private bool _appLoaded;
@@ -105,7 +108,7 @@ namespace MaxWebViewHost
         private readonly Label _connectionMessage = new Label { Dock = DockStyle.Fill, ForeColor = System.Drawing.Color.White,
             TextAlign = System.Drawing.ContentAlignment.MiddleCenter, Font = new System.Drawing.Font("Segoe UI", 12), Padding = new Padding(30) };
         private readonly Button _connectionRetry = new Button { Dock = DockStyle.Bottom, Height = 44, Text = "Thử lại kết nối" };
-        private readonly JavaScriptSerializer _json = new JavaScriptSerializer();
+        private readonly JavaScriptSerializer _json = new JavaScriptSerializer { MaxJsonLength = 64 * 1024 * 1024 };
         private readonly Label _status = new Label
         {
             Dock = DockStyle.Top, Height = 22, TextAlign = System.Drawing.ContentAlignment.MiddleLeft,
@@ -121,9 +124,14 @@ namespace MaxWebViewHost
         public MaxWebViewForm() : this(ImportTargetDiscovery.Discover, PlatformAgent.ReadSceneTargetAsync) { }
 
         internal MaxWebViewForm(Func<ImportTarget[]> discoverTargets, Func<ImportTarget, Task<ImportTarget>> readTarget)
+            : this(discoverTargets, readTarget, () => new GoogleDriveDownloader()) { }
+
+        internal MaxWebViewForm(Func<ImportTarget[]> discoverTargets, Func<ImportTarget, Task<ImportTarget>> readTarget,
+            Func<GoogleDriveDownloader> createDownloader)
         {
             _discoverTargets = discoverTargets ?? throw new ArgumentNullException(nameof(discoverTargets));
             _readTarget = readTarget ?? throw new ArgumentNullException(nameof(readTarget));
+            _createDownloader = createDownloader ?? throw new ArgumentNullException(nameof(createDownloader));
             FormClosed += (sender, args) => _lifetime.Cancel();
             Text = "3ds Max Platform — " + EnvironmentName;
             Width = 1100;
@@ -155,7 +163,7 @@ namespace MaxWebViewHost
             Controls.Add(toolbar);
             Controls.Add(_status);
             _connectionTimer.Tick += async (s, e) => await MonitorConnectionAsync();
-            FormClosed += (s, e) => { _connectionTimer.Dispose(); _packagedApp?.Dispose(); };
+            FormClosed += (s, e) => { _connectionTimer.Dispose(); _packagedApp?.Dispose(); _catalog?.Dispose(); };
             Load += async (s, e) => await InitAsync();
         }
 
@@ -242,14 +250,19 @@ namespace MaxWebViewHost
                 {
                     configuration = PluginConfiguration.Load(Path.GetDirectoryName(typeof(MaxWebViewForm).Assembly.Location));
                     StartUrl = PackagedAppRuntime.StartUrl;
-                    ApiBase = configuration.ApiBaseUri.AbsoluteUri.TrimEnd('/');
-                    _configuredApiOrigin = configuration.ApiBaseUri;
+                    if (configuration.IsOfflineLibrary)
+                    {
+                        var data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MaxWebViewHost", "OfflineLibrary");
+                        _offlineLicense = new OfflineLicenseService(configuration.LicensePublicKeyXml, Path.Combine(data, "License"));
+                        _catalog = new StaticCatalogService(configuration.LibraryDirectory);
+                    }
+                    else ApiBase = configuration.ApiBaseUri.AbsoluteUri.TrimEnd('/');
                     TrustedOrigins = PackagedAppRuntime.AppOrigin;
                     _diagButton.Visible = false;
                 }
                 catch (Exception)
                 {
-                    SetConnectionMessage("Bộ cài chưa được cấu hình máy chủ hoặc thiếu giao diện. Vui lòng liên hệ quản trị viên để nhận bộ cài đầy đủ.");
+                    SetConnectionMessage("Bộ cài thiếu cấu hình catalog, khóa công khai hoặc giao diện. Liên hệ nhà cung cấp để nhận bộ cài đầy đủ.");
                     _connectionRetry.Enabled = false;
                     return;
                 }
@@ -316,11 +329,12 @@ namespace MaxWebViewHost
                 try
                 {
                     _packagedApp = new PackagedAppRuntime(configuration, _web.CoreWebView2);
+                    if (_catalog != null) _packagedApp.PreviewLoader = _catalog.GetPreviewAsync;
                     await _packagedApp.ConfigureAsync();
                     await LoadPackagedAppAsync();
-                    if (!IsDisposed) _connectionTimer.Start();
+                    if (!IsDisposed && !configuration.IsOfflineLibrary) _connectionTimer.Start();
                 }
-                catch (Exception) { if (!IsDisposed) SetConnectionMessage("Không mở được dữ liệu đăng nhập của ứng dụng. Vui lòng mở lại 3ds Max rồi thử lại."); }
+                catch (Exception) { if (!IsDisposed) SetConnectionMessage("Không mở được dữ liệu của ứng dụng. Vui lòng mở lại 3ds Max rồi thử lại."); }
             }
             else Navigate(StartUrl);
         }
@@ -460,6 +474,11 @@ namespace MaxWebViewHost
                 return;
             }
 
+            if (method.StartsWith("library.", StringComparison.Ordinal))
+            {
+                _ = HandleLibraryMethodAsync(id, method, (Dictionary<string, object>)paramsObj);
+                return;
+            }
             if (method.StartsWith("device.", StringComparison.Ordinal))
             {
                 var parameters = (Dictionary<string, object>)paramsObj;
@@ -487,6 +506,26 @@ namespace MaxWebViewHost
             Dispatch(id, method, paramsObj as Dictionary<string, object>);
         }
 
+        private async Task HandleLibraryMethodAsync(string id, string method, Dictionary<string, object> parameters)
+        {
+            try
+            {
+                if (_offlineLicense == null || _catalog == null)
+                { PostError(id, "LIBRARY_NOT_CONFIGURED", "Cài bộ plugin thư viện offline để sử dụng chức năng này."); return; }
+                if (method == "library.refresh")
+                    PostResponse(id, true, await _catalog.RefreshAsync(_lifetime.Token), null);
+                else if (method == "library.activate")
+                    await RunDeviceOperation(() => PostResponse(id, true, _offlineLicense.Activate((string)parameters["license"]), null));
+                else await RunDeviceOperation(() => PostResponse(id, true, _offlineLicense.GetStatus(), null));
+            }
+            catch (InvalidDataException error) { PostError(id, "LIBRARY_INVALID", error.Message); }
+            catch (OperationCanceledException) { PostError(id, "LIBRARY_CANCELLED", "Đã hủy thao tác thư viện. Vui lòng thử lại."); }
+            catch (Exception error)
+            {
+                Debug.WriteLine("[library] " + error);
+                PostError(id, "LIBRARY_UNAVAILABLE", "Không đọc hoặc lưu được thư viện. Kiểm tra quyền ghi dữ liệu và thử lại.");
+            }
+        }
         private void HandleDeviceMethod(string id, string method, Dictionary<string, object> parameters)
         {
             try
@@ -526,9 +565,6 @@ namespace MaxWebViewHost
 
         // ---------- asset.import: tải -> giải nén an toàn -> import trên main thread ----------
 
-        private static readonly Regex AssetIdRx = new Regex("^[0-9a-fA-F]{12,24}$"); // 12 = id store-api, 24 = ObjectId web cu
-        private static readonly Regex TicketRx = new Regex("^[A-Za-z0-9_-]{16,128}$");
-
         private async Task ImportAssetAsync(string id, Dictionary<string, object> p, ImportTarget selectedTarget)
         {
             string workDir = null;
@@ -539,94 +575,62 @@ namespace MaxWebViewHost
             var token = cancellation.Token;
             try
             {
-                object a, t;
-                p.TryGetValue("assetId", out a);
-                p.TryGetValue("ticket", out t);
-                var assetId = a as string;
-                var ticket = t as string;
-                if (assetId == null || !AssetIdRx.IsMatch(assetId) || ticket == null || !TicketRx.IsMatch(ticket))
-                {
-                    PostError(id, "INVALID_PARAMS", "assetId/ticket không hợp lệ");
-                    return;
-                }
+                if (_offlineLicense == null || _catalog == null)
+                { PostError(id, "LIBRARY_NOT_CONFIGURED", "Bộ cài chưa cấu hình thư viện offline."); return; }
+                try { _offlineLicense.EnsureLicensed(); }
+                catch (InvalidDataException error) { PostError(id, "LICENSE_REQUIRED", error.Message); return; }
+                var assetId = (string)p["assetId"];
+                var model = _catalog.Find(assetId);
                 if (!await ValidateSelectedTargetAsync(id, selectedTarget).ConfigureAwait(false)) return;
-
-                Uri api;
-                if (!Uri.TryCreate(ApiBase, UriKind.Absolute, out api) || (UsePackagedApp
-                    ? _configuredApiOrigin == null || api != _configuredApiOrigin
-                    : !IsTrusted(api.GetLeftPart(UriPartial.Authority))))
-                {
-                    PostError(id, "ORIGIN_NOT_ALLOWED", "Máy chủ tải model không khớp cấu hình ứng dụng.");
-                    return;
-                }
-
-                // Mỗi lần import dùng thư mục mới (ticket là một lần dùng nên không có cache hit để tận dụng).
-                var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                                        "MaxWebViewHost", "cache", assetId);
-                workDir = Path.Combine(root, Guid.NewGuid().ToString("N"));
+                // A catalog ID is not necessarily a valid Windows directory name (e.g. CON).
+                // Use an independently generated directory under the agent's trusted cache root.
+                workDir = Path.Combine(PlatformAgent.CacheRoot, Guid.NewGuid().ToString("N"));
                 var extractDir = Path.Combine(workDir, "content");
                 Directory.CreateDirectory(extractDir);
                 var pkg = Path.Combine(workDir, "package.bin");
-
-                // 1) tải về file tạm
                 try
                 {
-                    var url = new Uri(api, "/api/downloads/stream/" + ticket);
-                    using (var resp = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false))
-                    {
-                        if (!resp.IsSuccessStatusCode)
-                        {
-                            var code = "ASSET_DOWNLOAD_FAILED";
-                            try {
-                                var failure = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(await resp.Content.ReadAsStringAsync().ConfigureAwait(false));
-                                object value;
-                                if (failure != null && failure.TryGetValue("error", out value) && value is string
-                                    && Regex.IsMatch((string)value, "^[A-Z][A-Z0-9_]{1,80}$")) code = (string)value;
-                            } catch (ArgumentException) { }
-                            PostError(id, code, "Không tải được model (HTTP " + (int)resp.StatusCode + ", " + code + "). Kiểm tra license/ticket hoặc trạng thái nguồn catalog.");
-                            return;
-                        }
-                        if (resp.Content.Headers.ContentLength > MaxPackageBytes)
-                        {
-                            PostError(id, "ASSET_TOO_LARGE", "Gói vượt giới hạn " + (MaxPackageBytes >> 20) + "MB");
-                            return;
-                        }
-                        using (var aborted = token.Register(() => resp.Dispose()))
-                        using (var src = await resp.Content.ReadAsStreamAsync().ConfigureAwait(false))
-                        using (var dst = File.Create(pkg))
-                        {
-                            var clock = Stopwatch.StartNew();
-                            var copied = ArchivePackage.CopyBounded(src, dst, MaxPackageBytes, n => {
-                                if (clock.ElapsedMilliseconds < 200) return;
-                                clock.Restart();
-                                PostProgress(id, n, resp.Content.Headers.ContentLength);
-                            }, token);
-                            if (resp.Content.Headers.ContentLength.HasValue && copied != resp.Content.Headers.ContentLength.Value)
-                                throw new InvalidDataException("Download truncated.");
-                            PostProgress(id, copied, resp.Content.Headers.ContentLength);
-                        }
-                    }
+                    var progressClock = Stopwatch.StartNew();
+                    long lastReceived = 0;
+                    long? lastTotal = null;
+                    using (var downloader = _createDownloader())
+                        await downloader.DownloadAsync(model, pkg, token, (received, total) => {
+                            lastReceived = received; lastTotal = total;
+                            if (progressClock.ElapsedMilliseconds < 200) return;
+                            progressClock.Restart();
+                            PostProgress(id, received, total);
+                        }).ConfigureAwait(false);
+                    PostProgress(id, lastReceived, lastTotal);
                 }
-                catch (Exception ex)
+                catch (Exception error) when (error is InvalidDataException || error is IOException || error is HttpRequestException || error is OperationCanceledException)
                 {
-                    Debug.WriteLine("[asset.import] download: " + ex);
-                    PostError(id, "ASSET_DOWNLOAD_FAILED", "Không tải được gói từ backend");
+                    Debug.WriteLine("[asset.download] " + error);
+                    PostError(id, "ASSET_DOWNLOAD_FAILED", error is InvalidDataException ? error.Message : "Không tải được model từ Google Drive. Kiểm tra Internet, quyền chia sẻ hoặc thử lại sau.");
                     return;
                 }
-
-                // Validate every entry before writing; only bounded model/texture data is extracted.
-                var files = ArchivePackage.Extract(pkg, extractDir, token, null);
-
-                // 3) chọn file import theo thứ tự ưu tiên định dạng
-                string entry = null;
-                foreach (var ext in ImportExtensions)
+                string[] files;
+                if (ImportExtensions.Contains(Path.GetExtension(model.fileName).ToLowerInvariant()))
                 {
-                    entry = files.Where(f => f.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
-                                 .OrderBy(f => f.Length).FirstOrDefault();
+                    var direct = Path.Combine(extractDir, model.fileName);
+                    File.Move(pkg, direct);
+                    files = new[] { direct };
+                }
+                else files = ArchivePackage.Extract(pkg, extractDir, token, null).ToArray();
+
+                string entry = null;
+                if (!string.IsNullOrEmpty(model.entryFile))
+                {
+                    var specified = Path.GetFullPath(Path.Combine(extractDir, model.entryFile.Replace('/', Path.DirectorySeparatorChar)));
+                    entry = files.FirstOrDefault(f => string.Equals(f, specified, StringComparison.OrdinalIgnoreCase));
+                    if (entry == null) { PostError(id, "ASSET_ENTRY_MISSING", "File import khai báo trong catalog không có trong gói model."); return; }
+                }
+                else foreach (var ext in ImportExtensions)
+                {
+                    entry = files.Where(f => f.EndsWith(ext, StringComparison.OrdinalIgnoreCase)).OrderBy(f => f.Length).FirstOrDefault();
                     if (entry != null) break;
                 }
                 if (entry == null) { PostError(id, "ASSET_NO_IMPORTABLE_FILE", "Gói không có file .fbx/.obj/.max"); return; }
-
+                _offlineLicense.EnsureLicensed();
                 // 4) giao cho adapter (MAXScript) chạy trên UI thread. Method này KHÔNG nằm trong allowlist
                 //    nên web không gọi trực tiếp được; đường dẫn do host tự tính.
                 token.ThrowIfCancellationRequested();
@@ -665,7 +669,7 @@ namespace MaxWebViewHost
                 Debug.WriteLine("[asset.import] " + ex);
                 if (IsArchiveDependencyFailure(ex))
                     PostError(id, "ARCHIVE_DEPENDENCY_MISSING", "Plugin thiếu thư viện giải nén. Cài lại gói plugin đầy đủ rồi khởi động lại 3ds Max.");
-                else PostError(id, "ASSET_IMPORT_FAILED", "Import thất bại");
+                else PostError(id, "ASSET_IMPORT_FAILED", ex is InvalidDataException ? ex.Message : "Import thất bại. Kiểm tra gói model và scene đã chọn.");
             }
             finally
             {
@@ -696,7 +700,7 @@ namespace MaxWebViewHost
         {
             try
             {
-                var current = await PlatformAgent.ReadSceneTargetAsync(selected).ConfigureAwait(false);
+                var current = await _readTarget(selected).ConfigureAwait(false);
                 if (selected.IsSameScene(current)) return true;
                 PostError(id, "TARGET_SCENE_CHANGED", "Scene đã chọn đã đóng hoặc đổi file. Chọn scene và thử lại.");
             }
