@@ -16,6 +16,9 @@ import { createPaymentProvider } from './payments/provider.js';
 import { createPaymentService } from './payments/service.js';
 import { createPaymentRouter, createPayosWebhookRouter } from './payments/routes.js';
 import { adminRouter } from './admin/routes.js';
+import { createOAuth, loadDriveConfig } from './drive/oauth.js';
+import { createDriveRouter } from './drive/routes.js';
+import { requireAdmin } from './admin/access.js';
 
 const STORAGE = process.env.STORAGE_DIR || path.resolve(import.meta.dirname, '../../../storage');
 const SOURCE = process.env.SOURCE_DIR || path.resolve(import.meta.dirname, '../../../source/3DSMOOD');
@@ -42,6 +45,11 @@ const requireLicenseConfiguration = (_req, res, next) => licenseConfigured ? nex
 app.use('/api/licenses', requireLicenseConfiguration, licenseRouter);
 app.use('/api/devices', requireLicenseConfiguration, deviceRouter);
 app.use('/api/admin/licenses', requireLicenseConfiguration, adminLicenseRouter);
+// v3 P1: Google Drive connection. Mounted BEFORE adminRouter so its public OAuth callback is not caught by
+// adminRouter's blanket requireAuth (the callback is protected by a single-use state instead).
+const driveConfig = loadDriveConfig();
+app.use('/api/admin/drive', createDriveRouter({ pool, oauth: createOAuth({ pool, config: driveConfig }), config: driveConfig,
+  guards: [requireAuth, requireAdmin], rateLimit: rateLimit({ limit: 60 }) }));
 app.use('/api/admin', adminRouter(catalog));
 app.use('/api/payments', rateLimit({ limit: 120 }), createPaymentRouter({ service: payments, requireUser: requireAuth, rateLimit: rateLimit({ limit: 20 }) }));
 app.get('/api/health', async (_q, r) => {
@@ -66,6 +74,7 @@ if (process.argv[1] === import.meta.filename) {
   if (applied.length) console.log('migrations:', applied.join(', '));
   const port = process.env.PORT || 4000;
   if (!licenseConfigured) console.warn('Licensing disabled: configure distinct LICENSE_HMAC_SECRET and LICENSE_ENCRYPTION_KEY (32-byte base64).');
+  if (!driveConfig.configured) console.warn('Google Drive disabled: set', driveConfig.errors.join(', '), '(docs/drive-setup.md).');
   if (!paymentConfig.enabled) console.warn('Payments disabled: configure valid payment and license environment variables.');
   if (!catalog.config.configured) console.warn('Catalog configuration required:', catalog.config.errors.join(', '), 'See docs/r2-catalog.md.');
   const stopCatalog = catalog.start();

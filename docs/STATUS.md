@@ -13,7 +13,19 @@ Plan: [`v3-implementation-plan.md`](v3-implementation-plan.md) · Quyết địn
 Nhánh nền: `phuc_arch_v3`. Mỗi phase một nhánh `v3/<px-ten>`.
 
 - [x] P0 — Audit repo, kiến trúc, ERD, API contract, plan từng phase; chủ dự án chốt Q1–Q8 (2026-10-29)
-- [ ] P1 — Drive OAuth + thử list/tải thật; chốt Q4 (OAuth vs Service Account)
+- [~] **P1 — Drive OAuth: code xong và test bằng Drive giả (2026-10-29); CHƯA thử Drive thật, CHƯA chốt Q4** — nhánh `v3/p1-drive-oauth`
+  - [x] Migration 014 (`drive_connections`, `drive_sources`, `oauth_states`) + rollback (từ chối khi đã có kết nối); kiểm trên Postgres thật
+  - [x] OAuth code + PKCE S256, `state` dùng một lần/10 phút, refresh token **mã hóa AES-256-GCM** (AAD = id dòng), access token chỉ ở RAM, làm mới không chạy trùng, `invalid_grant` → `RECONNECT_REQUIRED`
+  - [x] Client Drive v3 (fetch, không SDK): phân trang, shortcut/shared drive/resource key trong request, chặn chèn câu truy vấn, 401 → làm mới token đúng 1 lần, backoff + jitter + `Retry-After`, **không retry** lỗi quyền/404, `openMedia` stream đúng dạng provider của `createArchiveSender`
+  - [x] API admin: `status`, `oauth/start`, `oauth/callback` (công khai, bảo vệ bằng state), `test-access`, `sources` (GET/POST); gắn vào `server.js` **trước** `adminRouter`; lỗi theo envelope v3 `{error:{code,message,requestId}}`
+  - [x] `scripts/drive-probe.js` (+ Service Account để so sánh Q4): quét cây thư mục, tải thử file nhỏ nhất/trung vị/lớn nhất, kiểm size + MD5, ghi `storage/drive-probe-report.json` (không chứa ID/token)
+  - [x] Hướng dẫn thủ công: [`drive-setup.md`](drive-setup.md)
+  - [x] **194/194 test `store-api` pass** (126 cũ + 68 mới). Thử phá code có chủ đích 13 chỗ (bỏ kiểm folder id, bỏ refresh 401, retry lỗi quyền, Retry-After thiếu = 0, state tái dùng, bỏ kiểm scope, refresh đồng thời, lưu token rõ, bỏ PKCE, bỏ guard admin, lộ lỗi 5xx ngoài, `connection` undefined…): **mọi lần đều có test báo lỗi** (1 chỗ ban đầu lọt → đã thêm `errors.test.js`)
+  - [x] 2 lỗi thật do test phát hiện và đã sửa: `Retry-After` thiếu bị hiểu là 0 giây (sẽ gọi Drive dồn dập); lỗi từ guard `requireAdmin` bị trả 500 thay vì 403
+  - [ ] **CHƯA CHẠY VỚI GOOGLE THẬT** — mọi request Drive/OAuth mới được kiểm với Drive giả. Cần chủ dự án làm [`drive-setup.md`](drive-setup.md) §1–§5 rồi chạy `drive-probe`; ghi kết quả vào đây. Các điểm **chưa kiểm chứng**: tên header resource key, `corpora` cho Shared Drive, `about.user` với scope `drive.readonly`, hành vi `canDownload`, tốc độ/giới hạn tải file ~200 MB
+  - [ ] **Chốt Q4** sau khi so sánh OAuth Gmail B với Service Account (token có hết hạn sau ~7 ngày khi app ở *Testing* không?)
+  - [ ] Nợ P1-1: chỉ có một "kết nối hiện hành" (kết nối mới nhất); chưa có UI chọn/ngắt kết nối (P3)
+  - [ ] Nợ P1-2: nút **Kết nối** trên giao diện admin chưa có (P3); hiện dùng link `/oauth/start` trực tiếp
 - [ ] P2 — Migration 014–016/018 + seed 360 model + worker đồng bộ (quét/so sánh/preview/publish) + API catalog
 - [ ] P3 — Web Admin: kết nối Drive, quét, tiến độ, lịch sử, cần duyệt, quyền, đơn, cài đặt
 - [ ] P4 — API thiết bị/quyền/tải + plugin (cache + seed preview, tự cập nhật, tải qua backend, UI-1)

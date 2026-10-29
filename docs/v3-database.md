@@ -57,7 +57,7 @@ erDiagram
 | token_auth_tag | bytea | `octet_length = 16` khi có token |
 | status | text | `check in ('CONNECTED','EXPIRED','RECONNECT_REQUIRED','DISABLED')` |
 | connected_at, last_token_refresh_at | timestamptz | |
-| last_error_code | text | không lưu message thô từ Google có thể chứa token |
+| last_error_code | text | `check ~ '^[A-Z][A-Z0-9_]{1,60}$'` — chỉ mã phân loại, không lưu message thô từ Google |
 | created_by | uuid | FK → `users(id)` (admin) |
 
 **drive_sources**
@@ -65,7 +65,8 @@ erDiagram
 |---|---|---|
 | id | uuid | PK |
 | connection_id | uuid | FK → drive_connections, not null |
-| root_folder_id | text | not null, **UQ (connection_id, root_folder_id)** |
+| root_folder_id | text | not null, `check ~ '^[A-Za-z0-9_-]{10,200}$'`, **UQ (connection_id, root_folder_id)** |
+| root_folder_name | text | not null — tên hiển thị cho admin (thêm ở migration 014, thiếu trong bản thiết kế đầu) |
 | root_resource_key | text | |
 | source_type | text | `check in ('MY_DRIVE','SHARED_WITH_ME','SHARED_DRIVE')` |
 | drive_id | text | khi là Shared Drive |

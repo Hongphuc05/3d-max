@@ -54,15 +54,16 @@ P3, P4 và P5 làm **song song được** sau khi P2 có migration + API catalog
 * Lỗi: `{"error":{"code":"STRING_CODE","message":"Thông điệp tiếng Việt cho người dùng","requestId":"uuid"}}`. Không stack trace.
 * ID công khai: UUID. Thời gian: ISO-8601 UTC. Tiền: số nguyên VND.
 * Mã lỗi dùng chung: `UNAUTHENTICATED` 401 · `FORBIDDEN` 403 · `NOT_FOUND` 404 · `INVALID_PARAMS` 400 · `RATE_LIMITED` 429 · `INTERNAL` 500.
+* **Mã lỗi Drive (đã cài ở P1, `src/drive/errors.js`):** `DRIVE_OAUTH_NOT_CONFIGURED` 503 · `DRIVE_NOT_CONNECTED` 409 · `DRIVE_AUTH_REVOKED` 409 · `OAUTH_STATE_INVALID` 400 · `OAUTH_NO_REFRESH_TOKEN` 400 · `DRIVE_SCOPE_MISSING` 400 · `DRIVE_PERMISSION_DENIED` 422 · `DRIVE_NOT_FOUND` 422 · `DRIVE_NOT_A_FOLDER` 422 · `DRIVE_QUOTA_EXCEEDED` 429 · `DRIVE_UPSTREAM_ERROR` 502. Lỗi Drive cố ý **không** dùng 401/403/404 để không bị nhầm với "chưa đăng nhập / không phải admin / sai route".
 
 ### 2.2 Admin — Drive (P1, P2, P3)
 
 | Method + path | Request | Response | Lỗi riêng |
 |---|---|---|---|
-| `GET /api/admin/drive/status` | — | `{connection:{status,email,authKind,connectedAt,lastTokenRefreshAt}\|null, sources:[{id,rootFolderName,sourceType,enabled,lastSuccessfulSyncAt}]}` | — |
+| `GET /api/admin/drive/status` | — | `{configured:bool, missingConfig:[tên biến], connection:{id,status,email,authKind,connectedAt,lastTokenRefreshAt,lastErrorCode}\|null, sources:[{id,connectionId,rootFolderName,sourceType,enabled,lastSuccessfulSyncAt}]}` (P1 thêm `configured`/`missingConfig`/`id`/`lastErrorCode`) | — |
 | `GET /api/admin/drive/oauth/start` | — | `302` sang Google (có `state`, PKCE) | `DRIVE_OAUTH_NOT_CONFIGURED` |
 | `GET /api/admin/drive/oauth/callback` | `?code&state` từ Google | `302` về trang admin `?drive=connected\|error` | `OAUTH_STATE_INVALID` |
-| `POST /api/admin/drive/test-access` | `{sourceId?}` | `{canList:bool, sampleCount, canDownloadSample:bool, details:[...]}` | `DRIVE_AUTH_REVOKED`, `DRIVE_PERMISSION_DENIED` |
+| `POST /api/admin/drive/test-access` | `{sourceId?}` | `{canList:bool, sampleCount, canDownloadSample:bool, account, details:[{check,ok,count?,code?,reason?}]}` | `DRIVE_AUTH_REVOKED`, `DRIVE_PERMISSION_DENIED` |
 | `POST /api/admin/drive/sources` | `{rootFolderUrlOrId, resourceKey?}` | `201 {id, rootFolderName, sourceType}` | `DRIVE_NOT_FOUND`, `DRIVE_PERMISSION_DENIED` |
 | `GET /api/admin/drive/sources` | — | `[{id,...}]` | — |
 | `POST /api/admin/drive/sync-jobs` | `{sourceId, mode:"FULL"\|"INCREMENTAL"}` | `202 {jobId}` | `409 SYNC_ALREADY_RUNNING`, `DRIVE_AUTH_REVOKED`, `DISK_SPACE_LOW` |

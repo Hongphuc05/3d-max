@@ -50,3 +50,14 @@ test('assembled API health and disabled payments work without model catalog', { 
   assert.equal(webhook.status, 503);
   assert.deepEqual(await webhook.json(), { error: 'PAYMENTS_UNAVAILABLE' });
 });
+
+test('v3 P1: Drive admin API is wired in order — protected routes need auth, the OAuth callback does not', { skip: !configured }, async () => {
+  assert.equal((await fetch(base + '/api/admin/drive/status')).status, 401);
+  assert.equal((await fetch(base + '/api/admin/drive/oauth/start', { redirect: 'manual' })).status, 401);
+  // The callback is reached by Google's redirect, with no API session. It must NOT be swallowed by adminRouter's requireAuth.
+  const cb = await fetch(base + '/api/admin/drive/oauth/callback?error=access_denied', { redirect: 'manual' });
+  assert.equal(cb.status, 302);
+  assert.match(cb.headers.get('location'), /\/admin\?drive=error&reason=consent_denied$/);
+  // Existing admin routes keep their behaviour.
+  assert.equal((await fetch(base + '/api/admin/overview')).status, 401);
+});
