@@ -251,3 +251,22 @@ Hướng dẫn vận hành: [offline-library.md](offline-library.md).
 ## D16 — Đóng gói thư viện trong plugin (2026-10-27)
 
 Danh sách model và ảnh preview được đóng gói trong plugin để xem offline ngay sau khi cài. File model được tải từ Google Drive khi import và kiểm tra checksum. Mọi thay đổi catalog hoặc ảnh cần build và bàn giao plugin mới. Admin giữ đăng nhập và ký license phía server, không còn chức năng quét hoặc xuất bản catalog. Không dùng GitHub Actions, Pages hay R2 cho việc cập nhật thư viện.
+
+
+## D17–D25 — Kiến trúc v3: Drive private → VPS → plugin (locked 2026-10-29)
+
+Chủ dự án chốt ngày 2026-10-29. **Thay thế cho luồng khách hàng** của D11–D16 (giữ các mục đó làm lịch sử).
+Chi tiết: [`v3-architecture.md`](v3-architecture.md), [`v3-database.md`](v3-database.md),
+[`v3-implementation-plan.md`](v3-implementation-plan.md).
+
+| ID | Quyết định |
+|---|---|
+| D17 | Danh tính khách = **thiết bị** (khóa CNG/TPM của `DeviceIdentityService`), ký challenge để lấy token ngắn hạn. Khách **không có tài khoản** |
+| D18 | **Bán theo từng model, license vĩnh viễn** cho model đó. Quyền lưu ở bảng `entitlements`; `ALL_MODELS` chỉ dành cho khách có license MXL1 cũ và admin cấp tay |
+| D19 | Catalog = **PostgreSQL** trên VPS (Model ID = UUID). File model gốc trên **Google Drive private** (OAuth Gmail B, Viewer); backend **stream** model cho plugin, không bao giờ lộ Drive ID/URL. Preview WebP lưu trên VPS, Nginx phục vụ |
+| D20 | **Không push** tới plugin. Plugin **tự phát hiện và tự cập nhật** catalog + preview: khi mở, mỗi 5 phút, và qua SSE |
+| D21 | Thu tiền: chuyển khoản theo QR; khách bấm "đã chuyển" → **bot Telegram** báo chủ → chủ bấm "Đã nhận tiền" → cấp quyền. **Không** payOS, **không** R2. Không có đối soát ngân hàng tự động (chủ tự kiểm sao kê) |
+| D22 | Web Admin duy nhất = admin của `store-api`/`store-web`; ngừng `apps/license-admin` (Vercel) sau khi thay thế xong |
+| D23 | **Bộ cài mang sẵn preview** (kéo từ manifest VPS lúc build); sau đó plugin chỉ đồng bộ phần chênh lệch |
+| D24 | Giao diện plugin v3 = **UI-1 tối**, commit `13ad8f4` |
+| D25 | Thông tin ngân hàng nhận tiền, giá mặc định và giá từng model **sửa trong trang admin** (`app_settings`); mỗi đơn lưu bản chụp thông tin ngân hàng |

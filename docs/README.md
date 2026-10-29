@@ -1,5 +1,8 @@
 # Tài liệu dự án 3DS Mood cho 3ds Max
 
+> **v3 (2026-10-29) — đã chốt, sẵn sàng implement:** Drive private → VPS → plugin, quyền theo thiết bị, thanh toán xác nhận qua Telegram.
+> Đọc theo thứ tự: [`v3-implementation-plan.md`](v3-implementation-plan.md) → [`v3-architecture.md`](v3-architecture.md) → [`v3-database.md`](v3-database.md).
+
 ## Hướng dẫn hiện tại
 
 Luồng hiện tại dùng license vĩnh viễn theo mã máy, xác minh offline. Chủ sở hữu tự xử lý

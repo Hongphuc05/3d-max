@@ -6,6 +6,23 @@
 
 Chú giải: `[x]` xong và đã kiểm tra · `[~]` xong một phần / chưa kiểm tra đủ · `[ ]` chưa làm.
 
+
+## v3 — Drive private → VPS → plugin (bắt đầu 2026-10-29)
+
+Plan: [`v3-implementation-plan.md`](v3-implementation-plan.md) · Quyết định: D17–D25 trong [`decisions.md`](decisions.md).
+Nhánh nền: `phuc_arch_v3`. Mỗi phase một nhánh `v3/<px-ten>`.
+
+- [x] P0 — Audit repo, kiến trúc, ERD, API contract, plan từng phase; chủ dự án chốt Q1–Q8 (2026-10-29)
+- [ ] P1 — Drive OAuth + thử list/tải thật; chốt Q4 (OAuth vs Service Account)
+- [ ] P2 — Migration 014–016/018 + seed 360 model + worker đồng bộ (quét/so sánh/preview/publish) + API catalog
+- [ ] P3 — Web Admin: kết nối Drive, quét, tiến độ, lịch sử, cần duyệt, quyền, đơn, cài đặt
+- [ ] P4 — API thiết bị/quyền/tải + plugin (cache + seed preview, tự cập nhật, tải qua backend, UI-1)
+- [ ] P5 — Đơn hàng + bot Telegram
+- [ ] P6 — VPS, giám sát, backup, E2E 18 tiêu chí, deploy
+- [ ] P7 — Dọn code cũ (payOS, R2, tài khoản khách, Vercel admin, bảng cũ)
+
+Còn mở (không chặn code): thông tin ngân hàng thật (nhập ở admin) · kết luận Q4 (cuối P1).
+
 ## Tài khoản và giao diện admin (2026-10-25)
 
 - [x] Migration 011–013: tạo schema admin, không cấp credential mặc định; migration 013 hạ quyền bootstrap admin cũ và thu hồi session. Operator cấp quyền bằng UUID đã xác minh trong `LICENSE_ADMIN_USER_IDS`.
