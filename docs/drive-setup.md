@@ -1,5 +1,7 @@
 # Thiết lập kết nối Google Drive (v3 · P1)
 
+> **2026-10-30:** theo D26, luồng chính không dùng OAuth. Tài liệu này chỉ còn để tham khảo.
+
 > Việc **thủ công** của chủ dự án. Code P1 đã xong và test bằng Drive giả; các bước dưới đây để chạy **thật** và ghi biên bản vào
 > [`STATUS.md`](STATUS.md). Chưa làm các bước này thì chưa thể kết luận Q4 hay xác nhận "tải được file từ Drive private".
 

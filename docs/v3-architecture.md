@@ -1,5 +1,7 @@
 # 3DS Mood v3 — Kiến trúc thống nhất (Phase 0: audit + thiết kế)
 
+> **2026-10-30:** D26 thay phần Drive private/OAuth và stream trực tiếp từ Drive. Xem mục "Bàn giao" trong `v3-implementation-plan.md`.
+
 > Viết 2026-10-29 · nhánh `phuc_arch_v3` (dựng từ `origin/nam-lisence` @ `ba41518`) · **Chưa có dòng code nào được sửa, chưa chạy migration.**
 > Đi kèm: [`v3-database.md`](v3-database.md) (ERD + migration) · [`v3-implementation-plan.md`](v3-implementation-plan.md) (plan từng phase + API contract).
 > Nguồn yêu cầu: master prompt của chủ dự án + mô tả luồng kinh doanh (mục 0.1). Nhãn dùng trong tài liệu:

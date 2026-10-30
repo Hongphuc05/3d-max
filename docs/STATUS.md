@@ -33,7 +33,7 @@ Nhánh hiện tại: `v3/p1-drive-oauth`. Mỗi phase một nhánh `v3/<px-ten>`
 - [ ] P6 — VPS, giám sát, backup, E2E 18 tiêu chí, deploy
 - [ ] P7 — Dọn code cũ (payOS, R2, tài khoản khách, Vercel admin, bảng cũ)
 
-Còn mở: **Q9 cách lấy file model (chặn P2/P4, xem mục Bàn giao)** · thông tin ngân hàng thật (nhập ở admin) · kết luận Q4 (cuối P1).
+Q9 đã chốt: D26 (VPS tải hộ link công khai + lưu bản sao; quét bằng API key). Q4 không còn áp dụng. Còn mở: xử lý 360 ID đã lộ · thông tin ngân hàng thật (nhập ở admin).
 
 ## Tài khoản và giao diện admin (2026-10-25)
 

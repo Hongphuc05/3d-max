@@ -270,3 +270,7 @@ Chi tiết: [`v3-architecture.md`](v3-architecture.md), [`v3-database.md`](v3-da
 | D23 | **Bộ cài mang sẵn preview** (kéo từ manifest VPS lúc build); sau đó plugin chỉ đồng bộ phần chênh lệch |
 | D24 | Giao diện plugin v3 = **UI-1 tối**, commit `13ad8f4` |
 | D25 | Thông tin ngân hàng nhận tiền, giá mặc định và giá từng model **sửa trong trang admin** (`app_settings`); mỗi đơn lưu bản chụp thông tin ngân hàng |
+
+## D26 — Lấy file model: VPS tải hộ link công khai + lưu bản sao (locked 2026-10-30)
+
+Chủ dự án chọn để tránh OAuth. **Thay phần "Drive private + OAuth" của D19.** VPS giữ link, kiểm license, tải từ Drive một lần, lưu đĩa rồi phục vụ khách; plugin không nhận link hay Drive ID. Quét thư mục dùng Drive API key. Rủi ro đã chấp nhận và chi tiết: mục "Bàn giao" trong [`v3-implementation-plan.md`](v3-implementation-plan.md).

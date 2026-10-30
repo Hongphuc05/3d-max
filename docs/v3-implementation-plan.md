@@ -14,9 +14,17 @@
 
 | # | Việc | Ai | Ảnh hưởng |
 |---|---|---|---|
-| 1 | **Chưa chốt cách lấy file model (Q9).** (a) API + Service Account/OAuth như plan; (b) VPS tải hộ bằng link Drive công khai; (a) hoặc (b) có thể kèm **VPS lưu bản sao** để ít gọi Google. **Không** trả link công khai về plugin: khách lấy được link là chia sẻ được, Google không kiểm license. Chọn (b) thì 360 `driveFileId` trong `library/public/catalog.json` đã lộ theo bộ cài cũ, phải tắt chia sẻ hoặc tải file lên lại, và admin không quét tự động được nếu bỏ hẳn API | Chủ dự án | P2 (quét), P4 (tải) |
+| 1 | **Q9 đã chốt (D26), xem mục ngay dưới.** Việc còn lại: tắt chia sẻ hoặc tải lại 360 file có ID đã lộ | Chủ dự án | P4 |
 | 2 | **Chạy P1 với Google thật** theo `docs/drive-setup.md`, ghi kết quả vào `STATUS.md`. Chưa kiểm chứng: header resource key, `corpora` Shared Drive, `about.user`, `canDownload`, tốc độ/giới hạn file ~200 MB, token hết hạn khi app ở Testing | Chủ dự án | P2, Q4 |
 | 3 | **Xem bố cục Drive thật** ở vài thư mục lá (ảnh và file nén cùng tên, hay mỗi model một thư mục) vì mapper P2.5 dựa vào đó. Probe hiện chỉ đếm, chưa in mẫu | Chủ dự án / P2 | P2.5 |
+
+**D26 — ghi đè mọi chỗ khác trong plan khi mâu thuẫn:**
+
+* **Tải model:** VPS tải hộ từ link Drive công khai (`drive.google.com/uc?export=download&id=…`) rồi **lưu bản sao trên đĩa VPS**. Khách luôn nhận file từ VPS. Link và Drive ID **không bao giờ** trả về plugin; license được kiểm ở VPS trước khi stream.
+* **P4.2:** thay `src/drive/provider.js` bằng provider link công khai + lớp cache (`MODEL_CACHE_DIR`, ghi `.part` → kiểm size/sha256 → rename, chống tải trùng cùng model, kiểm dung lượng trống, dọn file ít dùng). Port logic xác nhận tải file lớn và phát hiện trang HTML từ `GoogleDriveDownloader.cs`, kèm allowlist host. Trả về đúng dạng provider của `createArchiveSender`.
+* **Quét Drive (P2):** vẫn phải gọi Drive API để liệt kê thư mục, nhưng dùng **API key, không OAuth** (mẫu: `tools/catalog-import/drive-api.mjs`). Thêm chế độ API key cho `src/drive/client.js`. Mã OAuth/Service Account của P1 giữ lại, không xóa, không dùng trong luồng chính. P1.4, Q4 và tiêu chí "Drive Restricted" không còn áp dụng; màn kết nối OAuth ở P3.1 đổi thành cấu hình API key và thư mục gốc.
+* **SHA-256:** Drive không trả sha256, nên tính khi tải lần đầu rồi lưu `model_files.sha256`. Ảnh preview vẫn do worker tải.
+* **Rủi ro đã chấp nhận:** Google có thể chặn VPS (nhánh nam từng gặp trang 403) nên phải có backoff và báo lỗi rõ cho admin; ai có link/ID vẫn tải được không cần license. Thư mục gốc công khai nên **ID thư mục lộ là lộ toàn bộ**; chưa kiểm chứng API có trả `parents` của file công khai hay không, phải thử ở bước probe. 360 ID trong `library/public/catalog.json` đã lộ theo bộ cài cũ. Dung lượng: khoảng 10 GB hiện tại trên ổ 40 GB; thư viện lớn hơn thì phải xem lại.
 
 **Môi trường chạy API:** `.env.example` có sẵn các biến nhưng phải tự điền. Tối thiểu cần `DATABASE_URL`, `JWT_SECRET` (thiếu thì API không khởi động). Muốn gọi route admin: đăng ký tài khoản, lấy UUID, đặt vào `LICENSE_ADMIN_USER_IDS`, khởi động lại. Giao diện chưa có màn đăng nhập admin (`main.jsx` chỉ mount `OfflineLibrary`, P3/P4 mới đổi). Test cần `TEST_DATABASE_URL` trỏ tới database có `test` trong tên.
 
