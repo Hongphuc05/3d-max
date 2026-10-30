@@ -51,8 +51,11 @@ export async function computeDiff(pool, { sourceId, jobId }) {
 
   const plan = { models: [], previews: [], missing, recovered: [], reviews: [] };
   let skipped = 0;
-  const addReview = (kind, path, files, extra = {}) =>
-    plan.reviews.push({ kind, payload: { path, files, ...extra, fingerprint: fingerprint(kind, path, [...files, ...Object.values(extra).map(String)]) } });
+  const addReview = (kind, path, files, extra = {}) => {
+    const review = { kind, payload: { path, files, ...extra, fingerprint: fingerprint(kind, path, [...files, ...Object.values(extra).map(String)]) } };
+    plan.reviews.push(review);
+    return review;
+  };
 
   for (const dir of [...dirs.values()].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))) {
     const mapped = mapFolder(dir);
@@ -69,7 +72,11 @@ export async function computeDiff(pool, { sourceId, jobId }) {
         const prev = m.file.md5 && m.file.size !== null ? missingByHash.get(`${m.file.md5}:${m.file.size}`) : undefined;
         if (prev) {
           entry.status = 'NEEDS_REVIEW';
-          addReview('REMAP_CANDIDATE', dir.path, [m.file.name], { previousModelId: prev.model_id, previousModel: prev.name });
+          addReview('REMAP_CANDIDATE', dir.path, [m.file.name], { previousModelId: prev.model_id, previousModel: prev.name }).forFile = m.file.id;
+        }
+        if (m.suggested) {
+          const link = plan.reviews.find((r) => r.kind === 'SUGGESTED_PAIR' && r.payload.path === dir.path && r.payload.files.includes(m.file.name));
+          if (link) link.forFile = m.file.id;
         }
         plan.models.push(entry);
         for (const img of m.images) plan.previews.push({ fileId: m.file.id, imageId: img.id, md5: img.md5, primary: img.primary });

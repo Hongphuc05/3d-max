@@ -1,11 +1,12 @@
 // Nap catalog cu (library/public/catalog.json) vao PostgreSQL: categories, models (legacy_id), model_files.
 // Chay lai khong nhan doi, khong ghi de thu admin da sua. Khong copy anh (preview do worker sinh lai).
+import { createCategoryResolver } from './categories.js';
+
 const LEGACY_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$/;
 const DRIVE_ID = /^[A-Za-z0-9_-]{10,200}$/;
 const SHA256 = /^[0-9a-fA-F]{64}$/;
 const ARCHIVE_EXT = /\.(rar|zip|7z)$/i;
 
-const slugify = (s) => s.normalize('NFKD').replace(/[^\w\s-]/g, '').trim().toLowerCase().replace(/[\s_]+/g, '-') || 'x';
 
 // Loi chi nem "item #n": khong bao gio dua Drive id hay duong dan vao thong bao.
 function clean(raw, n) {
@@ -45,26 +46,10 @@ export async function seedLegacyCatalog(pool, { sourceId, items, defaultPriceVnd
     if (!(await c.query('select 1 from drive_sources where id = $1', [sourceId])).rowCount) throw new Error('source not found');
 
     const out = { categories: 0, models: { inserted: 0, existing: 0 }, files: 0 };
-    const catIds = new Map(); // full_path -> id
-    const category = async (parts) => {
-      let parent = null, path = '';
-      for (const name of parts) {
-        path = path ? `${path} / ${name}` : name;
-        if (!catIds.has(path)) {
-          const r = await c.query(
-            `insert into categories (parent_id, name, slug, full_path) values ($1, $2, $3, $4)
-             on conflict (full_path) do update set full_path = excluded.full_path returning id, (xmax = 0) as inserted`,
-            [parent, name, slugify(name), path]);
-          catIds.set(path, r.rows[0].id);
-          if (r.rows[0].inserted) out.categories++;
-        }
-        parent = catIds.get(path);
-      }
-      return parent;
-    };
+    const categories = createCategoryResolver(c);
 
     for (const r of rows) {
-      const categoryId = await category(r.parts);
+      const categoryId = await categories.resolve(r.parts);
       const ins = await c.query(
         `insert into models (legacy_id, category_id, name, status, price_vnd, published_at)
          values ($1, $2, $3, 'PUBLISHED', $4, now()) on conflict (legacy_id) do nothing returning id`,
@@ -80,6 +65,7 @@ export async function seedLegacyCatalog(pool, { sourceId, items, defaultPriceVnd
       await c.query('update models set primary_file_id = $1 where id = $2', [file.rows[0].id, modelId]);
     }
     await c.query('commit');
+    out.categories = categories.created;
     return out;
   } catch (e) {
     await c.query('rollback').catch(() => {});
