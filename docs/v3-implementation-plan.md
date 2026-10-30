@@ -6,7 +6,7 @@
 
 ## Bàn giao P2–P7 (2026-10-30) — người nhận đọc trước
 
-**Lấy code:** `git fetch origin && git checkout v3/p1-drive-oauth`, rồi tạo nhánh phase mới **từ nhánh này**.
+**Lấy code:** `git fetch origin && git checkout v3/p1-drive-oauth`. **Làm mọi phase P2–P7 trực tiếp trên nhánh này.** Không tạo nhánh mới, không tạo MR/PR.
 
 **Trạng thái:** P0 xong. P1 code xong, 194/194 test `store-api` pass, nhưng **mới test với Google giả**. Chi tiết và nợ: `docs/STATUS.md` mục v3.
 
@@ -35,7 +35,7 @@
 ## 0. Luật cho model triển khai (đọc trước khi code)
 
 1. **Phase 0 phải xong** (chủ dự án trả lời Q1–Q5) trước khi code Phase 1. Chưa chốt → dừng và hỏi, không tự chọn.
-2. **Mỗi phase một nhánh, tách từ nhánh phase trước** (P2 từ `v3/p1-drive-oauth`), đặt tên `v3/p2-sync-worker`, … Không push lên `main`.
+2. **Làm tất cả các phase trên nhánh `v3/p1-drive-oauth`.** Không tạo nhánh mới, không tạo MR/PR, không merge hay push lên `main`.
 3. **Không viết lại thứ đang chạy.** Tái dùng: `apps/store-api/src/db.js`, `scripts/migrate.js`, `download-stream.js`
    (`createArchiveSender`), `licensing/device-crypto.js`, `security.js` (`originGuard`, `requireJson`, `errorHandler`),
    `rateLimit`, `admin/access.js`; plugin: `DeviceIdentityService.cs`, `ArchivePackage.cs`, `ImportTargetSelection.cs`,
@@ -392,9 +392,9 @@ Gỡ `src/payments/`, `src/r2/`, `cloudflare/`, `scripts/*payos*`, `scripts/*r2*
 ## 3. Mẫu prompt giao việc cho model triển khai
 
 ```text
-Bạn triển khai phase <Px> của dự án 3DS Mood. Repo: <đường dẫn>, tách nhánh từ nhánh phase trước (P2: v3/p1-drive-oauth).
+Bạn triển khai phase <Px> của dự án 3DS Mood. Repo: <đường dẫn>, làm trực tiếp trên nhánh v3/p1-drive-oauth; không tạo nhánh mới, không tạo MR/PR.
 Đọc docs/v3-implementation-plan.md (mục Bàn giao, mục 0, mục 2 và mục <Px>), docs/v3-architecture.md, docs/v3-database.md, CLAUDE.md.
-Tạo nhánh v3/<px-ten>. Chỉ làm đúng phạm vi <Px>. Viết test trước cho phần tiền/quyền/job/giải nén.
+Chỉ làm đúng phạm vi <Px>. Viết test trước cho phần tiền/quyền/job/giải nén.
 Không thay đổi contract ở mục 2; nếu bắt buộc phải đổi, dừng lại và báo.
 Không chạy migration production, không commit secret, không push main.
 Kết thúc: chạy toàn bộ test, cập nhật docs/STATUS.md mục v3, báo cáo file đã đổi + lệnh đã chạy + điều chưa kiểm chứng.

@@ -10,7 +10,7 @@ Chú giải: `[x]` xong và đã kiểm tra · `[~]` xong một phần / chưa k
 ## v3 — Drive private → VPS → plugin (bắt đầu 2026-10-29)
 
 Plan: [`v3-implementation-plan.md`](v3-implementation-plan.md) · Quyết định: D17–D25 trong [`decisions.md`](decisions.md).
-Nhánh hiện tại: `v3/p1-drive-oauth`. Mỗi phase một nhánh `v3/<px-ten>`, tách từ nhánh phase trước. **Người nhận P2–P7 đọc mục "Bàn giao" đầu file plan.**
+Nhánh hiện tại: `v3/p1-drive-oauth`. Mọi phase làm trên nhánh này, không tạo nhánh mới hay MR/PR. **Người nhận P2–P7 đọc mục "Bàn giao" đầu file plan.**
 
 - [x] P0 — Audit repo, kiến trúc, ERD, API contract, plan từng phase; chủ dự án chốt Q1–Q8 (2026-10-29)
 - [~] **P1 — Drive OAuth: code xong và test bằng Drive giả (2026-10-29); CHƯA thử Drive thật, CHƯA chốt Q4** — nhánh `v3/p1-drive-oauth`
