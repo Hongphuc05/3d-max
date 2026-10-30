@@ -26,13 +26,14 @@ Nhánh hiện tại: `v3/p1-drive-oauth`. Mọi phase làm trên nhánh này, kh
   - [ ] **Chốt Q4** sau khi so sánh OAuth Gmail B với Service Account (token có hết hạn sau ~7 ngày khi app ở *Testing* không?)
   - [ ] Nợ P1-1: chỉ có một "kết nối hiện hành" (kết nối mới nhất); chưa có UI chọn/ngắt kết nối (P3)
   - [ ] Nợ P1-2: nút **Kết nối** trên giao diện admin chưa có (P3); hiện dùng link `/oauth/start` trực tiếp
-- [~] **P2 — Migration 015/016/018 + seed 360 model + worker đồng bộ (quét/so sánh/preview/publish) + API catalog** — đang làm (bắt đầu 2026-10-30), nhánh `v3/p2-sync-worker` (tách từ `v3/p1-drive-oauth` theo yêu cầu của chủ dự án; plan ghi "không tạo nhánh mới", prompt bàn giao ghi đè). **Nhật ký làm việc: mục "Nhật ký P2" ngay dưới; mọi bước làm xong phải ghi vào đó.**
+- [~] **P2 — Worker đồng bộ Drive + catalog v3: CODE XONG và test trên Drive giả (2026-10-30); CHƯA chạy với Drive thật** — nhánh `v3/p2-sync-worker` (tách từ `v3/p1-drive-oauth` theo yêu cầu của chủ dự án; plan ghi 'không tạo nhánh mới', prompt bàn giao ghi đè). Baseline 194 → **338/338 test pass**. Nhật ký từng bước: mục 'Nhật ký P2' ngay dưới.
   - Quét Drive dùng **API key** (D26), không OAuth; giữ nguyên mã OAuth P1.
   - **Lệch so với `v3-database.md` §3.5 (cần chủ dự án duyệt):** `model_download_sessions` và `model_download_logs` KHÔNG nằm trong 018 vì khóa ngoại tới `devices`/`entitlements` của 017 (P4/P5); 018 hiện chỉ có `audit_events`. Hai bảng kia đi cùng migration thiết bị ở P4.
   - Nợ P2-1: giá model mới lấy từ biến môi trường `DEFAULT_MODEL_PRICE_VND` (mặc định 15000) vì `app_settings` thuộc migration 017 (P4/P5); đổi sang `app_settings.default_model_price_vnd` ở P3/P4.
-  - P2.4 đang làm (2026-10-30): xem dòng "P2.4" trong nhật ký.
   - Nợ P2-2: `node --test` không có timeout mặc định; khi ai đó phá fencing/lease thì test **treo** thay vì fail rõ. Cân nhắc thêm `--test-timeout` vào script `npm test` (chưa đổi vì ảnh hưởng toàn suite).
-  - Việc còn mở: **P2.5 mapper** chờ chủ dự án đưa API key (biến môi trường) và mô tả bố cục Drive thật; ca mơ hồ → `NEEDS_REVIEW`.
+  - **Cách chạy thật (thứ tự quan trọng):** (1) `npm run sync:drive -- <rootFolderId>` tạo nguồn API key + xếp job FULL và in ID nguồn; (2) **trước khi chạy worker** nếu muốn giữ 360 model cũ: `npm run seed:legacy -- <sourceId>` (seed khớp theo `drive_file_id`; nếu worker chạy trước thì 360 model tạo mới và seed sẽ đụng khoá duy nhất `drive_file_id`); (3) `npm run worker`. Cần `DATABASE_URL`, `DRIVE_API_KEY`; tùy chọn `PREVIEW_DIR`, `MIN_FREE_DISK_BYTES`, `DEFAULT_MODEL_PRICE_VND`, `CATALOG_SSE_MAX`. Chỉ chạy trên DB dev.
+  - **Đối chiếu tiêu chí P2.8:** job FULL chạy hết, công bố — ✔ Drive giả / **chưa kiểm chứng Drive thật** (360 model, ~720 WebP) · chạy lại lần 2 → `new=0, updated=0`, không tải ảnh nào — ✔ Drive giả / chưa kiểm chứng Drive thật · kill worker giữa DOWNLOADING_PREVIEWS → tự tiếp tục — ✔ Drive giả (ảnh đã xong không tải lại) / chưa kiểm chứng Drive thật · RSS worker < 400 MB suốt job — **chưa đo**.
+  - **Việc còn mở sau P2:** chạy P2.8 với Drive thật; chủ dự án duyệt 4 quyết định thiết kế ở P2.5 và lệch 018; Regenerate API key đã lộ; admin API/UI (P3), thiết bị/quyền/tải (P4), đơn hàng (P5), GC file preview mồ côi (P6).
 
 ### Nhật ký P2 (mới nhất ở cuối)
 
