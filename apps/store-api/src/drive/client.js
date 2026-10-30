@@ -11,6 +11,7 @@ export const FOLDER = 'application/vnd.google-apps.folder';
 export const SHORTCUT = 'application/vnd.google-apps.shortcut';
 const ID_RE = /^[A-Za-z0-9_-]{10,200}$/;
 const KEY_RE = /^[A-Za-z0-9_-]{1,100}$/;
+const API_KEY_RE = /^[A-Za-z0-9_-]{20,256}$/;
 const FILE_FIELDS = 'id,name,mimeType,parents,size,modifiedTime,md5Checksum,resourceKey,driveId,ownedByMe,'
   + 'capabilities(canDownload),shortcutDetails(targetId,targetMimeType,targetResourceKey)';
 const RATE_REASONS = new Set(['rateLimitExceeded', 'userRateLimitExceeded', 'sharingRateLimitExceeded', 'quotaExceeded', 'dailyLimitExceeded', 'backendError']);
@@ -38,11 +39,15 @@ export function classifyDriveError(status, body, headers) {
   return apiError('DRIVE_BAD_REQUEST', { reason });
 }
 
+// Two auth modes: OAuth/service account (getAccessToken, P1) or a plain API key for publicly shared folders (D26).
+// The API key travels in the URL query, so it must never reach logs or errors: errors are built from status codes only.
 export function createDriveClient({
-  getAccessToken, baseUrl = DRIVE_BASE, fetchImpl = globalThis.fetch,
+  getAccessToken, apiKey, baseUrl = DRIVE_BASE, fetchImpl = globalThis.fetch,
   retry = {}, metadataTimeoutMs = 30_000, mediaHeadersTimeoutMs = 60_000,
 }) {
-  if (typeof getAccessToken !== 'function') throw new TypeError('getAccessToken is required');
+  if (apiKey !== undefined) {
+    if (typeof apiKey !== 'string' || !API_KEY_RE.test(apiKey)) throw new TypeError('apiKey is malformed');
+  } else if (typeof getAccessToken !== 'function') throw new TypeError('getAccessToken or apiKey is required');
 
   const resourceKeyHeader = (id, key) => (key ? { 'X-Goog-Drive-Resource-Keys': `${id}/${key}` } : {});
 
@@ -50,15 +55,16 @@ export function createDriveClient({
   async function call({ path, params, headers, signal, media = false }) {
     const url = new URL(path, baseUrl);
     for (const [k, v] of Object.entries(params ?? {})) if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
+    if (apiKey) url.searchParams.set('key', apiKey);
     let refreshed = false;
     return withRetry(async () => {
-      const token = await getAccessToken({ force: refreshed });
+      const token = apiKey ? null : await getAccessToken({ force: refreshed });
       const timer = new AbortController();
       const timeout = setTimeout(() => timer.abort(new DOMException('Timeout', 'TimeoutError')), media ? mediaHeadersTimeoutMs : metadataTimeoutMs);
       const link = signal ? AbortSignal.any([signal, timer.signal]) : timer.signal;
       let response;
       try {
-        response = await fetchImpl(url, { headers: { Authorization: `Bearer ${token}`, ...headers }, signal: link });
+        response = await fetchImpl(url, { headers: { ...(apiKey ? {} : { Authorization: `Bearer ${token}` }), ...headers }, signal: link });
       } catch (error) {
         clearTimeout(timeout);
         if (signal?.aborted) throw error; // caller cancelled: not a Drive failure
@@ -70,7 +76,7 @@ export function createDriveClient({
       response.body?.cancel?.().catch(() => {});
       const error = classifyDriveError(response.status, body, response.headers);
       // A 401 may only mean the cached access token expired: refresh once, then retry immediately.
-      if (response.status === 401 && !refreshed) { refreshed = true; error.retryable = true; error.retryAfterMs = 0; }
+      if (response.status === 401 && !apiKey && !refreshed) { refreshed = true; error.retryable = true; error.retryAfterMs = 0; }
       throw error;
     }, { ...retry, signal });
   }

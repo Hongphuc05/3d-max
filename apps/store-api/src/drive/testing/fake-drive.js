@@ -2,8 +2,9 @@
 import http from 'node:http';
 
 // files: [{ id, name, mimeType, parents:[id], size?, md5Checksum?, canDownload?, content?: Buffer, resourceKey? }]
-export async function startFakeDrive({ files = [], user = { emailAddress: 'operator@example.test' }, pageSize = 2 } = {}) {
-  const state = { files, requests: [], failures: [], tokens: new Set(['good-token']), user };
+// apiKeys: keys accepted via ?key= (P2, D26). missingFolders: ids whose listing answers 404 (folder deleted mid-scan).
+export async function startFakeDrive({ files = [], user = { emailAddress: 'operator@example.test' }, pageSize = 2, apiKeys = [] } = {}) {
+  const state = { files, requests: [], failures: [], tokens: new Set(['good-token']), apiKeys: new Set(apiKeys), missingFolders: new Set(), user };
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
     state.requests.push({ method: req.method, path: url.pathname, query: Object.fromEntries(url.searchParams), headers: req.headers });
@@ -13,7 +14,10 @@ export async function startFakeDrive({ files = [], user = { emailAddress: 'opera
     const fail = at >= 0 ? state.failures.splice(at, 1)[0] : undefined;
     if (fail) return send(fail.status, fail.body ?? { error: { errors: [{ reason: fail.reason }] } }, fail.headers);
     const auth = (req.headers.authorization || '').replace(/^Bearer /, '');
-    if (!state.tokens.has(auth)) return send(401, { error: { code: 401, status: 'UNAUTHENTICATED' } });
+    const key = url.searchParams.get('key');
+    if (key ? !state.apiKeys.has(key) : !state.tokens.has(auth)) {
+      return send(key ? 400 : 401, { error: { code: key ? 400 : 401, status: key ? 'INVALID_ARGUMENT' : 'UNAUTHENTICATED' } });
+    }
 
     const meta = f => ({ id: f.id, name: f.name, mimeType: f.mimeType, parents: f.parents, size: f.size != null ? String(f.size) : undefined,
       modifiedTime: '2026-01-01T00:00:00.000Z', md5Checksum: f.md5Checksum, resourceKey: f.resourceKey, driveId: f.driveId, shortcutDetails: f.shortcutDetails,
@@ -23,6 +27,7 @@ export async function startFakeDrive({ files = [], user = { emailAddress: 'opera
     if (url.pathname === '/drive/v3/files') {
       const folder = /^'([^']+)' in parents and trashed = false$/.exec(url.searchParams.get('q') || '')?.[1];
       if (!folder) return send(400, { error: { errors: [{ reason: 'invalidQuery' }] } });
+      if (state.missingFolders.has(folder)) return send(404, { error: { errors: [{ reason: 'notFound' }] } });
       const all = state.files.filter(f => f.parents?.includes(folder));
       const start = Number(url.searchParams.get('pageToken') || 0);
       const size = Math.min(pageSize, Number(url.searchParams.get('pageSize')) || pageSize);
