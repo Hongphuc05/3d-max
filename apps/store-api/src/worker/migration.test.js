@@ -151,7 +151,24 @@ test('018 audit_events: actor kind constrained, details defaults to an object', 
   await assert.rejects(ins('ROBOT'), /check/i);
 });
 
-test('rollbacks 018 -> 016 -> 015: refuse while data exists, succeed (in dependency order) when empty, migrations re-apply', { skip }, async () => {
+test('020 shared preview files: several rows may point at one content-addressed file; rollback refuses while paths repeat', { skip }, async () => {
+  const cat = (await category('Shared')).rows[0].id;
+  const a = (await model(cat)).rows[0].id, b = (await model(cat)).rows[0].id;
+  const row = (modelId, variant, primary) => pool.query(
+    "insert into model_previews(model_id,source,local_path,sha256,file_size,width,height,variant,is_primary) values($1,'DRIVE_IMAGE','shared.webp',$2,1,1,1,$3,$4)",
+    [modelId, sha('shared'), variant, primary]);
+  await row(a, 'sm', true); await row(a, 'lg', true); // small source: sm and lg are the same bytes
+  await row(b, 'sm', true); // another model with the same picture
+  const c = await pool.connect();
+  try {
+    await assert.rejects(c.query(rollbackSql('020_preview_shared_files')), /Rollback refused/);
+    await c.query('rollback');
+    await pool.query("delete from model_previews where local_path='shared.webp'");
+    await pool.query('delete from models where id = any($1)', [[a, b]]);
+  } finally { c.release(); }
+});
+
+test('rollbacks 020 -> 018 -> 016 -> 015: refuse while data exists, succeed (in dependency order) when empty, migrations re-apply', { skip }, async () => {
   const c = await pool.connect();
   const refuses = async name => {
     await assert.rejects(c.query(rollbackSql(name)), /Rollback refused/, name);
@@ -165,6 +182,7 @@ test('rollbacks 018 -> 016 -> 015: refuse while data exists, succeed (in depende
 
     // wrong order is impossible: 015 cannot go while 016 still references jobs
     await c.query('delete from audit_events');
+    await c.query(rollbackSql('020_preview_shared_files')); // 020 changes model_previews, so it must go before 016
     await c.query(rollbackSql('018_download_audit'));
     await assert.rejects(c.query(rollbackSql('015_drive_sync_jobs')), /./);
     await c.query('rollback');
@@ -178,7 +196,7 @@ test('rollbacks 018 -> 016 -> 015: refuse while data exists, succeed (in depende
     }
     assert.equal((await c.query("select to_regclass('drive_sources') is not null as kept")).rows[0].kept, true, '014 untouched');
   } finally { c.release(); }
-  assert.deepEqual(await migrate(), ['015_drive_sync_jobs.sql', '016_catalog.sql', '018_download_audit.sql']);
+  assert.deepEqual(await migrate(), ['015_drive_sync_jobs.sql', '016_catalog.sql', '018_download_audit.sql', '020_preview_shared_files.sql']);
 });
 
 test('019 API-key sources: need no OAuth connection, OAuth sources still need one, one API-key source per root folder', { skip }, async () => {
