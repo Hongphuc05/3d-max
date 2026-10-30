@@ -10,7 +10,7 @@ Chú giải: `[x]` xong và đã kiểm tra · `[~]` xong một phần / chưa k
 ## v3 — Drive private → VPS → plugin (bắt đầu 2026-10-29)
 
 Plan: [`v3-implementation-plan.md`](v3-implementation-plan.md) · Quyết định: D17–D25 trong [`decisions.md`](decisions.md).
-Nhánh nền: `phuc_arch_v3`. Mỗi phase một nhánh `v3/<px-ten>`.
+Nhánh hiện tại: `v3/p1-drive-oauth`. Mỗi phase một nhánh `v3/<px-ten>`, tách từ nhánh phase trước. **Người nhận P2–P7 đọc mục "Bàn giao" đầu file plan.**
 
 - [x] P0 — Audit repo, kiến trúc, ERD, API contract, plan từng phase; chủ dự án chốt Q1–Q8 (2026-10-29)
 - [~] **P1 — Drive OAuth: code xong và test bằng Drive giả (2026-10-29); CHƯA thử Drive thật, CHƯA chốt Q4** — nhánh `v3/p1-drive-oauth`
@@ -33,7 +33,7 @@ Nhánh nền: `phuc_arch_v3`. Mỗi phase một nhánh `v3/<px-ten>`.
 - [ ] P6 — VPS, giám sát, backup, E2E 18 tiêu chí, deploy
 - [ ] P7 — Dọn code cũ (payOS, R2, tài khoản khách, Vercel admin, bảng cũ)
 
-Còn mở (không chặn code): thông tin ngân hàng thật (nhập ở admin) · kết luận Q4 (cuối P1).
+Còn mở: **Q9 cách lấy file model (chặn P2/P4, xem mục Bàn giao)** · thông tin ngân hàng thật (nhập ở admin) · kết luận Q4 (cuối P1).
 
 ## Tài khoản và giao diện admin (2026-10-25)
 

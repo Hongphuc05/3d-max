@@ -143,6 +143,8 @@ Trung thực quan trọng hơn việc cố gắng đưa ra một câu trả lờ
 
 ## B. Tổng quan project
 
+> **Đang làm v3:** đọc mục "Bàn giao" trong [`docs/v3-implementation-plan.md`](docs/v3-implementation-plan.md) và [`docs/STATUS.md`](docs/STATUS.md) trước. Phần còn lại của mục B đã lỗi thời.
+
 ### 1. Mục tiêu
 
 **Mô hình (D5, 06/10/2026):** bán **license từng sản phẩm** (1 ảnh preview + 1 file nén, mặc
