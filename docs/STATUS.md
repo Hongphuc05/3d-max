@@ -26,7 +26,23 @@ Nhánh hiện tại: `v3/p1-drive-oauth`. Mọi phase làm trên nhánh này, kh
   - [ ] **Chốt Q4** sau khi so sánh OAuth Gmail B với Service Account (token có hết hạn sau ~7 ngày khi app ở *Testing* không?)
   - [ ] Nợ P1-1: chỉ có một "kết nối hiện hành" (kết nối mới nhất); chưa có UI chọn/ngắt kết nối (P3)
   - [ ] Nợ P1-2: nút **Kết nối** trên giao diện admin chưa có (P3); hiện dùng link `/oauth/start` trực tiếp
-- [ ] P2 — Migration 014–016/018 + seed 360 model + worker đồng bộ (quét/so sánh/preview/publish) + API catalog
+- [~] **P2 — Migration 015/016/018 + seed 360 model + worker đồng bộ (quét/so sánh/preview/publish) + API catalog** — đang làm (bắt đầu 2026-10-30), nhánh `v3/p2-sync-worker` (tách từ `v3/p1-drive-oauth` theo yêu cầu của chủ dự án; plan ghi "không tạo nhánh mới", prompt bàn giao ghi đè). **Nhật ký làm việc: mục "Nhật ký P2" ngay dưới; mọi bước làm xong phải ghi vào đó.**
+  - Quét Drive dùng **API key** (D26), không OAuth; giữ nguyên mã OAuth P1.
+  - **Lệch so với `v3-database.md` §3.5 (cần chủ dự án duyệt):** `model_download_sessions` và `model_download_logs` KHÔNG nằm trong 018 vì khóa ngoại tới `devices`/`entitlements` của 017 (P4/P5); 018 hiện chỉ có `audit_events`. Hai bảng kia đi cùng migration thiết bị ở P4.
+  - Việc còn mở: **P2.5 mapper** chờ chủ dự án đưa API key (biến môi trường) và mô tả bố cục Drive thật; ca mơ hồ → `NEEDS_REVIEW`.
+
+### Nhật ký P2 (mới nhất ở cuối)
+
+| Ngày | Bước | Kết quả thật |
+|---|---|---|
+| 2026-10-30 | Tạo nhánh `v3/p2-sync-worker` từ `v3/p1-drive-oauth` (đã fast-forward lên `4b0abe8`) | OK |
+| 2026-10-30 | Đọc plan (Bàn giao, §0, §2, P2), architecture §6–7, database, STATUS v3 | Xong. Phát hiện: `.env` chưa có `JWT_SECRET` và chưa có biến API key Drive |
+| 2026-10-30 | `docker compose up -d` (Postgres 16, container `3d-max-postgres-1`) | Chạy. Chỉ DB dev/test trên máy dev, không đụng production |
+| 2026-10-30 | `npm install` trong `apps/store-api` (thiếu `jose` trong `node_modules`, đã khai báo sẵn trong `package.json`) | OK; hoàn lại `package-lock.json` bị `npm` đổi để không lẫn vào commit |
+| 2026-10-30 | **Baseline** `npm test` (store-api) | **194/194 pass**, 0 fail (12,7 s) |
+| 2026-10-30 | **P2.1 xong** — migration `015_drive_sync_jobs` (jobs, items, inventory), `016_catalog` (categories, models, model_files, model_previews, review_items, catalog_state), `018_download_audit` (chỉ `audit_events`) + 3 rollback (từ chối khi đã có dữ liệu). Test-trước: `src/worker/migration.test.js` (8 test: ràng buộc, 1 job hoạt động/nguồn, primary preview duy nhất, `primary_file_id` deferrable, singleton `catalog_state`, rollback đúng thứ tự 018→016→015). Sửa `src/drive/migration.test.js` (rollback 014 phải gỡ 018/016/015 trước vì phụ thuộc; danh sách migrate lại) | `npm test` store-api: **202/202 pass** (194 baseline + 8 mới). **Thử phá 8 chỗ** (bỏ UNIQUE job hoạt động, bỏ CANCELLING khỏi chỉ mục, bỏ UNIQUE ảnh primary, bỏ deferrable, bỏ singleton, bỏ kiểm sha256, bỏ từ chối rollback 016/018): cả 8 đều có test báo lỗi — riêng *deferrable* ban đầu **lọt** (test chỉ `update`), đã thêm ca chèn model trỏ file chưa tồn tại trong cùng transaction rồi phá lại: bắt được |
+| 2026-10-30 | Chủ dự án tạo API key Drive (project Google Cloud `3dsmood`, giới hạn Drive API) và chia sẻ thư mục gốc công khai; đặt `DRIVE_API_KEY` trong `apps/store-api/.env` (gitignore). **Key đã lộ trong ảnh chụp màn hình gửi vào chat → phải Regenerate trước khi deploy** | Key đúng định dạng, gọi Drive API OK |
+| 2026-10-30 | **Thăm dò bố cục Drive thật** (script tạm ngoài repo, chỉ in tên/đuôi, không in key/ID): 126 thư mục, 720 file, sâu tối đa 2 cấp dưới gốc, 72 thư mục lá; đuôi: 360 `.jpg` + 313 `.rar` + 45 `.zip` + 2 `.7z`; **không có** Google Docs/shortcut; **không có** thư mục lẫn file+thư mục con. **Bố cục = L1 phẳng theo cặp** (`<tên>.jpg` + `<tên>.rar|zip`), không có L2. 74 tên bất thường (khoảng trắng trước đuôi `.jpg`, như local). 11 danh mục gốc; Technology/Plants/Material/Other models rỗng | Khớp 360 ảnh + 360 file nén của `source/` local |
 - [ ] P3 — Web Admin: kết nối Drive, quét, tiến độ, lịch sử, cần duyệt, quyền, đơn, cài đặt
 - [ ] P4 — API thiết bị/quyền/tải + plugin (cache + seed preview, tự cập nhật, tải qua backend, UI-1)
 - [ ] P5 — Đơn hàng + bot Telegram
