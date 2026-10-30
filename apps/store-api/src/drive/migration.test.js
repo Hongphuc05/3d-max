@@ -53,13 +53,13 @@ test('rollback 014 refuses while connections exist, succeeds when empty, and the
     await client.query('rollback');
     assert.equal((await client.query('select count(*)::int n from drive_connections')).rows[0].n, 1);
     await client.query('delete from drive_connections');
-    // later migrations (018, 016, 015) depend on 014 and must go first; they are empty here
-    for (const n of ['018_download_audit', '016_catalog', '015_drive_sync_jobs']) {
+    // later migrations (019, 018, 016, 015) depend on 014 and must go first; they are empty here
+    for (const n of ['019_drive_source_api_key', '018_download_audit', '016_catalog', '015_drive_sync_jobs']) {
       await client.query(readFileSync(new URL(`../../migrations/rollback/${n}.sql`, import.meta.url), 'utf8'));
     }
     await client.query(rollback());
     assert.equal((await client.query("select to_regclass('drive_connections') is null as gone")).rows[0].gone, true);
     assert.equal((await client.query("select to_regclass('users') is not null as kept")).rows[0].kept, true);
   } finally { client.release(); }
-  assert.deepEqual(await migrate(), ['014_drive_connections.sql', '015_drive_sync_jobs.sql', '016_catalog.sql', '018_download_audit.sql']);
+  assert.deepEqual(await migrate(), ['014_drive_connections.sql', '015_drive_sync_jobs.sql', '016_catalog.sql', '018_download_audit.sql', '019_drive_source_api_key.sql']);
 });

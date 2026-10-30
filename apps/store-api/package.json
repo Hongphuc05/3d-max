@@ -8,7 +8,8 @@
     "start": "node --env-file-if-exists=.env src/server.js",
     "test": "node --env-file-if-exists=.env --env-file-if-exists=../../storage/license-dev.env --test --test-concurrency=1",
     "check:r2": "node --env-file-if-exists=.env scripts/check-r2.js",
-    "sync:r2": "node --env-file-if-exists=.env --env-file-if-exists=../../storage/license-dev.env scripts/sync-r2.js"
+    "sync:r2": "node --env-file-if-exists=.env --env-file-if-exists=../../storage/license-dev.env scripts/sync-r2.js",
+    "seed:legacy": "node --env-file-if-exists=.env scripts/seed-legacy-catalog.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1156.0",

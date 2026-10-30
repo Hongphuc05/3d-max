@@ -180,3 +180,30 @@ test('rollbacks 018 -> 016 -> 015: refuse while data exists, succeed (in depende
   } finally { c.release(); }
   assert.deepEqual(await migrate(), ['015_drive_sync_jobs.sql', '016_catalog.sql', '018_download_audit.sql']);
 });
+
+test('019 API-key sources: need no OAuth connection, OAuth sources still need one, one API-key source per root folder', { skip }, async () => {
+  const apiSource = (root, mode = 'API_KEY', connectionId = null) => pool.query(
+    "insert into drive_sources(connection_id,access_mode,root_folder_id,root_folder_name,source_type) values($1,$2,$3,'root','MY_DRIVE') returning id", [connectionId, mode, root]);
+  await apiSource('apiKeyRootFolder01');
+  await assert.rejects(apiSource('apiKeyRootFolder01'), /unique|duplicate/i, 'same root twice');
+  await assert.rejects(apiSource('apiKeyRootFolder02', 'OAUTH'), /check/i, 'OAUTH source without a connection');
+  const conn = (await pool.query(
+    "insert into drive_connections(google_account_email,auth_kind,status,encrypted_refresh_token,token_iv,token_auth_tag) values($1,'OAUTH_USER','CONNECTED',$2,$3,$4) returning id",
+    [`${randomUUID()}@test.invalid`, randomBytes(40), randomBytes(12), randomBytes(16)])).rows[0].id;
+  await assert.rejects(apiSource('apiKeyRootFolder03', 'API_KEY', conn), /check/i, 'API_KEY source bound to a connection');
+  await assert.rejects(apiSource('apiKeyRootFolder04', 'FTP'), /check/i);
+  await apiSource('apiKeyRootFolder05', 'OAUTH', conn); // classic P1 source keeps working
+  assert.equal((await pool.query('select access_mode from drive_sources where connection_id=$1', [conn])).rows[0].access_mode, 'OAUTH');
+});
+
+test('rollback 019 refuses while an API-key source exists, succeeds once none does, and the migration re-applies', { skip }, async () => {
+  const c = await pool.connect();
+  try {
+    await assert.rejects(c.query(rollbackSql('019_drive_source_api_key')), /Rollback refused/);
+    await c.query('rollback');
+    await c.query("delete from drive_sources where access_mode='API_KEY'");
+    await c.query(rollbackSql('019_drive_source_api_key'));
+    assert.equal((await c.query("select count(*)::int n from information_schema.columns where table_name='drive_sources' and column_name='access_mode' and table_schema=current_schema()")).rows[0].n, 0);
+  } finally { c.release(); }
+  assert.deepEqual(await migrate(), ['019_drive_source_api_key.sql']);
+});
