@@ -2,6 +2,8 @@
 // Chi chon CAC COT CONG KHAI: khong Drive id, khong duong dan nguon, khong sha256 cua file model.
 import { createHash } from 'node:crypto';
 
+export const CATALOG_CHANNEL = 'catalog_v1';
+
 /** Chay fn trong 1 snapshot nhat quan (REPEATABLE READ, chi doc) de version + du lieu khong lech nhau. */
 export async function withSnapshot(pool, fn) {
   const c = await pool.connect();
@@ -60,5 +62,8 @@ export async function refreshCatalogState(c, { jobId = null } = {}) {
   const r = await c.query(
     `update catalog_state set active_version = active_version + 1, manifest_checksum = $1, published_at = now(), published_by_job = $2
       where id = 1 returning active_version`, [manifest.checksum, jobId]);
-  return { changed: true, version: Number(r.rows[0].active_version), checksum: manifest.checksum };
+  const version = Number(r.rows[0].active_version);
+  // NOTIFY duoc giu den luc COMMIT: rollback thi khong ai nhan duoc; tien trinh API (khac tien trinh worker) nghe kenh nay.
+  await c.query('select pg_notify($1, $2)', [CATALOG_CHANNEL, String(version)]);
+  return { changed: true, version, checksum: manifest.checksum };
 }

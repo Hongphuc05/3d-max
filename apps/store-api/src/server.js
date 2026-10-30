@@ -19,10 +19,14 @@ import { adminRouter } from './admin/routes.js';
 import { createOAuth, loadDriveConfig } from './drive/oauth.js';
 import { createDriveRouter } from './drive/routes.js';
 import { requireAdmin } from './admin/access.js';
+import { createCatalogEvents, createCatalogV1Router, createPreviewRouter } from './catalog-v1/routes.js';
 
 const STORAGE = process.env.STORAGE_DIR || path.resolve(import.meta.dirname, '../../../storage');
+// Preview v3 (ten = sha256 noi dung) o thu muc RIENG: route cu express.static('/previews') khong the phuc vu tmp/*.part.
+const PREVIEW_DIR = process.env.PREVIEW_DIR || path.join(STORAGE, 'previews-v3');
 const SOURCE = process.env.SOURCE_DIR || path.resolve(import.meta.dirname, '../../../source/3DSMOOD');
 export const catalog = await createCatalogRuntime({pool});
+export const catalogEvents = createCatalogEvents({ pool });
 
 let licenseConfigured = false;
 try { validateLicenseConfiguration(); licenseConfigured = true; } catch { /* Fail closed below. */ }
@@ -39,6 +43,7 @@ app.use(express.json({ limit: '10kb' }));
 app.use('/api', (_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 app.use('/api/webhooks/payos', createPayosWebhookRouter({ service: payments, rateLimit: rateLimit({ limit: 300 }) }));
 app.use(originGuard);
+app.use('/previews', createPreviewRouter({ dir: PREVIEW_DIR }));
 app.use('/previews', express.static(path.join(STORAGE, 'previews'), { maxAge: '30d', immutable: true }));
 app.use('/api/auth', rateLimit({ limit: 120 }), authRouter);
 const requireLicenseConfiguration = (_req, res, next) => licenseConfigured ? next() : res.status(503).json({ error: 'LICENSE_CONFIGURATION_REQUIRED' });
@@ -59,6 +64,8 @@ app.get('/api/health', async (_q, r) => {
   r.status(db ? 200 : 503).json({ ok: db, db, products: snapshot?.products.length || 0,
     catalogAvailable: available, licensingAvailable: licenseConfigured, paymentsAvailable: paymentConfig.enabled });
 });
+// v3 catalog cong khai cho plugin: gan TRUOC route catalog cu de /api/v1 khong bi route cu bat.
+app.use('/api/v1', createCatalogV1Router({ pool, events: catalogEvents, rateLimit: rateLimit({ limit: 240 }) }));
 app.use('/api', rateLimit({limit:240}), catalogRouter(catalog));
 if (catalog.repository && catalog.sendArchive) app.use('/api', rateLimit({limit:120}), assetRouter(null,null,{repository:catalog.repository,sendArchive:catalog.sendArchive}));
 else if (catalog.local) app.use('/api',rateLimit({limit:120}),assetRouter(catalog.local,SOURCE));
@@ -78,10 +85,11 @@ if (process.argv[1] === import.meta.filename) {
   if (!paymentConfig.enabled) console.warn('Payments disabled: configure valid payment and license environment variables.');
   if (!catalog.config.configured) console.warn('Catalog configuration required:', catalog.config.errors.join(', '), 'See docs/r2-catalog.md.');
   const stopCatalog = catalog.start();
+  await catalogEvents.start();
   const stopMaintenance = startLicenseMaintenance();
   const stopPayments = startPaymentMaintenance(payments, paymentConfig.enabled);
   const server = app.listen(port, process.env.HOST || '127.0.0.1', () => console.log(`store-api http://localhost:${port}`));
-  const stop = () => { const catalogStopped=stopCatalog(); stopPayments(); stopMaintenance(); server.close(async() => { await catalogStopped; await pool.end(); }); };
+  const stop = () => { const catalogStopped=stopCatalog(); stopPayments(); stopMaintenance(); const eventsStopped = catalogEvents.stop(); server.close(async() => { await catalogStopped; await eventsStopped; await pool.end(); }); };
   process.once('SIGINT', stop);
   process.once('SIGTERM', stop);
 }

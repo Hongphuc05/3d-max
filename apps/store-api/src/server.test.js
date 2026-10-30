@@ -1,7 +1,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { isolatedTestDatabase } from './test-database.js';
@@ -60,4 +60,23 @@ test('v3 P1: Drive admin API is wired in order — protected routes need auth, t
   assert.match(cb.headers.get('location'), /\/admin\?drive=error&reason=consent_denied$/);
   // Existing admin routes keep their behaviour.
   assert.equal((await fetch(base + '/api/admin/overview')).status, 401);
+});
+
+test('v3 public catalog is mounted on the assembled API: no login, revalidating cache headers, legacy preview route still answers', { skip: !configured }, async () => {
+  const v = await fetch(base + '/api/v1/catalog/version');
+  assert.equal(v.status, 200);
+  assert.equal(v.headers.get('cache-control'), 'no-cache');
+  assert.equal((await v.json()).catalogVersion, 0);
+  assert.deepEqual((await (await fetch(base + '/api/v1/catalog')).json()).models, []);
+  assert.deepEqual(await (await fetch(base + '/api/v1/categories')).json(), []);
+  assert.equal((await fetch(base + '/previews/' + 'a'.repeat(64) + '.webp')).status, 404);
+  // a real content-addressed file under the v3 preview directory is served; a partial download next to it is not
+  const dir = path.join(process.env.STORAGE_DIR, 'previews-v3');
+  mkdirSync(path.join(dir, 'tmp'), { recursive: true });
+  writeFileSync(path.join(dir, 'b'.repeat(64) + '.webp'), 'RIFFxxxxWEBPfake');
+  writeFileSync(path.join(dir, 'tmp', 'x.part'), 'partial');
+  const hit = await fetch(base + '/previews/' + 'b'.repeat(64) + '.webp');
+  assert.deepEqual([hit.status, hit.headers.get('content-type')], [200, 'image/webp']);
+  assert.equal((await fetch(base + '/previews/tmp/x.part')).status, 404);
+  assert.equal((await fetch(base + '/previews/abc-sm.webp')).status, 404, 'old names still reach the legacy static route');
 });

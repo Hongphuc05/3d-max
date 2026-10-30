@@ -267,6 +267,23 @@ test('two publishes at the same time are serialized: exactly one creates the mod
   assert.deepEqual([(await counts()).models, (await version()).version], [2, 1]);
 });
 
+test('NOTIFY: a visible change announces the new version after COMMIT; an unchanged publish and a rolled-back one announce nothing', { skip }, async () => {
+  const listener = await pool.connect();
+  const got = [];
+  listener.on('notification', n => got.push([n.channel, n.payload]));
+  await listener.query('listen catalog_v1');
+  try {
+    await cycle(pair('A/B', 'one'));
+    await cycle(pair('A/B', 'one')); // nothing changed
+    const jobId = await scanned(pair('A/B', 'two'));
+    const plan = await computeDiff(pool, { sourceId, jobId });
+    plan.models.push({ ...plan.models[0], action: 'MODIFIED', modelId: randomUUID(), changes: { name: 'x' } }); // stale -> rollback after the NEW insert
+    await assert.rejects(publishPlan(pool, { sourceId, jobId, plan, results: resultsFor(plan) }), e => e.code === 'PLAN_STALE');
+    await new Promise(r => setTimeout(r, 150));
+    assert.deepEqual(got, [['catalog_v1', '1']]);
+  } finally { await listener.query('unlisten *'); listener.release(); }
+});
+
 test('input checks: a negative default price is refused before anything is written', { skip }, async () => {
   const jobId = await scanned(pair('A/B', 'one'));
   const plan = await computeDiff(pool, { sourceId, jobId });
