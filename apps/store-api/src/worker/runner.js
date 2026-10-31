@@ -4,8 +4,8 @@ import os from 'node:os';
 import { claimJob, finishJob, heartbeat, releaseJob, saveProgress } from './queue.js';
 
 const TERMINAL = new Set(['COMPLETED', 'COMPLETED_WITH_ERRORS', 'FAILED', 'CANCELLED']);
-// Chi ghi ten loi: thong diep co the chua token/ID.
-const defaultOnError = (e) => console.error('[worker] error:', e?.name ?? 'Error');
+// Ghi ten loi + MA loi (ECONNREFUSED, 42P01...) de van hanh biet mat ket noi hay thieu bang; khong ghi thong diep vi co the chua token/ID/SQL.
+const defaultOnError = (e) => console.error('[worker] error:', e?.name ?? 'Error', typeof e?.code === 'string' ? e.code.slice(0, 40) : '');
 
 function sleep(ms, signal) {
   return new Promise((resolve) => {

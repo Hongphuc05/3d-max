@@ -122,7 +122,8 @@ export async function runPreviewStage({
   async function processOne(img) {
     const part = path.join(tmpDir, `${randomUUID()}.part`);
     try {
-      state.bytes += await download(client, img.imageId, part, { maxBytes, signal: ctx.signal });
+      const received = await download(client, img.imageId, part, { maxBytes, signal: ctx.signal });
+      state.bytes += received; // cong SAU khi cho xong: `x += await f()` doc x truoc, nen 2 anh tai chong nhau lam mat mot lan cong
       await checkMagic(part);
       const variants = await makeVariants(part, previewDir, maxPixels);
       state.results[img.imageId] = { sourceMd5: img.md5 ?? null, ...variants };

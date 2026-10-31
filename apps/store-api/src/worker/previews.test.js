@@ -230,6 +230,16 @@ test('the same image listed twice is downloaded once', { skip }, async () => {
   assert.equal(fake.state.requests.filter(x => x.query.alt === 'media').length, 1);
 });
 
+test('bytes downloaded add up exactly when two downloads overlap (no lost update)', { skip }, async () => {
+  const a = addImage(await jpeg(700, 500)), b = addImage(Buffer.concat([await jpeg(900, 600), Buffer.alloc(3000, 7)]));
+  const job = await newJob();
+  // the SMALLER file finishes LAST, so the larger one's update is the one that would be overwritten
+  const cl = client(c => ({ ...c, openMedia: async (id, o) => { const r = await c.openMedia(id, o); await sleep(id === a.id ? 80 : 10); return r; } }));
+  await run([want(a), want(b)], { job, cl });
+  const saved = (await pool.query('select bytes_downloaded from drive_sync_jobs where id=$1', [job.id])).rows[0].bytes_downloaded;
+  assert.equal(Number(saved), a.content.length + b.content.length);
+});
+
 test('cleanStaleParts removes only old .part files; recent ones and finished .webp files stay', { skip }, async () => {
   await mkdir(path.join(dir, 'tmp'), { recursive: true });
   const old = path.join(dir, 'tmp', 'old.part'), fresh = path.join(dir, 'tmp', 'fresh.part'), keep = path.join(dir, `${'a'.repeat(64)}.webp`);

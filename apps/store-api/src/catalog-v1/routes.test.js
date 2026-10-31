@@ -54,6 +54,7 @@ async function startServer(opts = {}) {
   const events = routes.createCatalogEvents({ pool, pollMs: 60_000, pingMs: 60_000, ...opts.events });
   await events.start();
   const app = express();
+  app.set('trust proxy', true); // lets the test pretend to be several client IPs through X-Forwarded-For
   app.use('/api', (_q, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
   app.use('/api/v1', routes.createCatalogV1Router({ pool, events, ...opts.router }));
   app.use('/previews', routes.createPreviewRouter({ dir: previewDir }));
@@ -237,6 +238,25 @@ test('SSE connection cap: the extra client gets 503 CATALOG_EVENTS_BUSY; a freed
     await Promise.all(open.map(c => c.until(() => false, 50).then(() => c.close())));
     await s.close();
   }
+});
+
+test('SSE per-IP cap: one address cannot take every slot; other addresses are served; a closed stream frees its slot', { skip }, async () => {
+  const s = await startServer({ router: { maxStreams: 10, maxPerIp: 2 } });
+  const open = [];
+  const as = ip => fetch(`${s.base}/api/v1/catalog/events`, { headers: { 'x-forwarded-for': ip } });
+  try {
+    for (let i = 0; i < 2; i++) { const r = await as('203.0.113.7'); assert.equal(r.status, 200); open.push(r); }
+    const refused = await as('203.0.113.7');
+    assert.equal(refused.status, 503);
+    assert.equal((await refused.json()).error.code, 'CATALOG_EVENTS_BUSY');
+    const other = await as('198.51.100.9');
+    assert.equal(other.status, 200, 'another client is not affected');
+    open.push(other);
+    await open.shift().body.cancel(); await sleep(100);
+    const again = await as('203.0.113.7');
+    assert.equal(again.status, 200, 'a freed slot of that IP is reusable');
+    open.push(again);
+  } finally { for (const r of open) await r.body.cancel().catch(() => {}); await s.close(); }
 });
 
 test('the events hub releases its database connection on stop (the pool can shut down cleanly)', { skip }, async () => {

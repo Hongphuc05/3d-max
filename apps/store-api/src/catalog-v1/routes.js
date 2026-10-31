@@ -21,7 +21,7 @@ function createManifestCache(pool, build = buildManifest) {
 
 const matches = (header, etag) => String(header ?? '').split(',').some((t) => { const v = t.trim().replace(/^W\//, ''); return v === etag || v === '*'; });
 
-export function createCatalogV1Router({ pool, events, rateLimit = (_q, _s, next) => next(), maxStreams = Number(process.env.CATALOG_SSE_MAX) || 100, build }) {
+export function createCatalogV1Router({ pool, events, rateLimit = (_q, _s, next) => next(), maxStreams = Number(process.env.CATALOG_SSE_MAX) || 100, maxPerIp = Number(process.env.CATALOG_SSE_MAX_PER_IP) || 10, build }) {
   const router = express.Router();
   const current = createManifestCache(pool, build);
   router.use(requestId, rateLimit);
@@ -41,7 +41,8 @@ export function createCatalogV1Router({ pool, events, rateLimit = (_q, _s, next)
   serve('/previews/manifest', (c) => ({ catalogVersion: c.version, previews: c.manifest.previews }));
 
   router.get('/catalog/events', (req, res, next) => {
-    if (events.size >= maxStreams) return next(apiError('CATALOG_EVENTS_BUSY'));
+    // Tran theo IP de mot may khong chiem het slot. shortcut: sau Nginx phai dat TRUST_PROXY, neu khong moi client deu mang IP cua proxy va chung 1 tran.
+    if (events.size >= maxStreams || events.countFor(req.ip) >= maxPerIp) return next(apiError('CATALOG_EVENTS_BUSY'));
     events.subscribe(req, res);
   });
 
@@ -67,14 +68,14 @@ export function createPreviewRouter({ dir }) {
  * poll dinh ky la du phong khi mat ket noi LISTEN. Chi phat khi version TANG.
  */
 export function createCatalogEvents({ pool, pollMs = 30_000, pingMs = 25_000, listen = true }) {
-  const clients = new Set();
+  const clients = new Map(); // res -> IP cua client (de dem theo IP)
   let last = 0, listener = null, pollTimer = null, pingTimer = null, retryTimer = null, stopped = true;
 
   const send = (res, text) => { try { res.write(text); } catch { clients.delete(res); } };
   const announce = (version) => {
     if (!Number.isFinite(version) || version <= last) return;
     last = version;
-    for (const res of clients) send(res, `event: catalog.updated\ndata: ${JSON.stringify({ catalogVersion: version })}\n\n`);
+    for (const res of clients.keys()) send(res, `event: catalog.updated\ndata: ${JSON.stringify({ catalogVersion: version })}\n\n`);
   };
   const poll = async () => { try { announce((await readCatalogState(pool)).version); } catch { /* DB tam thoi loi: lan sau thu lai */ } };
 
@@ -96,23 +97,24 @@ export function createCatalogEvents({ pool, pollMs = 30_000, pingMs = 25_000, li
 
   return {
     get size() { return clients.size; },
+    countFor(ip) { let n = 0; for (const v of clients.values()) if (v === ip) n++; return n; },
     async start() {
       stopped = false;
       last = (await readCatalogState(pool)).version;
       await connect();
       pollTimer = setInterval(poll, pollMs);
-      pingTimer = setInterval(() => { for (const res of clients) send(res, ': ping\n\n'); }, pingMs);
+      pingTimer = setInterval(() => { for (const res of clients.keys()) send(res, ': ping\n\n'); }, pingMs);
     },
     subscribe(req, res) {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
       res.write(`retry: 5000\nevent: catalog.updated\ndata: ${JSON.stringify({ catalogVersion: last })}\n\n`); // de client thay ngay version hien tai
-      clients.add(res);
+      clients.set(res, req.ip);
       req.on('close', () => clients.delete(res));
     },
     async stop() {
       stopped = true;
       clearInterval(pollTimer); clearInterval(pingTimer); clearTimeout(retryTimer);
-      for (const res of clients) { try { res.end(); } catch { /* da dong */ } }
+      for (const res of clients.keys()) { try { res.end(); } catch { /* da dong */ } }
       clients.clear();
       if (listener) { const c = listener; listener = null; c.removeAllListeners(); await c.query('unlisten *').catch(() => {}); c.release(); }
     },
