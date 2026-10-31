@@ -12,6 +12,7 @@ export async function startFakeDrive({ files = [], user = { emailAddress: 'opera
     // A failure with `media:true` only fires on alt=media requests (lets a test pass list/get and refuse the download).
     const at = state.failures.findIndex(f => !f.media || url.searchParams.get('alt') === 'media');
     const fail = at >= 0 ? state.failures.splice(at, 1)[0] : undefined;
+    if (fail?.html) { res.writeHead(fail.status, { 'content-type': 'text/html; charset=UTF-8' }); return res.end('<html><body>automated queries</body></html>'); } // trang chan cua Google: khong phai JSON
     if (fail) return send(fail.status, fail.body ?? { error: { errors: [{ reason: fail.reason }] } }, fail.headers);
     const auth = (req.headers.authorization || '').replace(/^Bearer /, '');
     const key = url.searchParams.get('key');

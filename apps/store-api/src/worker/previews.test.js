@@ -58,7 +58,7 @@ test('makes content-addressed WebP variants: sm 480 / lg 1400 wide, file name = 
   const src = addImage(await jpeg(2000, 1000));
   const r = await run([want(src)]);
   assert.equal(r.done, true);
-  const res = r.results[src.id];
+  const res = r.results[want(src).imageId];
   assert.equal(res.sourceMd5, src.md5Checksum);
   for (const [variant, width] of [['sm', 480], ['lg', 1400]]) {
     const v = res[variant];
@@ -75,7 +75,7 @@ test('makes content-addressed WebP variants: sm 480 / lg 1400 wide, file name = 
 test('a small source is never enlarged; identical sm/lg bytes share ONE file', { skip }, async () => {
   const src = addImage(await jpeg(300, 200));
   const r = await run([want(src)]);
-  const { sm, lg } = r.results[src.id];
+  const { sm, lg } = r.results[want(src).imageId];
   assert.deepEqual([sm.width, lg.width, sm.height], [300, 300, 200]);
   assert.equal(sm.path, lg.path);
   assert.equal((await files()).length, 1);
@@ -85,7 +85,7 @@ test('EXIF orientation is applied and metadata (GPS etc.) is not copied into the
   const withExif = await sharp(await jpeg(800, 400)).withMetadata({ orientation: 6, exif: { IFD0: { Copyright: 'secret-owner' } } }).jpeg().toBuffer();
   const src = addImage(withExif);
   const r = await run([want(src)]);
-  const out = await readFile(path.join(dir, r.results[src.id].sm.path));
+  const out = await readFile(path.join(dir, r.results[want(src).imageId].sm.path));
   const meta = await sharp(out).metadata();
   assert.ok(meta.height > meta.width, `rotated to portrait (${meta.width}x${meta.height})`);
   assert.equal(meta.exif, undefined);
@@ -278,4 +278,14 @@ test('delayMs spaces downloads apart and stops waiting at once on shutdown', { s
   const t1 = Date.now();
   await run(srcs.map(s => want(s)), { job, ctx, concurrency: 1, delayMs: 60_000 }).catch(() => {});
   assert.ok(Date.now() - t1 < 5000, 'abort cuts the pause short');
+});
+
+test('a Google block page pauses and retries the same image: no failure recorded, progress continues', { skip }, async () => {
+  const src = addImage(await jpeg(950, 300));
+  const job = await newJob();
+  fake.state.failures.push({ status: 403, html: true, media: true }, { status: 403, html: true, media: true });
+  const r = await run([want(src)], { job, concurrency: 1, cooldownMs: 50 });
+  assert.equal(r.done, true);
+  assert.deepEqual(r.errors, []);
+  assert.ok(r.results[want(src).imageId], 'image ends up done after the block lifts');
 });

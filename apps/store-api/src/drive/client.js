@@ -29,6 +29,8 @@ export function parseRetryAfter(value, now = Date.now()) {
 
 // Pure: HTTP status + parsed error body → ApiError (retryable flag decides backoff).
 export function classifyDriveError(status, body, headers) {
+  // Google chan tai hang loat bang trang HTML (403, khong co JSON): day la gioi han toc do tam thoi, khong phai thieu quyen.
+  if (status === 403 && body === null && /html/i.test(headers?.get?.('content-type') ?? '')) return apiError('DRIVE_QUOTA_EXCEEDED', { reason: 'automatedQueries' });
   const reason = body?.error?.errors?.[0]?.reason ?? body?.error?.status;
   const retryAfterMs = parseRetryAfter(headers?.get?.('retry-after'));
   if (status === 401) return apiError('DRIVE_AUTH_REVOKED', { reason });

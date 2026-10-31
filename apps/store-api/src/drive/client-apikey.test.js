@@ -56,3 +56,12 @@ test('API-key mode: 429 is retried with backoff and then succeeds; getFile and o
   assert.equal(fake.state.requests.at(-1).query.key, KEY);
   assert.equal(fake.state.requests.at(-1).headers.authorization, undefined);
 });
+
+test('API-key mode: the HTML 403 block page is a rate limit (not "permission denied"); a JSON 403 stays permission denied', async () => {
+  fake.state.failures.push({ status: 403, html: true, media: true });
+  const e = await make().openMedia('childFile000001').catch(x => x);
+  assert.equal(e.code, 'DRIVE_QUOTA_EXCEEDED');
+  assert.ok(!e.retryable, 'no in-client retry: the worker decides how long to wait');
+  fake.state.failures.push({ status: 403, reason: 'forbidden', media: true });
+  assert.equal((await make().openMedia('childFile000001').catch(x => x)).code, 'DRIVE_PERMISSION_DENIED');
+});

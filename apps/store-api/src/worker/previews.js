@@ -92,7 +92,7 @@ async function makeVariants(part, dir, maxPixels) {
  */
 export async function runPreviewStage({
   pool, client, job, images, checkpoint = {}, ctx, previewDir, minFreeDiskBytes = 2 * 1024 ** 3,
-  concurrency = 2, delayMs = 0, maxBytes = 20 * 1024 * 1024, maxPixels = 40_000_000, diskCheckEvery = 100, freeDiskBytes = defaultFreeDisk,
+  concurrency = 2, delayMs = 0, cooldownMs = 600_000, maxBytes = 20 * 1024 * 1024, maxPixels = 40_000_000, diskCheckEvery = 100, freeDiskBytes = defaultFreeDisk,
 }) {
   const tmpDir = path.join(previewDir, 'tmp');
   await mkdir(tmpDir, { recursive: true });
@@ -123,7 +123,15 @@ export async function runPreviewStage({
   async function processOne(img) {
     const part = path.join(tmpDir, `${randomUUID()}.part`);
     try {
-      const received = await download(client, img.imageId, part, { maxBytes, signal: ctx.signal });
+      let received;
+      for (;;) {
+        try { received = await download(client, img.imageId, part, { maxBytes, signal: ctx.signal }); break; }
+        catch (e) {
+          if (e?.code !== 'DRIVE_QUOTA_EXCEEDED' || ctx.signal?.aborted) throw e;
+          await pause(cooldownMs, ctx.signal); // Google chan tam thoi: nghi roi thu lai chinh anh nay, khong ghi la loi cua anh
+          if (ctx.signal?.aborted) throw e;
+        }
+      }
       state.bytes += received; // cong SAU khi cho xong: `x += await f()` doc x truoc, nen 2 anh tai chong nhau lam mat mot lan cong
       await checkMagic(part);
       const variants = await makeVariants(part, previewDir, maxPixels);

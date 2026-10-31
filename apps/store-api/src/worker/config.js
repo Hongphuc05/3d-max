@@ -16,8 +16,10 @@ export function loadWorkerConfig(env = process.env) {
   if (!Number.isSafeInteger(previewDelayMs)) errors.push('PREVIEW_DELAY_MS');
   const previewConcurrency = nonNegativeInt(env.PREVIEW_CONCURRENCY, 1);
   if (!Number.isSafeInteger(previewConcurrency) || previewConcurrency < 1) errors.push('PREVIEW_CONCURRENCY');
+  const previewCooldownMs = nonNegativeInt(env.PREVIEW_COOLDOWN_MS, 600_000);
+  if (!Number.isSafeInteger(previewCooldownMs)) errors.push('PREVIEW_COOLDOWN_MS');
   const defaultPriceVnd = nonNegativeInt(env.DEFAULT_MODEL_PRICE_VND, 15000);
   if (!Number.isSafeInteger(defaultPriceVnd)) errors.push('DEFAULT_MODEL_PRICE_VND');
   const previewDir = path.resolve(env.PREVIEW_DIR || path.join(env.STORAGE_DIR || DEFAULT_STORAGE, 'previews-v3'));
-  return { apiKey, previewDir, minFreeDiskBytes, defaultPriceVnd, previewDelayMs, previewConcurrency, errors };
+  return { apiKey, previewDir, minFreeDiskBytes, defaultPriceVnd, previewDelayMs, previewConcurrency, previewCooldownMs, errors };
 }

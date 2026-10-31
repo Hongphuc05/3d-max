@@ -32,3 +32,8 @@ test('PREVIEW_DELAY_MS and PREVIEW_CONCURRENCY: slow defaults, bad values reject
   assert.equal(loadWorkerConfig({ ...ok, PREVIEW_DELAY_MS: '0', PREVIEW_CONCURRENCY: '2' }).previewDelayMs, 0);
   assert.deepEqual(loadWorkerConfig({ ...ok, PREVIEW_DELAY_MS: 'x', PREVIEW_CONCURRENCY: '0' }).errors.sort(), ['PREVIEW_CONCURRENCY', 'PREVIEW_DELAY_MS']);
 });
+
+test('PREVIEW_COOLDOWN_MS defaults to 10 minutes and rejects bad values by name', () => {
+  assert.equal(loadWorkerConfig(ok).previewCooldownMs, 600000);
+  assert.deepEqual(loadWorkerConfig({ ...ok, PREVIEW_COOLDOWN_MS: 'x' }).errors, ['PREVIEW_COOLDOWN_MS']);
+});
