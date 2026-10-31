@@ -261,3 +261,21 @@ test('nothing derived from Drive input ever becomes a path: output names are has
   assert.ok(!saved.includes(KEY));
   assert.ok(r.done);
 });
+
+test('delayMs spaces downloads apart and stops waiting at once on shutdown', { skip }, async () => {
+  const srcs = []; for (let i = 0; i < 3; i++) srcs.push(addImage(await jpeg(900 + i, 300)));
+  let job = await newJob();
+  const t0 = Date.now();
+  const r = await run(srcs.map(s => want(s)), { job, concurrency: 1, delayMs: 300 });
+  assert.equal(r.done, true);
+  assert.ok(Date.now() - t0 >= 600, 'two gaps of 300 ms between three images');
+
+  await q.finishJob(pool, job.id, 'prev-worker', { status: 'CANCELLED' });
+  const ac = new AbortController();
+  job = await newJob();
+  const ctx = ctxFor(job); Object.defineProperty(ctx, 'signal', { value: ac.signal });
+  setTimeout(() => ac.abort(), 100);
+  const t1 = Date.now();
+  await run(srcs.map(s => want(s)), { job, ctx, concurrency: 1, delayMs: 60_000 }).catch(() => {});
+  assert.ok(Date.now() - t1 < 5000, 'abort cuts the pause short');
+});

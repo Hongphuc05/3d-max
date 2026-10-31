@@ -25,3 +25,10 @@ test('invalid configuration is reported by VARIABLE NAME only; no value (above a
   assert.deepEqual(loadWorkerConfig({}).errors, ['DRIVE_API_KEY']);
   for (const price of ['', 'abc', '-5', '1e3']) assert.ok(loadWorkerConfig({ ...ok, DEFAULT_MODEL_PRICE_VND: price || 'x' }).errors.includes('DEFAULT_MODEL_PRICE_VND'), price);
 });
+
+test('PREVIEW_DELAY_MS and PREVIEW_CONCURRENCY: slow defaults, bad values rejected by name', () => {
+  const d = loadWorkerConfig(ok);
+  assert.equal(d.previewDelayMs, 1500); assert.equal(d.previewConcurrency, 1);
+  assert.equal(loadWorkerConfig({ ...ok, PREVIEW_DELAY_MS: '0', PREVIEW_CONCURRENCY: '2' }).previewDelayMs, 0);
+  assert.deepEqual(loadWorkerConfig({ ...ok, PREVIEW_DELAY_MS: 'x', PREVIEW_CONCURRENCY: '0' }).errors.sort(), ['PREVIEW_CONCURRENCY', 'PREVIEW_DELAY_MS']);
+});

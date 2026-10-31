@@ -23,7 +23,7 @@ const planCounters = (plan, scanSkipped) => ({
   missingCount: plan.counters.missingCount, reviewCount: plan.counters.reviewCount, skippedCount: scanSkipped + plan.counters.skippedCount,
 });
 
-export function createSyncHandler({ pool, previewDir, minFreeDiskBytes, defaultPriceVnd, apiKey, createClient, freeDiskBytes }) {
+export function createSyncHandler({ pool, previewDir, minFreeDiskBytes, defaultPriceVnd, previewDelayMs, previewConcurrency, apiKey, createClient, freeDiskBytes }) {
   const makeClient = createClient ?? (() => createDriveClient({ apiKey }));
   const reload = async (id) => (await pool.query('select * from drive_sync_jobs where id = $1', [id])).rows[0];
 
@@ -43,7 +43,7 @@ export function createSyncHandler({ pool, previewDir, minFreeDiskBytes, defaultP
     const scanSkipped = cur.checkpoint?.scan?.counters?.skippedCount ?? 0;
     if (!(await ctx.saveProgress({ stage: 'COMPARING', counters: planCounters(plan, scanSkipped) }))) return { interrupted: true };
 
-    const p = await runPreviewStage({ pool, client, job: cur, images: plan.previews, checkpoint: cur.checkpoint ?? {}, ctx, previewDir, minFreeDiskBytes, freeDiskBytes });
+    const p = await runPreviewStage({ pool, client, job: cur, images: plan.previews, checkpoint: cur.checkpoint ?? {}, ctx, previewDir, minFreeDiskBytes, freeDiskBytes, delayMs: previewDelayMs, concurrency: previewConcurrency });
     const s2 = stopped(p);
     if (s2) return s2;
 

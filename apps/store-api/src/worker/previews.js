@@ -26,6 +26,7 @@ function looksLikeImage(b) {
 }
 
 const defaultFreeDisk = async (dir) => { const s = await statfs(dir); return Number(s.bavail) * Number(s.bsize); };
+const pause = (ms, signal) => new Promise((r) => { const t = setTimeout(r, ms); signal?.addEventListener('abort', () => { clearTimeout(t); r(); }, { once: true }); });
 const exists = (p) => stat(p).then(() => true, () => false);
 
 /** Xoa *.part cu trong <dir>/tmp (worker chet giua chung de lai). Tra ve so file da xoa. */
@@ -91,7 +92,7 @@ async function makeVariants(part, dir, maxPixels) {
  */
 export async function runPreviewStage({
   pool, client, job, images, checkpoint = {}, ctx, previewDir, minFreeDiskBytes = 2 * 1024 ** 3,
-  concurrency = 2, maxBytes = 20 * 1024 * 1024, maxPixels = 40_000_000, diskCheckEvery = 100, freeDiskBytes = defaultFreeDisk,
+  concurrency = 2, delayMs = 0, maxBytes = 20 * 1024 * 1024, maxPixels = 40_000_000, diskCheckEvery = 100, freeDiskBytes = defaultFreeDisk,
 }) {
   const tmpDir = path.join(previewDir, 'tmp');
   await mkdir(tmpDir, { recursive: true });
@@ -151,6 +152,7 @@ export async function runPreviewStage({
       try {
         if (i > 0 && i % diskCheckEvery === 0 && (await freeDiskBytes(previewDir)) < minFreeDiskBytes) throw codeError('DISK_SPACE_LOW');
         await processOne(todo[i]);
+        if (delayMs > 0 && next < todo.length) await pause(delayMs, ctx.signal); // gian cach de Drive khong chan tai hang loat
       } catch (e) {
         if (ctx.signal?.aborted && !fatal) { stop ||= ctx.cancelled ? 'cancelled' : ctx.shuttingDown ? 'interrupted' : 'leaseLost'; return; }
         fatal ||= e;
