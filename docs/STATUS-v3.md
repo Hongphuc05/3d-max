@@ -38,6 +38,7 @@ Quét bằng **API key** (D26), không OAuth. Đã chạy trên Drive thật, DB
 - [x] **Thử phá biện pháp an toàn.** Sửa 3 phát hiện của review (đếm byte, log worker, trần SSE theo IP): 7/7 mutant bị bắt.
 - [ ] **Chưa đo RAM của worker suốt cả job** (tiêu chí plan: dưới 400 MB); chỉ có đỉnh khoảng 94 MB ở giai đoạn quét.
 - [ ] **Chưa thử dừng đột ngột (kill cứng) trên Drive thật**, mới thử dừng êm; nhận lại job hết lease chỉ kiểm bằng Drive giả.
+- [ ] **Test không ổn định:** `disk guard` trong `worker/previews.test.js` fail 1 lần trong cả bộ (373/374), không tái hiện ở 7 lần chạy lại; nguyên nhân chưa rõ, cần điều tra nếu tái diễn.
 - [ ] Nợ kỹ thuật P2-1 … P2-8 và 4 quyết định thiết kế chờ chủ dự án duyệt: xem `STATUS.md`.
 
 ## P3 — Web Admin (bắt đầu 2026-11-01)
