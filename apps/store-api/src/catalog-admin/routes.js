@@ -4,15 +4,15 @@
 import express from 'express';
 import { apiError, requestId, v3ErrorHandler } from '../drive/errors.js';
 import { refreshCatalogState } from '../catalog-v1/manifest.js';
+import { addReviewRoutes } from './review.js';
+import { audit, bad, inTransaction, UUID } from './shared.js';
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CONTROL = /[\u0000-\u001f\u007f]/;
 const MODEL_STATUSES = new Set(['DRAFT', 'PUBLISHED', 'NEEDS_REVIEW', 'HIDDEN']);
 const EDITABLE_STATUSES = new Set(['PUBLISHED', 'HIDDEN']);
 const PRICE_MAX = 100_000_000;
 const SETTING_FIELDS = ['bankName', 'bankBin', 'accountNo', 'accountName', 'defaultModelPriceVnd', 'orderTtlMinutes', 'maxPendingOrdersPerDevice'];
 
-const bad = () => apiError('INVALID_PARAMS');
 const exactKeys = (body, keys) => {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw bad();
   const got = Object.keys(body);
@@ -55,19 +55,6 @@ const settingsView = (r) => ({
 });
 const modelView = (r) => ({ id: r.id, name: r.name, categoryPath: r.full_path, priceVnd: r.price_vnd, status: r.status,
   nameOverridden: r.name_overridden, priceOverridden: r.price_overridden, updatedAt: r.updated_at });
-
-async function inTransaction(pool, fn) {
-  const c = await pool.connect();
-  try {
-    await c.query('begin');
-    const out = await fn(c);
-    await c.query('commit');
-    return out;
-  } catch (e) { await c.query('rollback').catch(() => {}); throw e; } finally { c.release(); }
-}
-const audit = (c, adminId, action, targetType, targetId, details) => c.query(
-  `insert into audit_events (actor_kind, actor_ref, action, target_type, target_id, details) values ('ADMIN', $1, $2, $3, $4, $5)`,
-  [String(adminId), action, targetType, targetId, JSON.stringify(details)]);
 
 export function createCatalogAdminRouter({ pool, guards = [], rateLimit, envDefaultPrice = 15000 }) {
   const router = express.Router();
@@ -162,6 +149,8 @@ export function createCatalogAdminRouter({ pool, guards = [], rateLimit, envDefa
       res.json(view);
     } catch (e) { next(e); }
   });
+
+  addReviewRoutes(router, { pool, pre, json }); // P3.4: /catalog/review
 
   router.use(v3ErrorHandler);
   return router;

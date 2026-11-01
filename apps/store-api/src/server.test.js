@@ -82,11 +82,14 @@ test('v3 public catalog is mounted on the assembled API: no login, revalidating 
 });
 
 test('P3.7 admin routes are mounted behind the admin guard in the assembled API (anonymous = 401, nothing leaks)', { skip: !configured }, async () => {
-  for (const [path, method] of [['/api/admin/settings', 'GET'], ['/api/admin/settings', 'PUT'], ['/api/admin/models', 'GET'], ['/api/admin/models/00000000-0000-0000-0000-000000000000', 'PATCH']]) {
+  for (const [path, method] of [['/api/admin/settings', 'GET'], ['/api/admin/settings', 'PUT'], ['/api/admin/models', 'GET'], ['/api/admin/models/00000000-0000-0000-0000-000000000000', 'PATCH'], ['/api/admin/catalog/review', 'GET'], ['/api/admin/catalog/review/00000000-0000-0000-0000-000000000000', 'POST']]) {
     const r = await fetch(base + path, { method, headers: { 'content-type': 'application/json' }, body: method === 'GET' ? undefined : '{}' });
     assert.equal(r.status, 401, `${method} ${path}`);
     assert.ok(r.headers.get('x-request-id'), 'answered by the NEW router (it sets X-Request-Id before its guards); the legacy adminRouter would also say 401');
     assert.equal((await r.text()).includes('bank'), false);
   }
   assert.equal((await fetch(base + '/api/admin/overview')).status, 401, 'legacy admin routes still answer after the new router');
+  const legacy = await fetch(base + '/api/admin/catalog/sync/permission');
+  assert.equal(legacy.status, 401, 'the legacy catalog sync route next to /catalog/review is untouched');
+  assert.equal(legacy.headers.get('x-request-id'), null, '...and still answered by the legacy router, not the new one');
 });
