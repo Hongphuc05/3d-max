@@ -62,6 +62,9 @@ export const adminCancelSync = (id) => request('POST', `/admin/drive/sync-jobs/$
 export const adminRetrySync = (id) => request('POST', `/admin/drive/sync-jobs/${encodeURIComponent(id)}/retry`, { body: {} });
 export const syncEventsUrl = (id) => `/api/admin/drive/sync-jobs/${encodeURIComponent(id)}/events`;
 // P3.7 (plan §2.7): cai dat + bang model. PUT cai dat gui du 7 truong; PATCH model chi gui truong doi.
+// P3.4 (plan §2.2): can duyet. POST tra 200 khong noi dung.
+export const adminReviewItems = (signal) => get('/admin/catalog/review', null, signal);
+export const adminReviewAction = (id, action) => request('POST', `/admin/catalog/review/${encodeURIComponent(id)}`, { body: { action } });
 export const adminSettings = (signal) => get('/admin/settings', null, signal);
 export const adminSaveSettings = (body) => request('PUT', '/admin/settings', { body });
 export const adminModels = (params, signal) => get('/admin/models', params, signal);
