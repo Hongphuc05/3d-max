@@ -53,6 +53,13 @@ export const adminAudit = (params, signal) => get('/admin/audit', params, signal
 export const adminDriveStatus = (signal) => get('/admin/drive/status', null, signal);
 export const adminDriveAddSource = (body) => request('POST', '/admin/drive/sources', { body });
 export const adminDriveTestAccess = (sourceId, signal) => request('POST', '/admin/drive/test-access', { body: { sourceId }, signal });
+// P3.2 (plan §2.2): luot dong bo. Huy/Thu lai tra 202; huy khong co noi dung.
+export const adminSyncJobs = (params, signal) => get('/admin/drive/sync-jobs', params, signal);
+export const adminSyncJob = (id, signal) => get(`/admin/drive/sync-jobs/${encodeURIComponent(id)}`, null, signal);
+export const adminStartSync = ({ sourceId, mode }) => request('POST', '/admin/drive/sync-jobs', { body: { sourceId, mode } });
+export const adminCancelSync = (id) => request('POST', `/admin/drive/sync-jobs/${encodeURIComponent(id)}/cancel`, { body: {} });
+export const adminRetrySync = (id) => request('POST', `/admin/drive/sync-jobs/${encodeURIComponent(id)}/retry`, { body: {} });
+export const syncEventsUrl = (id) => `/api/admin/drive/sync-jobs/${encodeURIComponent(id)}/events`;
 export const updateAdminAccount = (body) => request('PATCH', '/admin/account', { body });
 export const issueAdminLicense = (userId) => request('POST', '/admin/licenses/issue', { body: { userId } });
 export const resumeAdminLicense = (userId) => request('POST', '/admin/licenses/resume', { body: { userId } });
