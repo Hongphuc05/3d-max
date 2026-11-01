@@ -104,3 +104,13 @@ test('P4.1 device API is mounted before the catalog router: anonymous /me/entitl
   assert.equal((await bad.json()).error.code, 'INVALID_PARAMS');
   assert.equal((await fetch(base + '/api/v1/catalog/version')).status, 200, 'catalog routes fall through the device router');
 });
+
+test('P4.2 download API is mounted: anonymous callers get a v3 401 from the new routers, not a legacy answer', { skip: !configured }, async () => {
+  const id = '00000000-0000-4000-8000-000000000000';
+  for (const [path, method] of [[`/api/v1/models/${id}/import-session`, 'POST'], ['/api/v1/model-downloads/' + 'A'.repeat(43), 'GET']]) {
+    const r = await fetch(base + path, { method });
+    assert.equal(r.status, 401, `${method} ${path}`);
+    assert.ok(r.headers.get('x-request-id'), 'answered by the new router');
+    assert.equal((await r.json()).error.code, 'UNAUTHENTICATED');
+  }
+});

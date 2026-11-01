@@ -33,6 +33,12 @@ const MESSAGES = {
   DEVICE_KEY_MISMATCH: 'Khóa của thiết bị không khớp với thiết bị đã đăng ký.',
   CHALLENGE_INVALID: 'Thử thách không hợp lệ, đã dùng hoặc đã hết hạn. Hãy thử lại từ đầu.',
   SIGNATURE_INVALID: 'Chữ ký không hợp lệ.',
+  NOT_ENTITLED: 'Thiết bị này chưa có quyền tải model này.',
+  MODEL_NOT_AVAILABLE: 'Model này hiện không có sẵn để tải.',
+  MODEL_DOWNLOAD_RESTRICTED: 'Model này đang bị hạn chế tải.',
+  SESSION_INVALID: 'Phiên tải không hợp lệ, đã dùng hoặc đã hết hạn. Hãy bấm tải lại.',
+  DOWNLOAD_BUSY: 'Máy chủ đang phục vụ quá nhiều lượt tải. Thử lại sau ít phút.',
+  STORAGE_DOWNLOAD_FAILED: 'Máy chủ chưa lấy được file model. Thử lại sau.',
   INTERNAL: 'Lỗi hệ thống. Thử lại sau.',
 };
 
@@ -53,6 +59,7 @@ const STATUS = {
   DRIVE_QUOTA_EXCEEDED: 429, DRIVE_UPSTREAM_ERROR: 502, DRIVE_BAD_REQUEST: 502, DRIVE_NOT_A_FOLDER: 422,
   INVALID_PARAMS: 400, FORBIDDEN: 403, UNAUTHENTICATED: 401, RATE_LIMITED: 429, CATALOG_EVENTS_BUSY: 503, DISK_SPACE_LOW: 409, PLAN_STALE: 409, JOB_NOT_FOUND: 422, MODEL_NOT_FOUND: 422, REVIEW_NOT_FOUND: 422, REVIEW_ALREADY_RESOLVED: 409, REVIEW_NOT_APPLICABLE: 409, JOB_NOT_CANCELLABLE: 409, SYNC_ALREADY_RUNNING: 409, SCAN_LIMIT_EXCEEDED: 422,
   DEVICE_BLOCKED: 403, DEVICE_KEY_MISMATCH: 403, CHALLENGE_INVALID: 403, SIGNATURE_INVALID: 403,
+  NOT_ENTITLED: 403, MODEL_NOT_AVAILABLE: 409, MODEL_DOWNLOAD_RESTRICTED: 409, SESSION_INVALID: 404, DOWNLOAD_BUSY: 503, STORAGE_DOWNLOAD_FAILED: 502,
 };
 export const apiError = (code, opts) => new ApiError(code, STATUS[code] ?? 400, opts);
 export const messageFor = (code) => MESSAGES[code];

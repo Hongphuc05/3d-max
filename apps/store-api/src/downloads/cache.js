@@ -124,17 +124,22 @@ export function createModelCache({ dir, open, maxBytes = 20 * GIB, minFreeBytes 
     });
   }
 
+  // Chay dung mot lan (goi tay luc khoi dong, hoac tu dong o lan acquire dau tien).
+  let ready;
+  const init = () => (ready ??= (async () => {
+    await mkdir(tmpDir, { recursive: true });
+    for (const name of await readdir(tmpDir)) await rm(path.join(tmpDir, name), { force: true, recursive: true });
+  })());
+
   return {
     /** Tao thu muc va xoa `.part` bo do (luc khoi dong khong co dot tai nao dang chay). */
-    async init() {
-      await mkdir(tmpDir, { recursive: true });
-      for (const name of await readdir(tmpDir)) await rm(path.join(tmpDir, name), { force: true, recursive: true });
-    },
+    init,
 
     /** @returns {{path,size,sha256,release()}} — goi release() khi doc xong; file dang giu thi khong bi don. */
     async acquire(file, { signal, onVerified } = {}) {
       signal?.throwIfAborted();
       const spec = describe(file);
+      await init();
       pin(spec.key);
       try {
         let result;

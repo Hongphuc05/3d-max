@@ -24,6 +24,12 @@ import { requireAdmin } from './admin/access.js';
 import { createCatalogEvents, createCatalogV1Router, createPreviewRouter } from './catalog-v1/routes.js';
 import { createDeviceRouter } from './devices/routes.js';
 import { loadLegacyPublicKey } from './devices/mxl1.js';
+import { loadDownloadConfig } from './downloads/config.js';
+import { createModelCache } from './downloads/cache.js';
+import { createPublicLinkFetcher } from './downloads/public-link.js';
+import { createDownloadRouter } from './downloads/routes.js';
+
+const publicLink = createPublicLinkFetcher();
 
 const STORAGE = process.env.STORAGE_DIR || path.resolve(import.meta.dirname, '../../../storage');
 // Preview v3 (ten = sha256 noi dung) o thu muc RIENG: route cu express.static('/previews') khong the phuc vu tmp/*.part.
@@ -76,6 +82,13 @@ app.get('/api/health', async (_q, r) => {
 let legacyPublicKey = null;
 try { legacyPublicKey = loadLegacyPublicKey(process.env.LICENSE_PUBLIC_KEY_B64); } catch { console.error('[v3] LICENSE_PUBLIC_KEY_B64 khong dung duoc; bo qua license MXL1'); }
 app.use('/api/v1', createDeviceRouter({ pool, legacyPublicKey, rateLimit: rateLimit({ limit: 60 }) }));
+// v3 P4.2: phien tai model (D26: VPS tai ho tu link cong khai, luu ban sao tren dia). Cau hinh sai -> dung ngay, chi neu TEN bien.
+const downloadConfig = loadDownloadConfig(process.env);
+if (downloadConfig.errors.length) throw new Error(`Invalid download configuration: ${downloadConfig.errors.join(', ')}`);
+const modelCache = createModelCache({ dir: downloadConfig.cacheDir, open: (fileId, o) => publicLink.open(fileId, o),
+  maxBytes: downloadConfig.maxBytes, minFreeBytes: downloadConfig.minFreeBytes, maxFileBytes: downloadConfig.maxFileBytes });
+app.use('/api/v1', createDownloadRouter({ pool, cache: modelCache, rateLimit: rateLimit({ limit: 120 }),
+  sessionsPerHour: downloadConfig.sessionsPerHour, maxConcurrent: downloadConfig.maxConcurrent }));
 // v3 catalog cong khai cho plugin: gan TRUOC route catalog cu de /api/v1 khong bi route cu bat.
 app.use('/api/v1', createCatalogV1Router({ pool, events: catalogEvents, rateLimit: rateLimit({ limit: 240 }) }));
 app.use('/api', rateLimit({limit:240}), catalogRouter(catalog));

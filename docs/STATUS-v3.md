@@ -58,7 +58,8 @@ Quét bằng **API key** (D26), không OAuth. Đã chạy trên Drive thật, DB
 
 ## P4 – P7
 - [~] **P4.1 API thiết bị/quyền (code xong, chưa thử với plugin hoặc server thật).** Migration 021 (`devices`, `device_auth_challenges`, `device_tokens`, `entitlements`, `purchase_orders`, `purchase_order_items`; tên lệch plan vì trùng bảng cũ, đã duyệt), `POST /api/v1/device/challenge`, `POST /api/v1/device/verify` (đăng ký bằng chữ ký RSA, token 15 phút, nhận MXL1), `GET /api/v1/me/entitlements`, middleware `requireDevice`. Thiết bị chỉ đăng ký sau khi ký đúng (lệch plan có chủ đích). 4 mã lỗi mới 403. Test: API **445/445**; đột biến 38/42 (4 tương đương). **Rủi ro biết trước:** `machine_code` là nhãn do máy khách khai nên token MXL1 của người khác có thể bị dùng lại nếu biết mã máy; plan chấp nhận. **Chưa:** áp 021 vào `store_p2`, khóa MXL1 thật (đang dùng khóa test), thử với plugin thật.
-- [ ] P4.2 phiên tải model (D26: link công khai + cache VPS), plugin C#, UI-1: chưa làm. P5–P7 chưa bắt đầu.
+- [~] **P4.2 backend tải model (code xong, chưa thử với Google thật hoặc plugin).** Migration 022 (phiên + nhật ký tải; số lệch plan vì 018 đã dùng), provider link công khai kiểm từng bước (allowlist host, form xác nhận file lớn, chặn trang HTML), cache đĩa VPS (tải đủ + kiểm size/md5/sha256 rồi mới phát, chống tải trùng, LRU, kiểm dung lượng trống), `POST /api/v1/models/:id/import-session` + `GET /api/v1/model-downloads/:sessionId` (phiên dùng một lần 5 phút, kiểm lại quyền lúc mở, 10 phiên/giờ/thiết bị, 3 luồng đồng thời, nhật ký). API **504/504**; đột biến: migration 16/16, public-link 22/22, cache 26/28, route 33/37 (còn lại tương đương). **Chưa:** tải thử link công khai thật (cần 360 file "Anyone with the link" — chủ dự án xác nhận), áp 022 vào `store_p2`, plugin C# + UI-1 (cần Windows + Max 2022), bộ đếm giới hạn là theo tiến trình.
+- [ ] P4.3 plugin, P5–P7: chưa làm.
 
 ---
 
