@@ -115,6 +115,7 @@ export default function AdminSync({ pollMs = 3000 }) {
               {Object.entries(modeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
           <button className={primary} disabled={!ready || active || busy} onClick={start}>Quét đồng bộ</button>
         </div>
+        {mode === 'INCREMENTAL' && <p data-testid="incremental-note" className="text-xs text-warn">Lưu ý: "Quét thay đổi" hiện chưa khác "Quét đầy đủ" — máy chủ vẫn quét toàn bộ thư viện. Chế độ này sẽ được bổ sung ở phase sau.</p>}
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
       </div>
 

@@ -284,3 +284,16 @@ test('several sources: the chosen one is the one scanned', async () => {
   await click(mustButton('Quét đồng bộ'));
   assert.equal(calls('/api/admin/drive/sync-jobs', 'POST')[0].body.sourceId, 'src-2');
 });
+
+test('INCREMENTAL is offered but honestly labelled: the note appears only for it, and it still sends mode INCREMENTAL', async () => {
+  await mount();
+  assert.equal(/chưa khác/.test(container.textContent), false, 'no note for the full scan');
+  await pick('mode', 'INCREMENTAL');
+  const note = container.querySelector('[data-testid="incremental-note"]');
+  assert.ok(note, 'note shown for INCREMENTAL');
+  assert.match(note.textContent, /chưa khác "Quét đầy đủ"/);
+  assert.match(note.textContent, /quét toàn bộ/);
+  await click(mustButton('Quét đồng bộ'));
+  assert.equal(calls('/api/admin/drive/sync-jobs', 'POST')[0].body.mode, 'INCREMENTAL');
+  await pick('mode', 'FULL').catch(() => {}); // o chon bi khoa khi job dang chay: khong the doi
+});
