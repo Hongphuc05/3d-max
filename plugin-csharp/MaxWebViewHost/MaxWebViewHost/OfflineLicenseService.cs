@@ -153,7 +153,7 @@ namespace MaxWebViewHost
                 return "MAX-" + BitConverter.ToString(hash.ComputeHash(Encoding.UTF8.GetBytes("3dsmood-library-machine-v1:" + parsed.ToString("D")))).Replace("-", "");
         }
 
-        private static string ReadMachineCode()
+        internal static string ReadMachineCode()
         {
             try
             {

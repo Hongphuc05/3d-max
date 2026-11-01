@@ -78,6 +78,14 @@
     <Compile Include="PackagedAppRuntime.cs" />
     <Compile Include="SessionCookieStore.cs" />
     <Compile Include="PlatformAgent.cs" />
+    <Compile Include="BackendApi.cs" />
+    <Compile Include="DeviceSessionService.cs" />
+    <Compile Include="CatalogCacheService.cs" />
+    <Compile Include="PreviewCacheService.cs" />
+    <Compile Include="CatalogUpdateWatcher.cs" />
+    <Compile Include="BackendModelDownloader.cs" />
+    <Compile Include="V3Routes.cs" />
+    <Compile Include="V3Library.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

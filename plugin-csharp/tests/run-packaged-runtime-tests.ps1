@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $outDir = Join-Path $PSScriptRoot 'bin'
 New-Item -ItemType Directory -Path $outDir -Force | Out-Null
-$csc = 'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\Roslyn\csc.exe'
+$csc = & (Join-Path $PSScriptRoot 'find-csc.ps1')
 $sourceRoot = Join-Path $repo 'plugin-csharp\MaxWebViewHost\MaxWebViewHost'
 $core = Join-Path $repo 'plugin-csharp\MaxWebViewHost\packages\Microsoft.Web.WebView2.1.0.4191.47\lib\net462\Microsoft.Web.WebView2.Core.dll'
 Copy-Item -LiteralPath $core -Destination $outDir -Force

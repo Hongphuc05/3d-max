@@ -101,6 +101,7 @@ namespace MaxWebViewHost
         private PackagedAppRuntime _packagedApp;
         private OfflineLicenseService _offlineLicense;
         private StaticCatalogService _catalog;
+        private V3Library _v3; // online mode (apiBaseUrl): device session + local catalog/preview caches + backend downloads
         private readonly Timer _connectionTimer = new Timer { Interval = 15000 };
         private bool _checkingConnection;
         private bool _appLoaded;
@@ -163,7 +164,7 @@ namespace MaxWebViewHost
             Controls.Add(toolbar);
             Controls.Add(_status);
             _connectionTimer.Tick += async (s, e) => await MonitorConnectionAsync();
-            FormClosed += (s, e) => { _connectionTimer.Dispose(); _packagedApp?.Dispose(); _catalog?.Dispose(); };
+            FormClosed += (s, e) => { _connectionTimer.Dispose(); _packagedApp?.Dispose(); _catalog?.Dispose(); _v3?.Dispose(); };
             Load += async (s, e) => await InitAsync();
         }
 
@@ -256,7 +257,14 @@ namespace MaxWebViewHost
                         _offlineLicense = new OfflineLicenseService(configuration.LicensePublicKeyXml, Path.Combine(data, "License"));
                         _catalog = new StaticCatalogService(configuration.LibraryDirectory);
                     }
-                    else ApiBase = configuration.ApiBaseUri.AbsoluteUri.TrimEnd('/');
+                    else
+                    {
+                        ApiBase = configuration.ApiBaseUri.AbsoluteUri.TrimEnd('/');
+                        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                        _v3 = V3Library.Create(configuration, _deviceIdentity, OfflineLicenseService.ReadMachineCode(), Path.Combine(local, "3dMood"),
+                            Path.Combine(local, "MaxWebViewHost", "OfflineLibrary", "License", "license.txt"));
+                        _v3.HostEvent += PostHostEvent;
+                    }
                     TrustedOrigins = PackagedAppRuntime.AppOrigin;
                     _diagButton.Visible = false;
                 }
@@ -330,9 +338,11 @@ namespace MaxWebViewHost
                 {
                     _packagedApp = new PackagedAppRuntime(configuration, _web.CoreWebView2);
                     if (_catalog != null) _packagedApp.PreviewLoader = _catalog.GetPreviewAsync;
+                    if (_v3 != null) { _packagedApp.V3 = _v3; _v3.Start(); }
                     await _packagedApp.ConfigureAsync();
                     await LoadPackagedAppAsync();
-                    if (!IsDisposed && !configuration.IsOfflineLibrary) _connectionTimer.Start();
+                    // v3 keeps working from its local cache when the network is gone, so it has no blocking connection gate.
+                    if (!IsDisposed && !configuration.IsOfflineLibrary && _v3 == null) _connectionTimer.Start();
                 }
                 catch (Exception) { if (!IsDisposed) SetConnectionMessage("Không mở được dữ liệu của ứng dụng. Vui lòng mở lại 3ds Max rồi thử lại."); }
             }
@@ -354,7 +364,7 @@ namespace MaxWebViewHost
             SetConnectionMessage("Đang kết nối máy chủ 3DsMood…");
             try
             {
-                var connected = await _packagedApp.CheckConnectionAsync(_lifetime.Token);
+                var connected = _v3 != null || await _packagedApp.CheckConnectionAsync(_lifetime.Token);
                 if (IsDisposed || Disposing) return;
                 if (!connected)
                 {
@@ -365,6 +375,7 @@ namespace MaxWebViewHost
                 _connectionPanel.Visible = false;
                 _web.Visible = true;
                 if (!_appLoaded) { _appLoaded = true; Navigate(StartUrl); }
+                if (_v3 != null) _v3.SetPanelOpen(true);
             }
             catch (OperationCanceledException) { }
             catch (Exception) { if (!IsDisposed) SetConnectionMessage("Không thể kết nối máy chủ 3DsMood. Vui lòng kiểm tra Internet rồi thử lại."); }
@@ -510,6 +521,17 @@ namespace MaxWebViewHost
         {
             try
             {
+                if (_v3 != null)
+                {
+                    if (method == "library.refresh") await _v3.Watcher.CheckNowAsync(_lifetime.Token);
+                    else if (method == "library.status")
+                    {
+                        try { await _v3.GetEntitlementsAsync(_lifetime.Token); } catch (ApiException) { /* offline or blocked: report what we know */ }
+                    }
+                    else { PostError(id, "UNSUPPORTED", "Phiên bản này không dùng license nhập tay."); return; }
+                    PostResponse(id, true, _v3.Status(), null);
+                    return;
+                }
                 if (_offlineLicense == null || _catalog == null)
                 { PostError(id, "LIBRARY_NOT_CONFIGURED", "Cài bộ plugin thư viện offline để sử dụng chức năng này."); return; }
                 if (method == "library.refresh")
@@ -518,6 +540,7 @@ namespace MaxWebViewHost
                     await RunDeviceOperation(() => PostResponse(id, true, _offlineLicense.Activate((string)parameters["license"]), null));
                 else await RunDeviceOperation(() => PostResponse(id, true, _offlineLicense.GetStatus(), null));
             }
+            catch (ApiException error) { PostError(id, error.Code, error.Message); }
             catch (InvalidDataException error) { PostError(id, "LIBRARY_INVALID", error.Message); }
             catch (OperationCanceledException) { PostError(id, "LIBRARY_CANCELLED", "Đã hủy thao tác thư viện. Vui lòng thử lại."); }
             catch (Exception error)
@@ -575,12 +598,25 @@ namespace MaxWebViewHost
             var token = cancellation.Token;
             try
             {
-                if (_offlineLicense == null || _catalog == null)
-                { PostError(id, "LIBRARY_NOT_CONFIGURED", "Bộ cài chưa cấu hình thư viện offline."); return; }
-                try { _offlineLicense.EnsureLicensed(); }
-                catch (InvalidDataException error) { PostError(id, "LICENSE_REQUIRED", error.Message); return; }
-                var assetId = (string)p["assetId"];
-                var model = _catalog.Find(assetId);
+                var v3 = _v3; // online mode: the server decides entitlement when it issues the download session
+                CatalogModel model = null;
+                string assetId, fileName = null, entryFile = null;
+                if (v3 != null)
+                {
+                    if (!p.ContainsKey("modelId")) { PostError(id, "INVALID_PARAMS", "Thiếu mã model."); return; }
+                    assetId = (string)p["modelId"];
+                }
+                else
+                {
+                    if (_offlineLicense == null || _catalog == null)
+                    { PostError(id, "LIBRARY_NOT_CONFIGURED", "Bộ cài chưa cấu hình thư viện offline."); return; }
+                    try { _offlineLicense.EnsureLicensed(); }
+                    catch (InvalidDataException error) { PostError(id, "LICENSE_REQUIRED", error.Message); return; }
+                    if (!p.ContainsKey("assetId")) { PostError(id, "INVALID_PARAMS", "Thiếu mã model."); return; }
+                    assetId = (string)p["assetId"];
+                    model = _catalog.Find(assetId);
+                    fileName = model.fileName; entryFile = model.entryFile;
+                }
                 if (!await ValidateSelectedTargetAsync(id, selectedTarget).ConfigureAwait(false)) return;
                 // A catalog ID is not necessarily a valid Windows directory name (e.g. CON).
                 // Use an independently generated directory under the agent's trusted cache root.
@@ -593,34 +629,46 @@ namespace MaxWebViewHost
                     var progressClock = Stopwatch.StartNew();
                     long lastReceived = 0;
                     long? lastTotal = null;
-                    using (var downloader = _createDownloader())
-                        await downloader.DownloadAsync(model, pkg, token, (received, total) => {
-                            lastReceived = received; lastTotal = total;
-                            if (progressClock.ElapsedMilliseconds < 200) return;
-                            progressClock.Restart();
-                            PostProgress(id, received, total);
-                        }).ConfigureAwait(false);
+                    Action<long, long?> progress = (received, total) => {
+                        lastReceived = received; lastTotal = total;
+                        if (progressClock.ElapsedMilliseconds < 200) return;
+                        progressClock.Restart();
+                        PostProgress(id, received, total);
+                    };
+                    if (v3 != null)
+                    {
+                        var info = await v3.Downloader.DownloadAsync(assetId, pkg, token, progress).ConfigureAwait(false);
+                        fileName = "model." + info.FileType; entryFile = info.EntryFile;
+                    }
+                    else using (var downloader = _createDownloader())
+                        await downloader.DownloadAsync(model, pkg, token, progress).ConfigureAwait(false);
                     PostProgress(id, lastReceived, lastTotal);
+                }
+                catch (ApiException error)
+                {
+                    Debug.WriteLine("[asset.download] " + error.Code);
+                    PostError(id, error.Code, error.Message);
+                    return;
                 }
                 catch (Exception error) when (error is InvalidDataException || error is IOException || error is HttpRequestException || error is OperationCanceledException)
                 {
                     Debug.WriteLine("[asset.download] " + error);
-                    PostError(id, "ASSET_DOWNLOAD_FAILED", error is InvalidDataException ? error.Message : "Không tải được model từ Google Drive. Kiểm tra Internet, quyền chia sẻ hoặc thử lại sau.");
+                    PostError(id, "ASSET_DOWNLOAD_FAILED", error is InvalidDataException ? error.Message : "Không tải được model. Kiểm tra Internet hoặc thử lại sau.");
                     return;
                 }
                 string[] files;
-                if (ImportExtensions.Contains(Path.GetExtension(model.fileName).ToLowerInvariant()))
+                if (ImportExtensions.Contains(Path.GetExtension(fileName).ToLowerInvariant()))
                 {
-                    var direct = Path.Combine(extractDir, model.fileName);
+                    var direct = Path.Combine(extractDir, fileName);
                     File.Move(pkg, direct);
                     files = new[] { direct };
                 }
                 else files = ArchivePackage.Extract(pkg, extractDir, token, null).ToArray();
 
                 string entry = null;
-                if (!string.IsNullOrEmpty(model.entryFile))
+                if (!string.IsNullOrEmpty(entryFile))
                 {
-                    var specified = Path.GetFullPath(Path.Combine(extractDir, model.entryFile.Replace('/', Path.DirectorySeparatorChar)));
+                    var specified = Path.GetFullPath(Path.Combine(extractDir, entryFile.Replace('/', Path.DirectorySeparatorChar)));
                     entry = files.FirstOrDefault(f => string.Equals(f, specified, StringComparison.OrdinalIgnoreCase));
                     if (entry == null) { PostError(id, "ASSET_ENTRY_MISSING", "File import khai báo trong catalog không có trong gói model."); return; }
                 }
@@ -630,7 +678,7 @@ namespace MaxWebViewHost
                     if (entry != null) break;
                 }
                 if (entry == null) { PostError(id, "ASSET_NO_IMPORTABLE_FILE", "Gói không có file .fbx/.obj/.max"); return; }
-                _offlineLicense.EnsureLicensed();
+                if (v3 == null) _offlineLicense.EnsureLicensed();
                 // 4) giao cho adapter (MAXScript) chạy trên UI thread. Method này KHÔNG nằm trong allowlist
                 //    nên web không gọi trực tiếp được; đường dẫn do host tự tính.
                 token.ThrowIfCancellationRequested();
@@ -710,6 +758,19 @@ namespace MaxWebViewHost
                 PostError(id, "TARGET_UNAVAILABLE", "Không đọc được scene đã chọn. Mở lại 3ds Max với plugin mới rồi chọn scene và thử lại.");
             }
             return false;
+        }
+
+        /// <summary>Unsolicited host -> web event ({event, data}); only delivered to the trusted, fully navigated document.</summary>
+        private void PostHostEvent(string type, object payload)
+        {
+            if (IsDisposed || Disposing) return;
+            if (InvokeRequired)
+            {
+                try { BeginInvoke(new Action(() => PostHostEvent(type, payload))); } catch (InvalidOperationException) { /* closing */ }
+                return;
+            }
+            if (_web.CoreWebView2 == null || _navigating || !IsTrusted(_web.CoreWebView2.Source)) return;
+            _web.CoreWebView2.PostWebMessageAsJson(_json.Serialize(new Dictionary<string, object> { { "event", type }, { "data", payload } }));
         }
 
         private void PostProgress(string id, long receivedBytes, long? totalBytes)

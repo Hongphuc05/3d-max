@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $outDir = Join-Path $PSScriptRoot 'bin'
 New-Item -ItemType Directory -Path $outDir -Force | Out-Null
-$csc = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\Roslyn\csc.exe'
+$csc = & (Join-Path $PSScriptRoot 'find-csc.ps1')
 $sourceRoot = Join-Path $repo 'plugin-csharp\MaxWebViewHost\MaxWebViewHost'
 $sources = @('PluginConfiguration.cs', 'BridgePolicy.cs', 'SecureHttpTransport.cs') | ForEach-Object { Join-Path $sourceRoot $_ }
 $extra = @()

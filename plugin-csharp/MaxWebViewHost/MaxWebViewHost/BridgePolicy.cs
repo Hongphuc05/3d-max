@@ -11,6 +11,7 @@ namespace MaxWebViewHost
     {
         private static readonly Regex RequestId = new Regex("^[A-Za-z0-9_-]{1,80}$", RegexOptions.CultureInvariant);
         private static readonly Regex AssetId = new Regex("^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$", RegexOptions.CultureInvariant);
+        private static readonly Regex ModelUuid = new Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", RegexOptions.CultureInvariant);
         private static readonly Regex Ticket = new Regex("^[A-Za-z0-9_-]{16,128}$", RegexOptions.CultureInvariant);
         internal static readonly string[] Methods = {
             "host.ping", "host.getInfo", "scene.getInfo", "scene.getSelection", "scene.createBox",
@@ -83,8 +84,10 @@ namespace MaxWebViewHost
                     return p.Count == 2 && HasOnly(p, "challengeId", "message")
                         && Text(p, "challengeId", 36) && Text(p, "message", 512);
                 case "asset.import":
-                    return p.Count == 1 && HasOnly(p, "assetId")
-                        && Text(p, "assetId", 80) && AssetId.IsMatch((string)p["assetId"]);
+                    // Offline library: {assetId}. v3 online catalog: {modelId} (UUID). Exactly one of them, nothing else.
+                    if (p.Count != 1) return false;
+                    if (p.ContainsKey("modelId")) return Text(p, "modelId", 36) && ModelUuid.IsMatch((string)p["modelId"]);
+                    return HasOnly(p, "assetId") && Text(p, "assetId", 80) && AssetId.IsMatch((string)p["assetId"]);
                 case "library.activate":
                     return p.Count == 1 && HasOnly(p, "license") && Text(p, "license", 12000);
                 case "scene.createBox":

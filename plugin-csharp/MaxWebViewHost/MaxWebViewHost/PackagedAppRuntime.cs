@@ -23,6 +23,8 @@ namespace MaxWebViewHost
         private readonly CancellationTokenSource lifetime = new CancellationTokenSource();
         private bool disposed;
         internal Func<string, CancellationToken, Task<byte[]>> PreviewLoader { get; set; }
+        /// <summary>v3 online library. When set, /api/v1 reads and /previews/ are answered locally (no cookie session, no raw proxy).</summary>
+        internal V3Library V3 { get; set; }
 
         public PackagedAppRuntime(PluginConfiguration configuration, CoreWebView2 core)
             : this(configuration, core, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MaxWebViewHost", "Sessions", "v1")) { }
@@ -40,7 +42,7 @@ namespace MaxWebViewHost
             // mapped API paths before WebResourceRequested and cannot be used as an API proxy.
             core.AddWebResourceRequestedFilter(AppOrigin + "/*", CoreWebView2WebResourceContext.All);
             core.WebResourceRequested += OnRequest;
-            if (!configuration.IsOfflineLibrary) SynchronizeBrowserCookies(await WithoutCallerContext(() => sessions.Load()));
+            if (!configuration.IsOfflineLibrary && V3 == null) SynchronizeBrowserCookies(await WithoutCallerContext(() => sessions.Load()));
         }
 
         public async Task<bool> CheckConnectionAsync(CancellationToken cancellationToken)
@@ -112,6 +114,13 @@ namespace MaxWebViewHost
                     args.Response = LocalAsset(request.Uri, request.Method);
                     return;
                 }
+                if (V3 != null)
+                {
+                    var answer = await HandleV3Async(request, deadline.Token);
+                    if (!disposed) args.Response = answer;
+                    return;
+                }
+                // Legacy pre-v3 cookie-session proxy (removed with the old web in P7).
                 if (!IsProxyRequest(request.Uri, request.Method))
                 {
                     args.Response = LocalAsset(request.Uri, request.Method);
@@ -181,6 +190,55 @@ namespace MaxWebViewHost
             }
             }
         }
+
+        // v3: the UI reads only local, verified data. The catalog comes from the cache the watcher keeps current (also when offline);
+        // previews are content-addressed files; entitlements come from the device session. Device endpoints are unreachable from JS.
+        private async Task<CoreWebView2WebResourceResponse> HandleV3Async(CoreWebView2WebResourceRequest request, CancellationToken ct)
+        {
+            string sha;
+            var route = V3Routes.Classify(request.Uri, request.Method, AppOrigin, out sha);
+            if (route == V3Route.None) return LocalAsset(request.Uri, request.Method);
+            Uri document;
+            var origin = request.Headers.Contains("Origin") ? request.Headers.GetHeader("Origin") : null;
+            if (!Uri.TryCreate(core.Source, UriKind.Absolute, out document) || document.GetLeftPart(UriPartial.Authority) != AppOrigin
+                || (origin != null && origin != AppOrigin))
+                return Response(403, "{\"error\":{\"code\":\"ORIGIN_NOT_ALLOWED\"}}");
+            if (route == V3Route.Blocked) return Response(404, "{\"error\":{\"code\":\"NOT_FOUND\"}}");
+            try
+            {
+                if (route == V3Route.Entitlements)
+                    return Json(Encoding.UTF8.GetBytes(V3Library.EntitlementsJson(await V3.GetEntitlementsAsync(ct))));
+                if (route == V3Route.Preview)
+                {
+                    var bytes = V3.Previews.TryRead(sha);
+                    if (bytes == null)
+                    {
+                        var entry = V3.FindPreview(sha);
+                        if (entry == null) return Response(404, "{\"error\":{\"code\":\"NOT_FOUND\"}}");
+                        bytes = await V3.Previews.GetAsync(entry, ct);
+                    }
+                    return core.Environment.CreateWebResourceResponse(new MemoryStream(bytes), 200, "OK",
+                        "Content-Type: image/webp\r\nCache-Control: public, max-age=31536000, immutable\r\nX-Content-Type-Options: nosniff\r\n");
+                }
+                var catalog = await V3.EnsureCatalogAsync(ct);
+                if (catalog == null) return Response(503, "{\"error\":{\"code\":\"SERVER_UNAVAILABLE\"}}");
+                switch (route)
+                {
+                    case V3Route.Catalog: return Json(catalog.CatalogJson);
+                    case V3Route.Categories: return Json(catalog.CategoriesJson);
+                    case V3Route.PreviewManifest: return Json(catalog.ManifestJson);
+                    default: return Json(Encoding.UTF8.GetBytes("{\"catalogVersion\":" + catalog.CatalogVersion + "}"));
+                }
+            }
+            catch (ApiException e)
+            {
+                var status = e.Code == "UNAUTHENTICATED" ? 401 : e.Code == "SERVER_UNAVAILABLE" ? 503 : e.Status >= 400 && e.Status < 600 ? e.Status : 503;
+                return Response(status, new JavaScriptSerializer().Serialize(new Dictionary<string, object> { { "error", new Dictionary<string, object> { { "code", e.Code } } } }));
+            }
+        }
+
+        private CoreWebView2WebResourceResponse Json(byte[] bytes)
+        { return core.Environment.CreateWebResourceResponse(new MemoryStream(bytes), 200, "OK", "Content-Type: application/json\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n"); }
 
         private void SynchronizeBrowserCookies(List<StoredSessionCookie> stored)
         {

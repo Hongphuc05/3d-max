@@ -82,6 +82,13 @@ internal static class OfflineIntegrationTests
             Check(!Parse("asset.import", new { assetId = "../model" }), "import path traversal rejected");
             Check(!Parse("asset.import", new { assetId = "chair", url = "https://evil.test/file" }), "import arbitrary URL rejected");
             Check(!Parse("asset.import", new { assetId = "chair", ticket = "legacy-ticket-value" }), "obsolete ticket cannot alter offline import");
+            // v3 online catalog: a model is addressed by its UUID only.
+            Check(Parse("asset.import", new { modelId = "11111111-1111-4111-8111-111111111111" }), "v3 import by model UUID accepted");
+            Check(!Parse("asset.import", new { modelId = "chair-001" }), "v3 import with a non-UUID model id rejected");
+            Check(!Parse("asset.import", new { modelId = "../11111111-1111-4111-8111-111111111111" }), "v3 import path traversal rejected");
+            Check(!Parse("asset.import", new { modelId = "11111111-1111-4111-8111-111111111111", assetId = "chair" }), "v3 import cannot carry both ids");
+            Check(!Parse("asset.import", new { modelId = "11111111-1111-4111-8111-111111111111", url = "https://evil.test/f" }), "v3 import cannot carry a URL");
+            Check(!Parse("asset.import", new { }), "import without any id rejected");
             Console.WriteLine("Offline integration tests passed: " + passed);
         }
         finally { Directory.Delete(root, true); }

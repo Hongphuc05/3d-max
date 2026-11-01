@@ -12,6 +12,10 @@ namespace MaxWebViewHost
         public bool IsOfflineLibrary { get; private set; }
         public string LibraryDirectory { get; private set; }
         public string LicensePublicKeyXml { get; private set; }
+        /// <summary>v3 online mode (apiBaseUrl, no bundled library): catalog, previews and downloads come from the API with a device token.</summary>
+        public bool IsV3Online { get { return !IsOfflineLibrary; } }
+        /// <summary>Preview images shipped by the installer (seed\), copied once into the preview cache on the first run.</summary>
+        public string SeedDirectory { get; private set; }
         private sealed class Settings
         {
             public string apiBaseUrl { get; set; }
@@ -54,7 +58,7 @@ namespace MaxWebViewHost
                     || (api.IsLoopback && !settings.allowLoopbackForTesting)
                     || (api.Scheme != "https" && !(settings.allowLoopbackForTesting && api.Scheme == "http" && api.IsLoopback)))
                     throw new InvalidDataException("Địa chỉ máy chủ không hợp lệ. Bộ cài phát hành phải dùng HTTPS.");
-                return new PluginConfiguration { ApiBaseUri = api, AppDirectory = app };
+                return new PluginConfiguration { ApiBaseUri = api, AppDirectory = app, SeedDirectory = Path.Combine(Path.GetFullPath(directory), "seed") };
             }
             catch (ArgumentException) { throw new InvalidDataException("Cấu hình plugin không hợp lệ. Hãy cài lại phiên bản đầy đủ."); }
             catch (InvalidOperationException) { throw new InvalidDataException("Cấu hình plugin không hợp lệ. Hãy cài lại phiên bản đầy đủ."); }

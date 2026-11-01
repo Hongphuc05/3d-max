@@ -33,6 +33,13 @@ namespace MaxWebViewHost
         public string deviceName { get; set; }
     }
 
+    /// <summary>What DeviceSessionService needs from the device identity (the real one is DeviceIdentityService).</summary>
+    internal interface IDeviceSigner
+    {
+        PublicDeviceIdentity GetIdentity();
+        string SignChallenge(string challengeId, string message);
+    }
+
     internal sealed class IdentityMetadata
     {
         public int Version { get; set; }
@@ -47,7 +54,7 @@ namespace MaxWebViewHost
     /// Losing either half fails closed. This class deliberately provides no reset API.
     /// TPM protects key material, but no remote TPM attestation is claimed in V1.
     /// </summary>
-    internal sealed class DeviceIdentityService
+    internal sealed class DeviceIdentityService : IDeviceSigner
     {
         private const string ProductionKeyName = "3DsMood.DeviceIdentity.v1";
         private static readonly CngProvider TpmProvider = new CngProvider("Microsoft Platform Crypto Provider");
@@ -260,6 +267,14 @@ namespace MaxWebViewHost
         {
             var parts = message == null || message.Length > 512 ? new string[0] : message.Split('|');
             Guid ignored;
+            // v3 server: 3DM-DEVICE-V2|challengeId|nonce|deviceUuid|publicKeyHashHex (no account, no activation slot).
+            if (parts.Length == 5 && parts[0] == "3DM-DEVICE-V2")
+            {
+                if (!CanonicalUuid(challengeId, out ignored) || parts[1] != challengeId || !NoncePattern.IsMatch(parts[2])
+                    || parts[3] != metadata.DeviceId || parts[4] != metadata.PublicKeyHash)
+                    throw new DeviceIdentityException("INVALID_PARAMS", "Challenge thiết bị không hợp lệ.");
+                return;
+            }
             if (parts.Length != 7 || parts[0] != "3DM-DEVICE-V1"
                 || !CanonicalUuid(challengeId, out ignored) || parts[1] != challengeId
                 || !NoncePattern.IsMatch(parts[2]) || !CanonicalUuid(parts[3], out ignored)

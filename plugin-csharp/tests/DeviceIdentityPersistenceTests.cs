@@ -188,7 +188,37 @@ internal static class DeviceIdentityPersistenceTests
             if (!rsa.VerifyData(Encoding.UTF8.GetBytes(message), Convert.FromBase64String(signature),
                 HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1)) throw new Exception("Persisted key signature did not verify.");
         }
+        ProveV2(service, identity, keyHash);
         return new Snapshot { DeviceId = identity.deviceId, KeyHash = keyHash, Protection = identity.keyProtection };
+    }
+
+    // v3 server (P4.1): 3DM-DEVICE-V2|challengeId|nonce|deviceUuid|publicKeyHashHex
+    private static void ProveV2(DeviceIdentityService service, PublicDeviceIdentity identity, string keyHash)
+    {
+        var challengeId = Guid.NewGuid().ToString("D");
+        var good = "3DM-DEVICE-V2|" + challengeId + "|" + new string('B', 43) + "|" + identity.deviceId + "|" + keyHash;
+        var signature = service.SignChallenge(challengeId, good);
+        using (var rsa = new RSACng())
+        {
+            rsa.ImportParameters(new RSAParameters { Modulus = Base64Url(identity.publicKey.n), Exponent = Base64Url(identity.publicKey.e) });
+            if (!rsa.VerifyData(Encoding.UTF8.GetBytes(good), Convert.FromBase64String(signature), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1))
+                throw new Exception("V2 challenge signature did not verify.");
+        }
+        var other = Guid.NewGuid().ToString("D");
+        var bad = new[] {
+            good.Replace(identity.deviceId, other),                                  // challenge for another device
+            good.Substring(0, good.LastIndexOf('|') + 1) + new string('0', 64),       // another key hash
+            "3DM-DEVICE-V2|" + challengeId + "|" + new string('B', 42) + "|" + identity.deviceId + "|" + keyHash,   // nonce too short
+            good + "|VERIFY",                                                        // extra field
+            good.Replace("V2", "V3"),                                                // unknown version
+            "3DM-DEVICE-V2|" + other + "|" + new string('B', 43) + "|" + identity.deviceId + "|" + keyHash,        // id differs from the one asked to sign
+        };
+        foreach (var message in bad)
+        {
+            string code = null;
+            try { service.SignChallenge(challengeId, message); } catch (DeviceIdentityException error) { code = error.Code; }
+            if (code != "INVALID_PARAMS") throw new Exception("V2 challenge accepted though invalid: " + message);
+        }
     }
 
     private static byte[] Base64Url(string value)

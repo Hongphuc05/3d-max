@@ -4,7 +4,7 @@ $sourceRoot = Join-Path $repo 'plugin-csharp\MaxWebViewHost\MaxWebViewHost'
 $packages = Join-Path $repo 'plugin-csharp\MaxWebViewHost\packages'
 $out = Join-Path $PSScriptRoot 'bin\import-pipeline'
 New-Item -ItemType Directory -Path $out -Force | Out-Null
-$csc = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\Roslyn\csc.exe'
+$csc = & (Join-Path $PSScriptRoot 'find-csc.ps1')
 $web = Join-Path $packages 'Microsoft.Web.WebView2.1.0.4191.47'
 $core = Join-Path $web 'lib\net462\Microsoft.Web.WebView2.Core.dll'
 $forms = Join-Path $web 'lib\net462\Microsoft.Web.WebView2.WinForms.dll'
