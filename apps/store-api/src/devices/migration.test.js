@@ -121,9 +121,10 @@ test('rollback 021 refuses while an entitlement or a CONFIRMED order exists, the
   await assert.rejects(pool.query(rollbackSql), /Rollback refused/);
   assert.equal((await pool.query("select count(*)::int n from schema_migrations where name='021_devices_entitlements_orders.sql'")).rows[0].n, 1);
   await pool.query('delete from purchase_orders where id=$1', [o.id]);
+  await pool.query(readFileSync(new URL('../../migrations/rollback/022_model_downloads.sql', import.meta.url), 'utf8')); // 022 tham chieu devices nen phai di truoc
   await pool.query(rollbackSql);
   for (const t of ['devices', 'device_auth_challenges', 'device_tokens', 'entitlements', 'purchase_orders', 'purchase_order_items'])
     assert.equal((await pool.query('select to_regclass($1) as t', [t])).rows[0].t, null, t);
   assert.ok((await pool.query("select to_regclass('orders') as t")).rows[0].t, 'legacy orders still there');
-  assert.deepEqual(await migrate(), ['021_devices_entitlements_orders.sql']);
+  assert.deepEqual(await migrate(), ['021_devices_entitlements_orders.sql', '022_model_downloads.sql']);
 });
