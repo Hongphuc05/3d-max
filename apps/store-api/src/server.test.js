@@ -80,3 +80,13 @@ test('v3 public catalog is mounted on the assembled API: no login, revalidating 
   assert.equal((await fetch(base + '/previews/tmp/x.part')).status, 404);
   assert.equal((await fetch(base + '/previews/abc-sm.webp')).status, 404, 'old names still reach the legacy static route');
 });
+
+test('P3.7 admin routes are mounted behind the admin guard in the assembled API (anonymous = 401, nothing leaks)', { skip: !configured }, async () => {
+  for (const [path, method] of [['/api/admin/settings', 'GET'], ['/api/admin/settings', 'PUT'], ['/api/admin/models', 'GET'], ['/api/admin/models/00000000-0000-0000-0000-000000000000', 'PATCH']]) {
+    const r = await fetch(base + path, { method, headers: { 'content-type': 'application/json' }, body: method === 'GET' ? undefined : '{}' });
+    assert.equal(r.status, 401, `${method} ${path}`);
+    assert.ok(r.headers.get('x-request-id'), 'answered by the NEW router (it sets X-Request-Id before its guards); the legacy adminRouter would also say 401');
+    assert.equal((await r.text()).includes('bank'), false);
+  }
+  assert.equal((await fetch(base + '/api/admin/overview')).status, 401, 'legacy admin routes still answer after the new router');
+});

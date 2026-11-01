@@ -19,6 +19,7 @@ import { adminRouter } from './admin/routes.js';
 import { createOAuth, loadDriveConfig } from './drive/oauth.js';
 import { createDriveRouter } from './drive/routes.js';
 import { loadWorkerConfig } from './worker/config.js';
+import { createCatalogAdminRouter } from './catalog-admin/routes.js';
 import { requireAdmin } from './admin/access.js';
 import { createCatalogEvents, createCatalogV1Router, createPreviewRouter } from './catalog-v1/routes.js';
 
@@ -57,6 +58,8 @@ const driveConfig = loadDriveConfig();
 // v3 P3.1: quet Drive bang API key (D26); null = chua dat DRIVE_API_KEY (status bao `missingConfig`). Ma OAuth P1 van gan nhung khong la luong chinh.
 app.use('/api/admin/drive', createDriveRouter({ pool, oauth: createOAuth({ pool, config: driveConfig }), config: driveConfig, apiKey: loadWorkerConfig(process.env).apiKey ?? null,
   guards: [requireAuth, requireAdmin], rateLimit: rateLimit({ limit: 60 }) }));
+// v3 P3.7: cai dat + bang model. Guard gan tung route, duong dan khac roi xuong adminRouter cu.
+app.use('/api/admin', createCatalogAdminRouter({ pool, guards: [requireAuth, requireAdmin], rateLimit: rateLimit({ limit: 60 }), envDefaultPrice: loadWorkerConfig(process.env).defaultPriceVnd }));
 app.use('/api/admin', adminRouter(catalog));
 app.use('/api/payments', rateLimit({ limit: 120 }), createPaymentRouter({ service: payments, requireUser: requireAuth, rateLimit: rateLimit({ limit: 20 }) }));
 app.get('/api/health', async (_q, r) => {
