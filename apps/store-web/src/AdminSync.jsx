@@ -2,16 +2,16 @@
 // roi tu chuyen sang polling moi `pollMs` (3 giay) neu SSE loi. Khong co tong khi dang quet -> thanh khong xac dinh (khong gia phan tram).
 import { useEffect, useState } from 'react';
 import * as api from './api.js';
+import AdminSyncHistory from './AdminSyncHistory.jsx';
+import { modeLabels, statusLabels } from './syncLabels.js';
 import { adminError, dateTime, inputClass, panel, primary, ResourceState, secondary, useAdminResource } from './AdminShared.jsx';
 
 const ACTIVE = new Set(['QUEUED', 'RUNNING', 'CANCELLING']);
 const TERMINAL = new Set(['COMPLETED', 'COMPLETED_WITH_ERRORS', 'FAILED', 'CANCELLED']);
 const RETRYABLE = new Set(['FAILED', 'CANCELLED', 'COMPLETED_WITH_ERRORS']);
-const statusLabels = { QUEUED: 'Đang chờ', RUNNING: 'Đang chạy', CANCELLING: 'Đang hủy', CANCELLED: 'Đã hủy', COMPLETED: 'Hoàn tất', COMPLETED_WITH_ERRORS: 'Hoàn tất, có lỗi', FAILED: 'Thất bại' };
 const stageLabels = { SCANNING: 'Đang quét thư mục', COMPARING: 'Đang so sánh', DOWNLOADING_PREVIEWS: 'Đang tải ảnh xem trước', PUBLISHING: 'Đang công bố' };
 const counterLabels = [['scannedFolders', 'Thư mục đã quét'], ['scannedFiles', 'File đã quét'], ['new', 'Mới'], ['updated', 'Cập nhật'], ['unchanged', 'Không đổi'],
   ['missing', 'Không còn trên Drive'], ['review', 'Cần duyệt'], ['skipped', 'Bỏ qua'], ['errors', 'Lỗi']];
-const modeLabels = { FULL: 'Quét đầy đủ', INCREMENTAL: 'Quét thay đổi' };
 const megabytes = (n) => `${(Number(n) / 1048576).toLocaleString('vi-VN', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MB`;
 
 // Theo doi mot job: SSE truoc, loi thi polling. Don dep ca hai khi doi job hoac roi man hinh.
@@ -72,8 +72,10 @@ export default function AdminSync({ pollMs = 3000 }) {
   const [mode, setMode] = useState('FULL');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [historyKey, setHistoryKey] = useState(0);
   const { job, error: streamError } = useJob(jobId, pollMs);
 
+  useEffect(() => { if (job && TERMINAL.has(job.status)) setHistoryKey((key) => key + 1); }, [job?.id, job?.status]); // luot vua ket thuc: tai lai lich su
   useEffect(() => { if (jobId === null && latest.data?.items?.[0]) setJobId(latest.data.items[0].id); }, [latest.data, jobId]);
 
   const sources = (status.data?.sources ?? []).filter((source) => source.enabled);
@@ -134,6 +136,7 @@ export default function AdminSync({ pollMs = 3000 }) {
           <Progress job={job} />
         </>}
       </div>}
+      <AdminSyncHistory refreshKey={historyKey} />
     </>}
   </section>;
 }

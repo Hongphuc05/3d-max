@@ -38,14 +38,17 @@ const job = (id, status, over = {}) => ({ id, sourceId: 'src-1', mode: 'FULL', s
 function installFetch() {
   globalThis.fetch = async (url, init = {}) => {
     const path = String(url).split('?')[0], method = init.method ?? 'GET', body = init.body ? JSON.parse(init.body) : null;
-    fixture.requests.push({ path, method, body });
+    fixture.requests.push({ path, method, body, search: String(url).split('?')[1] ?? '' });
     if (path === '/api/auth/me') return response({ user: { id: 'admin-id', email: 'a@a.invalid', role: 'ADMIN', username: 'owner', mustChangeCredentials: false } });
     if (path === '/api/licenses/me') return response({ license: null });
     if (path === '/api/licenses/devices') return response({ devices: [] });
     if (path === '/api/admin/overview') return response({ stats: { users: 1, activeLicenses: 0, paidOrders: 0, revenueVnd: 0 }, catalog: { state: 'empty', syncing: false } });
     if (path === '/api/admin/catalog/sync/permission') return response({ allowed: true });
     if (path === '/api/admin/drive/status') return response({ configured: fixture.configured, missingConfig: fixture.configured ? [] : ['DRIVE_API_KEY'], connection: null, sources: fixture.sources });
-    if (path === '/api/admin/drive/sync-jobs' && method === 'GET') return response({ items: fixture.latest, nextCursor: null });
+    if (path === '/api/admin/drive/sync-jobs' && method === 'GET') {
+      const limit = new URLSearchParams(String(url).split('?')[1] ?? '').get('limit');
+      return response({ items: limit === '1' ? fixture.latest : (fixture.history ?? []), nextCursor: null }); // limit=1: job moi nhat; con lai: lich su
+    }
     if (path === '/api/admin/drive/sync-jobs' && method === 'POST') {
       if (fixture.startError) return fixture.startError;
       if (fixture.gate) await fixture.gate;
@@ -308,4 +311,19 @@ test('the indeterminate bar is a moving segment (class animate-indeterminate), n
   const css = (await import('node:fs')).readFileSync(new URL('./index.css', import.meta.url), 'utf8');
   assert.match(css, /@keyframes indeterminate/);
   assert.match(css, /prefers-reduced-motion[\s\S]*animate-indeterminate/, 'reduced motion is handled without implying a percentage');
+});
+
+test('P3.3: the history panel sits on the same screen and is reloaded when the current job ends', async () => {
+  await mount({ latest: [] });
+  const historyCalls = () => fixture.requests.filter((r) => r.path === '/api/admin/drive/sync-jobs' && r.method === 'GET' && r.search.includes('limit=10'));
+  assert.equal(historyCalls().length, 1, 'loaded once when the screen opens');
+  assert.match(container.textContent, /Lịch sử đồng bộ/);
+  assert.match(container.textContent, /Chưa có lượt đồng bộ nào/);
+  fixture.history = [job('job-1', 'COMPLETED', { counters: { ...zeroCounters, scannedFiles: 720, unchanged: 360 }, startedAt: '2026-11-01T08:00:00Z', finishedAt: '2026-11-01T08:01:00Z' })];
+  await click(mustButton('Quét đồng bộ'));
+  await emit('progress', job('job-1', 'RUNNING', { stage: 'SCANNING' }));
+  assert.equal(historyCalls().length, 1, 'not reloaded while running');
+  await emit('done', job('job-1', 'COMPLETED', { finishedAt: '2026-11-01T08:01:00Z' }));
+  assert.equal(historyCalls().length, 2, 'reloaded once when the job ended');
+  assert.ok(container.querySelector('tr[data-job="job-1"]'), 'the finished job shows up in the history');
 });

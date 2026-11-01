@@ -56,6 +56,7 @@ export const adminDriveTestAccess = (sourceId, signal) => request('POST', '/admi
 // P3.2 (plan §2.2): luot dong bo. Huy/Thu lai tra 202; huy khong co noi dung.
 export const adminSyncJobs = (params, signal) => get('/admin/drive/sync-jobs', params, signal);
 export const adminSyncJob = (id, signal) => get(`/admin/drive/sync-jobs/${encodeURIComponent(id)}`, null, signal);
+export const adminSyncItems = (id, status = 'FAILED', signal) => get(`/admin/drive/sync-jobs/${encodeURIComponent(id)}/items`, { status }, signal);
 export const adminStartSync = ({ sourceId, mode }) => request('POST', '/admin/drive/sync-jobs', { body: { sourceId, mode } });
 export const adminCancelSync = (id) => request('POST', `/admin/drive/sync-jobs/${encodeURIComponent(id)}/cancel`, { body: {} });
 export const adminRetrySync = (id) => request('POST', `/admin/drive/sync-jobs/${encodeURIComponent(id)}/retry`, { body: {} });
