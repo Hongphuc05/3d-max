@@ -3,30 +3,39 @@
 # (comment khong dau: PowerShell 5.1 doc file khong BOM theo ANSI)
 param(
     [string]$LicensePublicKeyPath = $env:PLATFORM_LICENSE_PUBLIC_KEY_PATH,
+    # v3 online build: https origin of the API (e.g. https://api.example.com). Without it the legacy offline-library build runs.
+    [string]$ApiBaseUrl,
     [switch]$TestBuild
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'BuildCatalogValidation.ps1')
 
 $root = Split-Path $PSScriptRoot -Parent
-$library = Join-Path $root 'library\public'
-$catalogFile = Join-Path $library 'catalog.json'
-if (-not (Test-Path -LiteralPath $catalogFile -PathType Leaf)) { throw 'Bundled catalog.json is missing.' }
-$catalog = Get-Content -LiteralPath $catalogFile -Raw -Encoding UTF8 | ConvertFrom-Json
-if (-not (Test-PublishedCatalogDocument $catalog)) { throw 'Bundled catalog is invalid or empty.' }
-& node (Join-Path $root 'library\validate-catalog.mjs') $catalogFile
-if ($LASTEXITCODE -ne 0) { throw 'Bundled catalog or previews failed validation.' }
-if (-not $LicensePublicKeyPath -or -not (Test-Path -LiteralPath $LicensePublicKeyPath -PathType Leaf)) { throw 'Provide -LicensePublicKeyPath with the owner tool public XML key.' }
-if ((Get-Item -LiteralPath $LicensePublicKeyPath).Length -gt 16384) { throw 'Public key file is too large.' }
-$publicKeyXml = [IO.File]::ReadAllText((Resolve-Path -LiteralPath $LicensePublicKeyPath))
-if ($publicKeyXml -match '<!DOCTYPE|<!ENTITY|<\s*(D|P|Q|DP|DQ|InverseQ)\s*>|PRIVATE KEY') { throw 'Private keys and XML entities must never be packaged.' }
-$rsa = New-Object Security.Cryptography.RSACryptoServiceProvider
-try {
-    $rsa.PersistKeyInCsp = $false
-    $rsa.FromXmlString($publicKeyXml)
-    if (-not $rsa.PublicOnly -or $rsa.KeySize -lt 2048 -or $rsa.KeySize -gt 4096) { throw 'Expected an RSA public key of 2048 to 4096 bits.' }
-    $publicKeyXml = $rsa.ToXmlString($false)
-} finally { $rsa.Dispose() }
+if ($ApiBaseUrl) {
+    # v3 online build: no bundled library and no licence key; previews are pulled from the target environment below.
+    $loopbackOk = $TestBuild -and $ApiBaseUrl -match '^http://(127\.0\.0\.1|localhost)(:\d+)?/?$'
+    if (-not $loopbackOk -and $ApiBaseUrl -notmatch '^https://[^/@?#\s]+/?$') { throw '-ApiBaseUrl must be an https origin without path.' }
+    $ApiBaseUrl = $ApiBaseUrl.TrimEnd('/') + '/'
+} else {
+    $library = Join-Path $root 'library\public'
+    $catalogFile = Join-Path $library 'catalog.json'
+    if (-not (Test-Path -LiteralPath $catalogFile -PathType Leaf)) { throw 'Bundled catalog.json is missing.' }
+    $catalog = Get-Content -LiteralPath $catalogFile -Raw -Encoding UTF8 | ConvertFrom-Json
+    if (-not (Test-PublishedCatalogDocument $catalog)) { throw 'Bundled catalog is invalid or empty.' }
+    & node (Join-Path $root 'library\validate-catalog.mjs') $catalogFile
+    if ($LASTEXITCODE -ne 0) { throw 'Bundled catalog or previews failed validation.' }
+    if (-not $LicensePublicKeyPath -or -not (Test-Path -LiteralPath $LicensePublicKeyPath -PathType Leaf)) { throw 'Provide -LicensePublicKeyPath with the owner tool public XML key.' }
+    if ((Get-Item -LiteralPath $LicensePublicKeyPath).Length -gt 16384) { throw 'Public key file is too large.' }
+    $publicKeyXml = [IO.File]::ReadAllText((Resolve-Path -LiteralPath $LicensePublicKeyPath))
+    if ($publicKeyXml -match '<!DOCTYPE|<!ENTITY|<\s*(D|P|Q|DP|DQ|InverseQ)\s*>|PRIVATE KEY') { throw 'Private keys and XML entities must never be packaged.' }
+    $rsa = New-Object Security.Cryptography.RSACryptoServiceProvider
+    try {
+        $rsa.PersistKeyInCsp = $false
+        $rsa.FromXmlString($publicKeyXml)
+        if (-not $rsa.PublicOnly -or $rsa.KeySize -lt 2048 -or $rsa.KeySize -gt 4096) { throw 'Expected an RSA public key of 2048 to 4096 bits.' }
+        $publicKeyXml = $rsa.ToXmlString($false)
+    } finally { $rsa.Dispose() }
+}
 
 $root  = Split-Path $PSScriptRoot -Parent
 $proj  = Join-Path $root 'plugin-csharp\MaxWebViewHost\MaxWebViewHost\MaxWebViewHost.csproj'
@@ -77,10 +86,17 @@ Copy-Item (Join-Path $bin 'runtimes') $pdir -Recurse
 Copy-Item (Join-Path $root 'maxscript\PlatformBridge.ms') $pdir
 Copy-Item (Join-Path $root 'frontend') (Join-Path $pdir 'frontend') -Recurse
 Copy-Item (Join-Path $root 'apps\store-web\dist') (Join-Path $pdir 'app') -Recurse
-New-Item -ItemType Directory -Path (Join-Path $pdir 'library') -Force | Out-Null
-Copy-Item -LiteralPath $catalogFile -Destination (Join-Path $pdir 'library\catalog.json')
-Copy-Item -LiteralPath (Join-Path $library 'previews') -Destination (Join-Path $pdir 'library\previews') -Recurse
-$configuration = @{ licensePublicKeyXml = $publicKeyXml }
+if ($ApiBaseUrl) {
+    # v3: no bundled library. The seed is every preview of the target environment's manifest, each verified; a missing image fails the build.
+    $configuration = @{ apiBaseUrl = $ApiBaseUrl }
+    if ($TestBuild -and $ApiBaseUrl -like 'http://*') { $configuration.allowLoopbackForTesting = $true }
+    & (Join-Path $PSScriptRoot 'Get-PreviewSeed.ps1') -ApiBaseUrl $ApiBaseUrl -OutputDirectory (Join-Path $pdir 'seed') -AllowInsecureLoopback:($TestBuild -and $ApiBaseUrl -like 'http://*')
+} else {
+    New-Item -ItemType Directory -Path (Join-Path $pdir 'library') -Force | Out-Null
+    Copy-Item -LiteralPath $catalogFile -Destination (Join-Path $pdir 'library\catalog.json')
+    Copy-Item -LiteralPath (Join-Path $library 'previews') -Destination (Join-Path $pdir 'library\previews') -Recurse
+    $configuration = @{ licensePublicKeyXml = $publicKeyXml }
+}
 [IO.File]::WriteAllText((Join-Path $pdir 'plugin-config.json'), ($configuration | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
 Copy-Item (Join-Path $root 'maxscript\usermacros\Platform-OpenPanel.mcr') (Join-Path $stage 'usermacros')
 Copy-Item (Join-Path $root 'maxscript\startup\Platform-Agent.ms') (Join-Path $stage 'Startup')
