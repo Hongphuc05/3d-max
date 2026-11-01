@@ -229,3 +229,55 @@ test('test-access on a library shaped like the real one (11 categories → sub-f
   const lists = drive.state.requests.filter((q) => q.path === '/drive/v3/files').length;
   assert.ok(lists <= 9, `bounded listings, got ${lists}`);
 });
+
+test('test-access uses a file already known from the last scan (inventory): one download, no tree crawling, even when most folders are empty', { skip }, async () => {
+  const { id } = await (await j('/sources', { method: 'POST', body: { rootFolderUrlOrId: ROOT } })).json();
+  const f = drive.state.files; f.length = 0;
+  f.push({ id: ROOT, name: 'Thu vien goc', mimeType: FOLDER, parents: [] });
+  for (let i = 0; i < 12; i++) f.push({ id: `apiKeyEmptyDir${String(i).padStart(4, '0')}`, name: `rong ${i}`, mimeType: FOLDER, parents: [ROOT] }); // thu muc rong nhu thu vien that
+  f.push({ id: 'apiKeyKnownSmall01', name: 'small.jpg', mimeType: 'image/jpeg', parents: ['apiKeyEmptyDir0011'], size: 500, content: Buffer.from('jpeg-bytes') });
+  f.push({ id: 'apiKeyKnownBig0001', name: 'big.jpg', mimeType: 'image/jpeg', parents: ['apiKeyEmptyDir0011'], size: 9000, content: Buffer.from('jpeg-bytes') });
+  const ins = (fid, size, extra = '') => pool.query(`insert into drive_inventory(source_id,drive_file_id,path,filename,mime_type,size_bytes${extra ? ', ' + extra.split('=')[0] : ''}) values($1,$2,$3,$4,'image/jpeg',$5${extra ? ', ' + extra.split('=')[1] : ''})`, [id, fid, `X/Y/${fid}`, `${fid}.jpg`, size]);
+  await ins('apiKeyKnownBig0001', 9000);
+  await ins('apiKeyKnownSmall01', 500);
+  await ins('apiKeyZeroSized001', 0);
+  await ins('apiKeyBlockedInv001', 100, 'can_download=false');
+  drive.state.requests.length = 0;
+  const r = await (await j('/test-access', { method: 'POST', body: { sourceId: id } })).json();
+  assert.equal(r.canDownloadSample, true);
+  const media = drive.state.requests.filter((q) => q.query.alt === 'media');
+  assert.equal(media.length, 1);
+  assert.ok(media[0].path.endsWith('/apiKeyKnownSmall01'), `expected the smallest usable known file, got ${media[0].path}`);
+  const lists = drive.state.requests.filter((q) => q.path === '/drive/v3/files').length;
+  assert.equal(lists, 1, 'only the root listing; the tree is not crawled when the inventory has a sample');
+});
+
+test('test-access ignores the inventory of ANOTHER source and falls back to crawling when this source has no known file', { skip }, async () => {
+  const { id } = await (await j('/sources', { method: 'POST', body: { rootFolderUrlOrId: ROOT } })).json();
+  const other = (await pool.query("insert into drive_sources(access_mode,root_folder_id,root_folder_name,source_type) values('API_KEY','otherRootFolder001','other','MY_DRIVE') returning id")).rows[0].id;
+  await pool.query("insert into drive_inventory(source_id,drive_file_id,path,filename,mime_type,size_bytes) values($1,'apiKeyOtherSrcFile1','X/Y/z.jpg','z.jpg','image/jpeg',10)", [other]);
+  drive.state.requests.length = 0;
+  const r = await (await j('/test-access', { method: 'POST', body: { sourceId: id } })).json();
+  assert.equal(r.canDownloadSample, true, 'fallback crawl found the file in the root');
+  assert.ok(!drive.state.requests.some((q) => q.path.endsWith('/apiKeyOtherSrcFile1')), "another source's file is never requested");
+});
+
+test('test-access: a known file that no longer exists on Drive is reported with its code (stale inventory is not hidden)', { skip }, async () => {
+  const { id } = await (await j('/sources', { method: 'POST', body: { rootFolderUrlOrId: ROOT } })).json();
+  await pool.query("insert into drive_inventory(source_id,drive_file_id,path,filename,mime_type,size_bytes) values($1,'apiKeyGoneFile0001','X/Y/gone.jpg','gone.jpg','image/jpeg',10)", [id]);
+  const r = await (await j('/test-access', { method: 'POST', body: { sourceId: id } })).json();
+  assert.equal(r.canDownloadSample, false);
+  const dl = r.details.find((d) => d.check === 'download');
+  assert.equal(dl.ok, false); assert.equal(dl.code, 'DRIVE_NOT_FOUND');
+});
+
+test('test-access sends the known file\'s resource key to Drive', { skip }, async () => {
+  const { id } = await (await j('/sources', { method: 'POST', body: { rootFolderUrlOrId: ROOT } })).json();
+  drive.state.files.push({ id: 'apiKeyKeyedFile0001', name: 'k.jpg', mimeType: 'image/jpeg', parents: [ROOT], size: 5, content: Buffer.from('jpeg-bytes') });
+  await pool.query("insert into drive_inventory(source_id,drive_file_id,path,filename,mime_type,size_bytes,resource_key) values($1,'apiKeyKeyedFile0001','X/Y/k.jpg','k.jpg','image/jpeg',5,'rk-inv_1')", [id]);
+  drive.state.requests.length = 0;
+  const r = await (await j('/test-access', { method: 'POST', body: { sourceId: id } })).json();
+  assert.equal(r.canDownloadSample, true);
+  const media = drive.state.requests.find((q) => q.query.alt === 'media');
+  assert.equal(media.headers['x-goog-drive-resource-keys'], 'apiKeyKeyedFile0001/rk-inv_1');
+});

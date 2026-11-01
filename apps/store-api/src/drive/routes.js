@@ -9,6 +9,16 @@ import { createDriveRepository } from './repository.js';
 import { createSyncJobsRouter } from './sync-routes.js';
 import { ensureApiKeySource } from '../worker/source.js';
 
+// Uu tien file da biet tu lan quet truoc (drive_inventory): nho nhat, co kich thuoc, duoc phep tai. Mot yeu cau tai, khong dao cay.
+// Thu vien that co nhieu thu muc rong xen ke nen dao cay de tim mau la mong manh; chi dao khi nguon chua quet lan nao.
+async function knownSample(pool, source) {
+  const row = (await pool.query(
+    `select drive_file_id, resource_key from drive_inventory
+      where source_id = $1 and not is_folder and not is_shortcut and size_bytes > 0 and coalesce(can_download, true)
+      order by size_bytes asc limit 1`, [source.id])).rows[0];
+  return row ? { id: row.drive_file_id, resourceKey: row.resource_key ?? undefined } : null;
+}
+
 // Thu vien that co file nam sau thu muc danh muc, goc chi chua thu muc. Toi da `maxLists` lan liet ke de test-access
 // khong dap vao Drive (shortcut: neu nhanh dau toan thu muc rong thi co the khong thay file, nang gioi han khi can).
 const isSample = f => f.mimeType !== FOLDER && f.capabilities?.canDownload !== false && Number(f.size) > 0;
@@ -131,7 +141,7 @@ export function createDriveRouter({ pool, oauth, config, guards = [], rateLimit,
       const details = [];
       const page = await client.listChildren(source.root_folder_id, { resourceKey: source.root_resource_key, driveId: source.drive_id, pageSize: 100 });
       details.push({ check: 'list', ok: true, count: page.files.length });
-      const sample = await findSample(client, source, page);
+      const sample = (await knownSample(pool, source)) ?? await findSample(client, source, page);
       let canDownloadSample = false;
       if (sample) {
         const ac = new AbortController();
