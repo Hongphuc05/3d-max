@@ -182,6 +182,7 @@ test('rollbacks 020 -> 018 -> 016 -> 015: refuse while data exists, succeed (in 
 
     // wrong order is impossible: 015 cannot go while 016 still references jobs
     await c.query('delete from audit_events');
+    await c.query(rollbackSql('021_devices_entitlements_orders')); // 021 tham chieu models cua 016 nen phai di truoc
     await c.query(rollbackSql('020_preview_shared_files')); // 020 changes model_previews, so it must go before 016
     await c.query(rollbackSql('018_download_audit'));
     await assert.rejects(c.query(rollbackSql('015_drive_sync_jobs')), /./);
@@ -196,7 +197,7 @@ test('rollbacks 020 -> 018 -> 016 -> 015: refuse while data exists, succeed (in 
     }
     assert.equal((await c.query("select to_regclass('drive_sources') is not null as kept")).rows[0].kept, true, '014 untouched');
   } finally { c.release(); }
-  assert.deepEqual(await migrate(), ['015_drive_sync_jobs.sql', '016_catalog.sql', '018_download_audit.sql', '020_preview_shared_files.sql']);
+  assert.deepEqual(await migrate(), ['015_drive_sync_jobs.sql', '016_catalog.sql', '018_download_audit.sql', '020_preview_shared_files.sql', '021_devices_entitlements_orders.sql']);
 });
 
 test('019 API-key sources: need no OAuth connection, OAuth sources still need one, one API-key source per root folder', { skip }, async () => {
