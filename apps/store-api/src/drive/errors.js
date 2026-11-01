@@ -22,6 +22,9 @@ const MESSAGES = {
   SCAN_LIMIT_EXCEEDED: 'Thư viện Drive vượt giới hạn số file/thư mục cho phép quét một lần.',
   PLAN_STALE: 'Dữ liệu catalog đã thay đổi trong lúc đồng bộ. Hãy chạy lại đồng bộ.',
   JOB_HANDLER_ERROR: 'Đồng bộ thất bại do lỗi hệ thống. Xem nhật ký máy chủ rồi chạy lại.',
+  JOB_NOT_FOUND: 'Không tìm thấy lượt đồng bộ này.',
+  JOB_NOT_CANCELLABLE: 'Lượt đồng bộ đã kết thúc nên không hủy được.',
+  SYNC_ALREADY_RUNNING: 'Đang có một lượt đồng bộ chạy hoặc chờ chạy cho nguồn này.',
   INTERNAL: 'Lỗi hệ thống. Thử lại sau.',
 };
 
@@ -40,7 +43,7 @@ const STATUS = {
   DRIVE_OAUTH_NOT_CONFIGURED: 503, OAUTH_STATE_INVALID: 400, OAUTH_NO_REFRESH_TOKEN: 400, DRIVE_SCOPE_MISSING: 400,
   DRIVE_NOT_CONNECTED: 409, DRIVE_AUTH_REVOKED: 409, DRIVE_PERMISSION_DENIED: 422, DRIVE_NOT_FOUND: 422,
   DRIVE_QUOTA_EXCEEDED: 429, DRIVE_UPSTREAM_ERROR: 502, DRIVE_BAD_REQUEST: 502, DRIVE_NOT_A_FOLDER: 422,
-  INVALID_PARAMS: 400, FORBIDDEN: 403, UNAUTHENTICATED: 401, RATE_LIMITED: 429, CATALOG_EVENTS_BUSY: 503, DISK_SPACE_LOW: 409, PLAN_STALE: 409, SCAN_LIMIT_EXCEEDED: 422,
+  INVALID_PARAMS: 400, FORBIDDEN: 403, UNAUTHENTICATED: 401, RATE_LIMITED: 429, CATALOG_EVENTS_BUSY: 503, DISK_SPACE_LOW: 409, PLAN_STALE: 409, JOB_NOT_FOUND: 422, JOB_NOT_CANCELLABLE: 409, SYNC_ALREADY_RUNNING: 409, SCAN_LIMIT_EXCEEDED: 422,
 };
 export const apiError = (code, opts) => new ApiError(code, STATUS[code] ?? 400, opts);
 export const messageFor = (code) => MESSAGES[code];

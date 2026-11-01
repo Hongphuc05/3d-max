@@ -6,6 +6,7 @@ import express from 'express';
 import { apiError, requestId, v3ErrorHandler } from './errors.js';
 import { createDriveClient, FOLDER, validId } from './client.js';
 import { createDriveRepository } from './repository.js';
+import { createSyncJobsRouter } from './sync-routes.js';
 
 const bodyKeys = (body, allowed) => {
   if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(k => !allowed.includes(k))) throw apiError('INVALID_PARAMS');
@@ -113,6 +114,8 @@ export function createDriveRouter({ pool, oauth, config, guards = [], rateLimit,
       res.json({ canList: true, sampleCount: page.files.length, canDownloadSample, account: connection.email, details });
     } catch (e) { next(e); }
   });
+
+  router.use(createSyncJobsRouter({ pool }));
 
   router.use(v3ErrorHandler);
   return router;
