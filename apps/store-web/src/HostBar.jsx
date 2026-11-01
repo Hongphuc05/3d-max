@@ -11,15 +11,16 @@ const Badge = ({ ok, children }) => (
 );
 
 // Thanh tren cung: trang thai ket noi 3ds Max + API. Lam moi scene khi co job import xong.
-export function HostBar({ reloadKey, onRefresh }) {
+export function HostBar({ reloadKey, onRefresh, apiStatus }) {
   const max = isMaxHost();
   const [host, setHost] = useState(null);
   const [api, setApi] = useState(null); // null | 'ok' | 'db' | 'down'
   const done = useJobs().filter((j) => j.status === 'done').length;
 
   useEffect(() => {
+    if (apiStatus !== undefined) { setApi(apiStatus); return; } // plugin v3: trang thai den tu host, khong goi /api/health (host chan)
     health().then(() => setApi('ok'), (e) => setApi(e.status === 503 ? 'db' : 'down'));
-  }, [reloadKey]);
+  }, [reloadKey, apiStatus]);
 
   useEffect(() => {
     if (!max) return;

@@ -1,0 +1,163 @@
+// P4.4: PluginApp tren du lieu v3: nut theo quyen, tab "Đã tải", tu lam moi giu nguyen loc/trang/model dang chon, offline.
+import test, { after } from 'node:test';
+import assert from 'node:assert/strict';
+import React, { act } from 'react';
+import { JSDOM } from 'jsdom';
+const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/' });
+Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });
+const listeners = new Set(); const calls = [];
+let importOutcome = { ok: true };
+dom.window.chrome = { webview: {
+  addEventListener: (_t, f) => listeners.add(f),
+  postMessage({ id, method, params }) {
+    calls.push({ method, params });
+    const reply = (data) => setTimeout(() => listeners.forEach((f) => f({ data })), 5);
+    if (method === 'library.status') return reply({ id, ok: true, result: { machineCode: 'MAX-TESTCODE', offline: false } });
+    if (method === 'host.getInfo') return reply({ id, ok: true, result: { hostVersion: '3ds Max 2022' } });
+    if (method === 'scene.getInfo') return reply({ id, ok: true, result: { objects: 1, renderer: 'Corona' } });
+    if (method === 'asset.import') return reply(importOutcome.ok ? { id, ok: true, result: { imported: 1 } } : { id, ok: false, error: { code: 'NOT_ENTITLED', message: 'english' } });
+  },
+} };
+const emit = (event, data) => listeners.forEach((f) => f({ data: { event, data } }));
+const { createRoot } = await import('react-dom/client');
+const { default: PluginApp } = await import('./PluginApp.jsx');
+const { getJobs, remove } = await import('./queue.js');
+
+const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
+const flush = () => new Promise((r) => setTimeout(r, 20));
+let version = 1, rights, cats;
+const originalFetch = globalThis.fetch;
+after(() => { globalThis.fetch = originalFetch; dom.window.close(); });
+
+function server() {
+  version = 1; rights = { allModels: false, modelIds: [id(101)] };
+  cats = [{ id: id(1), parentId: null, name: 'Living', fullPath: 'Living', modelCount: 2 }, { id: id(2), parentId: null, name: 'Bedroom', fullPath: 'Bedroom', modelCount: 1 }];
+  globalThis.fetch = async (url) => {
+    const path = String(url);
+    if (path === '/api/v1/catalog') return json({ catalogVersion: version, models: [
+      { id: id(101), name: 'Sofa One', categoryId: id(1), priceVnd: 15000, sizeBytes: 3 * 1048576, fileType: 'rar', status: 'PUBLISHED' },
+      { id: id(102), name: 'Sofa Two', categoryId: id(1), priceVnd: 20000, sizeBytes: 1048576, fileType: 'zip', status: 'PUBLISHED' },
+      { id: id(103), name: 'Bed One', categoryId: id(2), priceVnd: 15000, sizeBytes: 2 * 1048576, fileType: 'rar', status: 'PUBLISHED' },
+      ...(version >= 2 ? [{ id: id(104), name: 'Sofa Three', categoryId: id(1), priceVnd: 15000, sizeBytes: 1048576, fileType: 'rar', status: 'PUBLISHED' }] : []),
+    ] });
+    if (path === '/api/v1/categories') return json(cats);
+    if (path === '/api/v1/previews/manifest') return json({ catalogVersion: version, previews: [] });
+    if (path === '/api/v1/me/entitlements') return rights ? json(rights) : json({ error: { code: 'UNAUTHENTICATED' } }, 401);
+    throw new Error('unexpected ' + path);
+  };
+}
+const text = () => document.body.textContent;
+const button = (label) => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === label || b.textContent.includes(label));
+const cards = () => [...document.querySelectorAll('.group')].map((c) => c.textContent);
+async function mount() {
+  const root = createRoot(document.getElementById('root'));
+  await act(async () => { root.render(<PluginApp />); await flush(); });
+  await act(flush); await act(flush);
+  return root;
+}
+async function done(root) { await act(() => root.unmount()); getJobs().forEach((j) => remove(j.slug)); }
+
+test('cards show Download for owned models and Mua + price for the others; the bridge only ever sees a model id', async () => {
+  server(); const root = await mount();
+  assert.equal(document.querySelectorAll('.group').length, 3);
+  const [bed, one, two] = cards(); // A-Z: Bed One, Sofa One, Sofa Two
+  assert.match(bed, /Mua/);
+  assert.match(one, /Sofa One/); assert.match(one, /Download/);
+  assert.match(two, /Sofa Two/); assert.match(two, /Mua/); assert.match(two, /20\.000/);
+  const download = [...document.querySelectorAll('.group')][1].querySelectorAll('button')[2];
+  await act(async () => { download.click(); await flush(); });
+  await act(flush); await act(flush);
+  const imports = calls.filter((c) => c.method === 'asset.import');
+  assert.deepEqual(imports.map((c) => c.params), [{ modelId: id(101) }]);
+  assert.ok(!calls.some((c) => JSON.stringify(c).includes('ticket')));
+  await done(root);
+});
+
+test('Mua explains that payment is not available yet instead of doing nothing', async () => {
+  server(); const root = await mount();
+  const buy = [...document.querySelectorAll('.group')][0].querySelectorAll('button')[2];
+  assert.match(buy.textContent, /Mua/);
+  await act(async () => { buy.click(); await flush(); });
+  assert.match(document.querySelector('[role=alert]').textContent, /Thanh toán đang được hoàn thiện/);
+  await act(async () => { document.querySelector('[aria-label="Đóng thông báo"]').click(); await flush(); });
+  assert.equal(document.querySelector('[role=alert]'), null);
+  assert.equal(calls.filter((c) => c.method === 'asset.import').length, 1, 'only the earlier owned download happened');
+  await done(root);
+});
+
+test('tab "Đã tải" lists exactly the owned models; unknown rights never list anything', async () => {
+  server(); const root = await mount();
+  await act(async () => { button('Đã tải').click(); await flush(); });
+  assert.deepEqual(cards().map((c) => c.match(/Sofa One|Sofa Two|Bed One/)[0]), ['Sofa One']);
+  await done(root);
+  server(); rights = null; const root2 = await mount();
+  await act(async () => { button('Đã tải').click(); await flush(); });
+  assert.equal(document.querySelectorAll('.group').length, 0); assert.match(text(), /Chưa xác minh được quyền/);
+  assert.match([...document.querySelectorAll('.group')].length ? '' : 'ok', /ok/);
+  await done(root2);
+});
+
+test('unknown rights: every card says it cannot verify instead of offering Download or Mua', async () => {
+  server(); rights = null; const root = await mount();
+  for (const c of cards()) { assert.match(c, /Chưa xác minh được quyền/); assert.doesNotMatch(c, /Download|Mua/); }
+  emit('library.offline', { offline: true });
+  await act(flush);
+  assert.match(cards()[0], /Cần Internet để xác minh quyền/);
+  assert.match(text(), /Đang offline/);
+  await done(root);
+});
+
+test('library.updated adds the new model while keeping the search text, the selected model and the current tab', async () => {
+  server(); const root = await mount();
+  const input = document.querySelector('input[placeholder="Tìm model…"]');
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value').set;
+    setter.call(input, 'sofa'); input.dispatchEvent(new dom.window.Event('input', { bubbles: true })); await flush();
+  });
+  assert.equal(document.querySelectorAll('.group').length, 2);
+  await act(async () => { [...document.querySelectorAll('.group')][1].querySelector('button').click(); await flush(); });
+  assert.match(text(), /Sofa Two/);
+  version = 2;
+  await act(async () => { emit('library.updated', { catalogVersion: 2 }); await flush(); });
+  await act(flush); await act(flush);
+  assert.equal(document.querySelectorAll('.group').length, 3, 'the new "Sofa Three" appeared');
+  assert.equal(input.value, 'sofa', 'search text kept');
+  assert.match(document.querySelector('h2').textContent, /Sofa Two/, 'the selected model stays selected');
+  await done(root);
+});
+
+test('the open detail panel closes when its model disappears from the catalog', async () => {
+  server(); const root = await mount();
+  await act(async () => { [...document.querySelectorAll('.group')][0].querySelector('button').click(); await flush(); });
+  assert.match(document.querySelector('h2').textContent, /Bed One/);
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (String(url) === '/api/v1/catalog') return json({ catalogVersion: 3, models: [{ id: id(101), name: 'Sofa One', categoryId: id(1), priceVnd: 15000, sizeBytes: 1048576, fileType: 'rar', status: 'PUBLISHED' }] });
+    return original(url, init);
+  };
+  await act(async () => { emit('library.updated', {}); await flush(); });
+  await act(flush);
+  assert.equal(document.querySelector('h2'), null);
+  globalThis.fetch = original;
+  await done(root);
+});
+
+test('a download error from the host is shown in Vietnamese in the queue', async () => {
+  server(); importOutcome = { ok: false }; const root = await mount();
+  const download = [...document.querySelectorAll('.group')][1].querySelectorAll('button')[2];
+  await act(async () => { download.click(); await flush(); });
+  await act(flush); await act(flush);
+  assert.match(text(), /chưa có quyền tải model này/);
+  importOutcome = { ok: true };
+  await done(root);
+});
+
+test('the device popup shows the machine code from the host; category filter narrows the grid', async () => {
+  server(); const root = await mount();
+  await act(async () => { button('Thiết bị').click(); await flush(); });
+  assert.match(text(), /MAX-TESTCODE/);
+  await act(async () => { document.querySelector('aside [type=checkbox]').click(); await flush(); });
+  assert.ok(document.querySelectorAll('.group').length < 3, 'selecting a category narrows the list');
+  await done(root);
+});

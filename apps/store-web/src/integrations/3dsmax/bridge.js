@@ -6,6 +6,7 @@ const wv = () => (typeof window !== "undefined" ? window.chrome?.webview : undef
 export const isMaxHost = () => !!wv();
 
 const pending = new Map(); // id -> { resolve, reject, timer }
+const hostListeners = new Map(); // ten su kien -> Set<handler>
 let listening = false;
 
 function listen() {
@@ -13,6 +14,10 @@ function listen() {
   listening = true;
   wv().addEventListener("message", (e) => {
     const m = e.data;
+    if (m && typeof m.event === 'string' && m.id === undefined) { // thong bao tu host, khong gan voi yeu cau nao
+      for (const f of [...(hostListeners.get(m.event) || [])]) { try { f(m.data); } catch { /* handler loi khong chan cac handler khac */ } }
+      return;
+    }
     const p = m && pending.get(m.id);
     if (!p) return;
     if (m.type === 'asset.progress') {
@@ -44,6 +49,21 @@ export function call(method, params = {}, timeoutMs = 15000, onProgress) {
 
 // ticket = đoạn cuối của link /api/downloads/stream/<ticket> mà backend cấp (một lần dùng, TTL ngắn).
 // Native tự dựng URL từ ApiBase đã cấu hình; web không gửi URL/đường dẫn.
+// Su kien host -> web (library.updated, library.offline, library.previewProgress). Ngoai 3ds Max: khong lam gi.
+export function onHostEvent(type, handler) {
+  if (!wv()) return () => {};
+  listen();
+  if (!hostListeners.has(type)) hostListeners.set(type, new Set());
+  hostListeners.get(type).add(handler);
+  return () => hostListeners.get(type)?.delete(handler);
+}
+
+// v3: web chi gui UUID cua model; native tu xin phien tai tu backend (khong co ticket/URL/Drive ID o phia web).
+export const importModel = (modelId, onProgress) => call("asset.import", { modelId }, 31 * 60 * 1000, onProgress);
+
+export const getLibraryStatus = () => call('library.status', {}, 20000);
+export const refreshLibrary = () => call('library.refresh', {}, 60000);
+
 export const importAsset = (assetId, ticket, onProgress) => call("asset.import", { assetId, ticket }, 31 * 60 * 1000, onProgress);
 
 export const getHostInfo = () => call("host.getInfo", {}, 5000);

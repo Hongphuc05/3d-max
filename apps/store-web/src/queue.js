@@ -2,8 +2,7 @@
 // ponytail: chay tuan tu 1 job/lan, chi luu trong RAM cua trang (F5 la mat), khong co % tien do vi native chua
 // gui event tien do. Nang cap: xem docs/download-queue-plan.md (native gui event, chay song song, huy, nho lich su).
 import { useSyncExternalStore } from 'react';
-import { importTicket } from './api.js';
-import { importAsset } from './integrations/3dsmax/bridge.js';
+import { importModel } from './integrations/3dsmax/bridge.js';
 
 let jobs = []; // [{ slug, name, sizeMB, status: queued|running|done|failed, error, startedAt, finishedAt, result }]
 const subs = new Set();
@@ -20,6 +19,14 @@ const MESSAGES = {
   MODEL_NOT_READY: 'Model chưa có đủ preview và archive hợp lệ để tải.',
   R2_UNAVAILABLE: 'Kho model tạm thời không khả dụng. Hãy thử lại sau.',
   DOWNLOAD_BUSY: 'Máy chủ đang đủ lượt tải đồng thời. Hãy thử lại sau.',
+  NOT_ENTITLED: 'Thiết bị này chưa có quyền tải model này.',
+  MODEL_NOT_AVAILABLE: 'Model này hiện không có sẵn để tải.',
+  SESSION_INVALID: 'Phiên tải đã hết hạn. Hãy bấm tải lại.',
+  STORAGE_DOWNLOAD_FAILED: 'Máy chủ chưa lấy được file model. Thử lại sau.',
+  RATE_LIMITED: 'Bạn thao tác quá nhanh. Thử lại sau ít phút.',
+  SERVER_UNAVAILABLE: 'Không kết nối được máy chủ. Kiểm tra Internet rồi thử lại.',
+  DOWNLOAD_VERIFICATION_FAILED: 'File tải về bị lỗi. Hãy thử lại.',
+  DEVICE_BLOCKED: 'Thiết bị này đã bị chặn. Liên hệ nhà cung cấp.',
 };
 const errorText = (e) => MESSAGES[e.code] || e.message || 'Có lỗi xảy ra.';
 
@@ -31,8 +38,8 @@ async function pump() {
   busy = true;
   patch(job.slug, { status: 'running', startedAt: Date.now(), error: null });
   try {
-    const { assetId, ticket } = await importTicket(job.slug); // ticket dung 1 lan nen moi lan thu lai xin ticket moi
-    const result = await importAsset(assetId, ticket, progress => patch(job.slug, {progress}));
+    // v3: slug = UUID cua model. Native tu xin phien tai (dung 1 lan) tu backend; thu lai thi xin phien moi.
+    const result = await importModel(job.slug, progress => patch(job.slug, {progress}));
     patch(job.slug, { status: 'done', finishedAt: Date.now(), result });
   } catch (e) {
     patch(job.slug, { status: 'failed', finishedAt: Date.now(), error: errorText(e) });

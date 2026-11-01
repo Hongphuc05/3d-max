@@ -1,29 +1,25 @@
-// Test hang doi bang Node thuan: gia lap fetch (backend) va window.chrome.webview (host 3ds Max).
+// Test hang doi bang Node thuan: gia lap window.chrome.webview (host 3ds Max). v3: web chi gui {modelId}; khong ticket, khong goi backend.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-const tickets = [];          // cac ticket da cap
-const hostCalls = [];        // { slug, ticket } host nhan duoc
+const hostCalls = [];        // { modelId } host nhan duoc
 let running = 0, maxRunning = 0;
 const failOnce = new Set(['b']);
+globalThis.fetch = async () => { throw new Error('queue must not call the backend itself'); };
 
-globalThis.fetch = async (url) => {
-  const slug = decodeURIComponent(url.split('/')[3]);
-  const ticket = `t-${slug}-${tickets.length}`;
-  tickets.push(ticket);
-  return { ok: true, status: 200, json: async () => ({ assetId: slug, ticket }) };
-};
 const listeners = new Set();
 globalThis.window = {
   chrome: {
     webview: {
       addEventListener: (_t, f) => listeners.add(f),
-      postMessage({ id, params }) {
+      postMessage({ id, method, params }) {
+        assert.equal(method, 'asset.import');
+        assert.deepEqual(Object.keys(params), ['modelId'], 'the web sends nothing but the model id');
         hostCalls.push(params);
         maxRunning = Math.max(maxRunning, ++running);
         setTimeout(() => {
           running--;
-          const fail = failOnce.delete(params.assetId);
+          const fail = failOnce.delete(params.modelId);
           const data = fail
             ? { id, ok: false, error: { code: 'ASSET_DOWNLOAD_FAILED', message: 'loi gia' } }
             : { id, ok: true, result: { imported: 1, file: 'x.max' } };
@@ -44,19 +40,36 @@ test('chong trung, chay tuan tu, loi thi bao loi', async () => {
   assert.equal(getJobs().find((j) => j.slug === 'a').status, 'running'); // bam lai khong thay job dang chay
   await settle();
   assert.equal(maxRunning, 1);
-  assert.deepEqual(hostCalls.map((c) => c.assetId), ['a', 'b', 'c']);
+  assert.deepEqual(hostCalls.map((c) => c.modelId), ['a', 'b', 'c']);
   const st = Object.fromEntries(getJobs().map((j) => [j.slug, j.status]));
   assert.deepEqual(st, { a: 'done', b: 'failed', c: 'done' });
   assert.equal(getJobs().find((j) => j.slug === 'b').error, 'loi gia');
 });
 
-test('thu lai thi xin ticket moi (ticket dung 1 lan)', async () => {
-  const before = tickets.length;
+test('thu lai gui lai yeu cau (native xin phien tai moi moi lan)', async () => {
+  const before = hostCalls.length;
   enqueue(p('b'));
   await settle();
   assert.equal(getJobs().find((j) => j.slug === 'b').status, 'done');
-  assert.equal(tickets.length, before + 1);
-  assert.equal(new Set(hostCalls.map((c) => c.ticket)).size, hostCalls.length);
+  assert.equal(hostCalls.length, before + 1);
+});
+
+test('ma loi cua may chu duoc dich ra tieng Viet de hieu', async () => {
+  failOnce.add('e');
+  const original = listeners.size;
+  // loi NOT_ENTITLED tu native
+  const post = globalThis.window.chrome.webview.postMessage;
+  globalThis.window.chrome.webview.postMessage = ({ id, params }) => {
+    hostCalls.push(params);
+    setTimeout(() => listeners.forEach((f) => f({ data: { id, ok: false, error: { code: 'NOT_ENTITLED', message: 'raw english text' } } })), 5);
+  };
+  enqueue(p('f'));
+  await settle();
+  globalThis.window.chrome.webview.postMessage = post;
+  const job = getJobs().find((j) => j.slug === 'f');
+  assert.equal(job.status, 'failed');
+  assert.match(job.error, /chưa có quyền/);
+  assert.equal(listeners.size, original);
 });
 
 test('khong bo duoc job dang chay; bo duoc job da xong', async () => {

@@ -110,7 +110,7 @@ export function DownloadButton({ p, onLogin, big }) {
   return <button onClick={go} className={solid}>{big ? 'Download & import vào 3ds Max' : 'Download'}</button>;
 }
 
-function Preview({ source, name, lazy = false }) {
+export function Preview({ source, name, lazy = false }) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   useEffect(() => { setLoaded(false); setFailed(false); }, [source]);
