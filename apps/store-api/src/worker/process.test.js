@@ -312,3 +312,53 @@ test('P3.7: any OTHER failure reading the saved price (e.g. the database droppin
   assert.equal(j.status, 'FAILED');
   assert.equal((await pool.query('select count(*)::int n from models')).rows[0].n, 0, 'nothing was published at a guessed price');
 });
+
+// ---- P3.4: "Can duyet" cua mot luot = so muc DANG CHO duyet (OPEN), khong phai so muc phat hien trong luot quet ----
+const orphan = (parent, name) => fake.state.files.push({ id: nid(), name, mimeType: 'application/x-rar', parents: [parent], content: Buffer.from('x'), size: 1, md5Checksum: 'e'.repeat(32) });
+const reviewCountOf = async (jobId) => Number((await job(jobId)).review_count);
+
+test('P3.4: the job\'s "review" counter is the number of items still WAITING; handled items stay out of it and are never re-created', { skip }, async () => {
+  const d = folder('Desk', ROOT);
+  await addPair(d.id, 'one'); orphan(d.id, 'orphan-a.rar');
+  const first = await work((await enqueue()).id);
+  assert.equal(first.status, 'COMPLETED');
+  assert.equal(Number(first.review_count), 1, 'one new item is waiting');
+
+  const second = await work((await enqueue()).id);
+  assert.equal(Number(second.review_count), 1, 'still waiting, not re-created');
+  assert.equal((await pool.query('select count(*)::int n from review_items')).rows[0].n, 1);
+
+  await pool.query("update review_items set status = 'DISMISSED', resolved_at = now()");
+  const third = await work((await enqueue()).id);
+  assert.equal(Number(third.review_count), 0, 'the admin handled it: the number goes DOWN (the scan still sees the same file)');
+  assert.equal((await pool.query('select count(*)::int n from review_items')).rows[0].n, 1, 'and no duplicate item was created');
+
+  orphan(folder('Chair', ROOT).id, 'orphan-b.rar');
+  const fourth = await work((await enqueue()).id);
+  assert.equal(Number(fourth.review_count), 1, 'only the NEW unhandled item counts');
+  assert.equal((await pool.query("select count(*)::int n from review_items where status = 'OPEN'")).rows[0].n, 1);
+});
+
+test('P3.4: while previews download, the counter already shows what will be waiting: a handled item is not counted, a brand-new one is', { skip }, async () => {
+  const d = folder('Desk', ROOT);
+  await addPair(d.id, 'one'); orphan(d.id, 'orphan-a.rar');
+  assert.equal((await work((await enqueue()).id)).status, 'COMPLETED');
+  await pool.query("update review_items set status = 'DISMISSED', resolved_at = now()"); // the admin handled the first item
+  await addPair(d.id, 'two');                                                 // something to download, so the preview stage runs
+  orphan(folder('Chair', ROOT).id, 'orphan-b.rar');                          // a brand-new item
+  const queued = await enqueue();
+  let seen = null; // freeDiskBytes runs right before the downloads, after the compare step saved its counters
+  const handler = makeHandler({ freeDiskBytes: async () => { seen ??= await job(queued.id); return 10 ** 12; } });
+  await work(queued.id, { handler });
+  assert.equal(seen.stage, 'COMPARING');
+  assert.equal(Number(seen.review_count), 1, 'old scan would say 2: it re-detects the handled item as well');
+});
+
+test('P3.4: the counter only counts THIS source\'s waiting items (another source\'s open items are not mixed in)', { skip }, async () => {
+  const other = (await pool.query("insert into drive_sources(access_mode,root_folder_id,root_folder_name,source_type) values('API_KEY','procOtherRoot0001','other','MY_DRIVE') returning id")).rows[0].id;
+  await pool.query("insert into review_items(source_id,kind,payload) values($1,'ORPHAN_IMAGE','{\"path\":\"X\",\"files\":[\"x.jpg\"],\"fingerprint\":\"other-source-item\"}'::jsonb)", [other]);
+  await addPair(folder('Desk', ROOT).id, 'one');
+  const done = await work((await enqueue()).id);
+  assert.equal(done.status, 'COMPLETED');
+  assert.equal(Number(done.review_count), 0, 'the other source\'s item is not this job\'s business');
+});

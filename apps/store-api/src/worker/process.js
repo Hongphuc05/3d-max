@@ -25,6 +25,14 @@ function stopped(r) {
   if (r.interrupted) return { interrupted: true };
   return null;
 }
+// So "Can duyet" cua luot = so muc DANG CHO duyet (OPEN) sau luot nay: muc dang mo + muc moi trong ke hoach. Muc da xu ly van bi quet thay nhung
+// khong bi mo lai (trung van tay) nen khong tinh; nhu vay so nay giam khi admin duyet, thay vi luon bang so muc 'phat hien'.
+async function openReviewCount(pool, sourceId, plan) {
+  const open = Number((await pool.query("select count(*) from review_items where source_id = $1 and status = 'OPEN'", [sourceId])).rows[0].count);
+  const fingerprints = [...new Set(plan.reviews.map((r) => r.payload.fingerprint))];
+  const known = new Set((await pool.query("select payload->>'fingerprint' as fp from review_items where source_id = $1 and payload->>'fingerprint' = any($2::text[])", [sourceId, fingerprints])).rows.map((r) => r.fp));
+  return open + fingerprints.filter((fp) => !known.has(fp)).length;
+}
 const planCounters = (plan, scanSkipped) => ({
   newCount: plan.counters.newCount, updatedCount: plan.counters.updatedCount, unchangedCount: plan.counters.unchangedCount,
   missingCount: plan.counters.missingCount, reviewCount: plan.counters.reviewCount, skippedCount: scanSkipped + plan.counters.skippedCount,
@@ -48,7 +56,7 @@ export function createSyncHandler({ pool, previewDir, minFreeDiskBytes, defaultP
 
     const plan = await computeDiff(pool, { sourceId: source.id, jobId: job.id });
     const scanSkipped = cur.checkpoint?.scan?.counters?.skippedCount ?? 0;
-    if (!(await ctx.saveProgress({ stage: 'COMPARING', counters: planCounters(plan, scanSkipped) }))) return { interrupted: true };
+    if (!(await ctx.saveProgress({ stage: 'COMPARING', counters: { ...planCounters(plan, scanSkipped), reviewCount: await openReviewCount(pool, source.id, plan) } }))) return { interrupted: true };
 
     const p = await runPreviewStage({ pool, client, job: cur, images: plan.previews, checkpoint: cur.checkpoint ?? {}, ctx, previewDir, minFreeDiskBytes, freeDiskBytes, delayMs: previewDelayMs, cooldownMs: previewCooldownMs, concurrency: previewConcurrency });
     const s2 = stopped(p);
@@ -60,7 +68,7 @@ export function createSyncHandler({ pool, previewDir, minFreeDiskBytes, defaultP
     if (!(await ctx.saveProgress({ stage: 'PUBLISHING' }))) return { interrupted: true };
     const fresh = await computeDiff(pool, { sourceId: source.id, jobId: job.id }); // khong dung ke hoach cu: admin co the da sua trong luc tai anh
     await publishPlan(pool, { sourceId: source.id, jobId: job.id, plan: fresh, results: p.results, defaultPriceVnd: (await savedDefaultPrice(pool)) ?? defaultPriceVnd });
-    await ctx.saveProgress({ counters: planCounters(fresh, scanSkipped) });
+    await ctx.saveProgress({ counters: { ...planCounters(fresh, scanSkipped), reviewCount: await openReviewCount(pool, source.id, fresh) } });
     await pool.query('update drive_sources set last_successful_sync_at = now() where id = $1', [source.id]);
     return { status: (await reload(job.id)).error_count > 0 ? 'COMPLETED_WITH_ERRORS' : 'COMPLETED' };
   }
