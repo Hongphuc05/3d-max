@@ -93,3 +93,14 @@ test('P3.7 admin routes are mounted behind the admin guard in the assembled API 
   assert.equal(legacy.status, 401, 'the legacy catalog sync route next to /catalog/review is untouched');
   assert.equal(legacy.headers.get('x-request-id'), null, '...and still answered by the legacy router, not the new one');
 });
+
+test('P4.1 device API is mounted before the catalog router: anonymous /me/entitlements = v3 401, bad challenge = v3 400, catalog still public', { skip: !configured }, async () => {
+  const me = await fetch(base + '/api/v1/me/entitlements');
+  assert.equal(me.status, 401);
+  assert.ok(me.headers.get('x-request-id'));
+  assert.equal((await me.json()).error.code, 'UNAUTHENTICATED');
+  const bad = await fetch(base + '/api/v1/device/challenge', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+  assert.equal(bad.status, 400);
+  assert.equal((await bad.json()).error.code, 'INVALID_PARAMS');
+  assert.equal((await fetch(base + '/api/v1/catalog/version')).status, 200, 'catalog routes fall through the device router');
+});

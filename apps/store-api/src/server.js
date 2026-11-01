@@ -22,6 +22,8 @@ import { loadWorkerConfig } from './worker/config.js';
 import { createCatalogAdminRouter } from './catalog-admin/routes.js';
 import { requireAdmin } from './admin/access.js';
 import { createCatalogEvents, createCatalogV1Router, createPreviewRouter } from './catalog-v1/routes.js';
+import { createDeviceRouter } from './devices/routes.js';
+import { loadLegacyPublicKey } from './devices/mxl1.js';
 
 const STORAGE = process.env.STORAGE_DIR || path.resolve(import.meta.dirname, '../../../storage');
 // Preview v3 (ten = sha256 noi dung) o thu muc RIENG: route cu express.static('/previews') khong the phuc vu tmp/*.part.
@@ -69,6 +71,11 @@ app.get('/api/health', async (_q, r) => {
   r.status(db ? 200 : 503).json({ ok: db, db, products: snapshot?.products.length || 0,
     catalogAvailable: available, licensingAvailable: licenseConfigured, paymentsAvailable: paymentConfig.enabled });
 });
+// v3 P4.1: dang ky thiet bi + quyen so huu. Guard gan tung route nen /api/v1/catalog/* roi xuong router catalog.
+// LICENSE_PUBLIC_KEY_B64 (khoa cong khai MXL1): khong dat hoac sai = bo qua MXL1 (chi log TEN bien, khong log gia tri).
+let legacyPublicKey = null;
+try { legacyPublicKey = loadLegacyPublicKey(process.env.LICENSE_PUBLIC_KEY_B64); } catch { console.error('[v3] LICENSE_PUBLIC_KEY_B64 khong dung duoc; bo qua license MXL1'); }
+app.use('/api/v1', createDeviceRouter({ pool, legacyPublicKey, rateLimit: rateLimit({ limit: 60 }) }));
 // v3 catalog cong khai cho plugin: gan TRUOC route catalog cu de /api/v1 khong bi route cu bat.
 app.use('/api/v1', createCatalogV1Router({ pool, events: catalogEvents, rateLimit: rateLimit({ limit: 240 }) }));
 app.use('/api', rateLimit({limit:240}), catalogRouter(catalog));

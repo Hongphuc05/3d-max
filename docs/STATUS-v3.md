@@ -57,7 +57,8 @@ Quét bằng **API key** (D26), không OAuth. Đã chạy trên Drive thật, DB
 - [ ] Mã lỗi `JOB_NOT_FOUND` (422) là mã tôi thêm, plan không nêu; chờ chủ dự án xác nhận.
 
 ## P4 – P7
-- [ ] Chưa bắt đầu (API khách + plugin, đơn hàng, vận hành, dọn mã cũ). Plugin 3ds Max chưa bị chạm tới trong P2/P3.
+- [~] **P4.1 API thiết bị/quyền (code xong, chưa thử với plugin hoặc server thật).** Migration 021 (`devices`, `device_auth_challenges`, `device_tokens`, `entitlements`, `purchase_orders`, `purchase_order_items`; tên lệch plan vì trùng bảng cũ, đã duyệt), `POST /api/v1/device/challenge`, `POST /api/v1/device/verify` (đăng ký bằng chữ ký RSA, token 15 phút, nhận MXL1), `GET /api/v1/me/entitlements`, middleware `requireDevice`. Thiết bị chỉ đăng ký sau khi ký đúng (lệch plan có chủ đích). 4 mã lỗi mới 403. Test: API **445/445**; đột biến 38/42 (4 tương đương). **Rủi ro biết trước:** `machine_code` là nhãn do máy khách khai nên token MXL1 của người khác có thể bị dùng lại nếu biết mã máy; plan chấp nhận. **Chưa:** áp 021 vào `store_p2`, khóa MXL1 thật (đang dùng khóa test), thử với plugin thật.
+- [ ] P4.2 phiên tải model (D26: link công khai + cache VPS), plugin C#, UI-1: chưa làm. P5–P7 chưa bắt đầu.
 
 ---
 
