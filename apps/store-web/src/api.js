@@ -61,6 +61,11 @@ export const adminStartSync = ({ sourceId, mode }) => request('POST', '/admin/dr
 export const adminCancelSync = (id) => request('POST', `/admin/drive/sync-jobs/${encodeURIComponent(id)}/cancel`, { body: {} });
 export const adminRetrySync = (id) => request('POST', `/admin/drive/sync-jobs/${encodeURIComponent(id)}/retry`, { body: {} });
 export const syncEventsUrl = (id) => `/api/admin/drive/sync-jobs/${encodeURIComponent(id)}/events`;
+// P3.7 (plan §2.7): cai dat + bang model. PUT cai dat gui du 7 truong; PATCH model chi gui truong doi.
+export const adminSettings = (signal) => get('/admin/settings', null, signal);
+export const adminSaveSettings = (body) => request('PUT', '/admin/settings', { body });
+export const adminModels = (params, signal) => get('/admin/models', params, signal);
+export const adminPatchModel = (id, body) => request('PATCH', `/admin/models/${encodeURIComponent(id)}`, { body });
 export const updateAdminAccount = (body) => request('PATCH', '/admin/account', { body });
 export const issueAdminLicense = (userId) => request('POST', '/admin/licenses/issue', { body: { userId } });
 export const resumeAdminLicense = (userId) => request('POST', '/admin/licenses/resume', { body: { userId } });
