@@ -9,18 +9,19 @@ import { createDriveRepository } from './repository.js';
 import { createSyncJobsRouter } from './sync-routes.js';
 import { ensureApiKeySource } from '../worker/source.js';
 
-// Thu vien that co file nam sau thu muc danh muc, goc chi chua thu muc. Tim theo chieu rong, toi da `maxLists` lan liet ke
-// de test-access khong dap vao Drive (shortcut: khong tim sau hon, nang len neu thu vien co nhieu tang rong).
+// Thu vien that co file nam sau thu muc danh muc, goc chi chua thu muc. Toi da `maxLists` lan liet ke de test-access
+// khong dap vao Drive (shortcut: neu nhanh dau toan thu muc rong thi co the khong thay file, nang gioi han khi can).
 const isSample = f => f.mimeType !== FOLDER && f.capabilities?.canDownload !== false && Number(f.size) > 0;
 async function findSample(client, source, firstPage, { maxLists = 8 } = {}) {
   const found = firstPage.files.find(isSample);
   if (found) return found;
-  const queue = firstPage.files.filter(f => f.mimeType === FOLDER).map(f => f.id);
-  for (let n = 0; queue.length && n < maxLists; n++) {
-    const page = await client.listChildren(queue.shift(), { driveId: source.drive_id, pageSize: 100 });
+  // Theo chieu SAU (ngan xep): file nam o do sau 3 (goc -> danh muc -> thu muc con -> file), tim theo chieu rong se het luot o tang danh muc.
+  const stack = firstPage.files.filter(f => f.mimeType === FOLDER).map(f => f.id).reverse();
+  for (let n = 0; stack.length && n < maxLists; n++) {
+    const page = await client.listChildren(stack.pop(), { driveId: source.drive_id, pageSize: 100 });
     const hit = page.files.find(isSample);
     if (hit) return hit;
-    queue.push(...page.files.filter(f => f.mimeType === FOLDER).map(f => f.id));
+    stack.push(...page.files.filter(f => f.mimeType === FOLDER).map(f => f.id).reverse());
   }
   return null;
 }

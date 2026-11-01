@@ -210,3 +210,22 @@ test('test-access picks a REAL downloadable file: skips empty and canDownload=fa
   assert.equal(media.length, 1, 'exactly one download attempt');
   assert.ok(media[0].path.endsWith('/apiKeyGoodFile00001'), `downloaded ${media[0].path}, expected the real file two levels down`);
 });
+
+test('test-access on a library shaped like the real one (11 categories → sub-folders → files at depth 3) finds a file within the cap', { skip }, async () => {
+  const { id } = await (await j('/sources', { method: 'POST', body: { rootFolderUrlOrId: ROOT } })).json();
+  const f = drive.state.files; f.length = 0;
+  f.push({ id: ROOT, name: 'Thu vien goc', mimeType: FOLDER, parents: [] });
+  const pad = (n) => String(n).padStart(4, '0');
+  for (let c = 0; c < 11; c++) {
+    f.push({ id: `apiKeyCategory${pad(c)}`, name: `Danh muc ${c}`, mimeType: FOLDER, parents: [ROOT] });
+    for (let s = 0; s < 3; s++) {
+      f.push({ id: `apiKeySub${pad(c)}${s}x`, name: `Con ${c}-${s}`, mimeType: FOLDER, parents: [`apiKeyCategory${pad(c)}`] });
+      f.push({ id: `apiKeyFile${pad(c)}${s}xx`, name: `m${c}-${s}.jpg`, mimeType: 'image/jpeg', parents: [`apiKeySub${pad(c)}${s}x`], size: 1000, content: Buffer.from('jpeg-bytes') });
+    }
+  }
+  drive.state.requests.length = 0;
+  const r = await (await j('/test-access', { method: 'POST', body: { sourceId: id } })).json();
+  assert.equal(r.canDownloadSample, true, 'a file at depth 3 must be reachable although the root has 11 category folders');
+  const lists = drive.state.requests.filter((q) => q.path === '/drive/v3/files').length;
+  assert.ok(lists <= 9, `bounded listings, got ${lists}`);
+});
