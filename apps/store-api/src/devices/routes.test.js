@@ -79,7 +79,7 @@ test('challenge: valid request returns id, message bound to uuid + key hash, 2 m
   assert.equal(parts.length, 5);
   assert.equal(parts[0], '3DM-DEVICE-V2'); assert.equal(parts[1], j.challengeId); assert.equal(parts[3], body.deviceUuid);
   assert.equal(parts[4], hashOf(k).toString('hex'));
-  assert.ok(parts[2].length >= 32, 'nonce');
+  assert.match(parts[2], /^[A-Za-z0-9_-]{43}$/, 'nonce: 32 bytes base64url, the shape the plugin validates');
   const ms = new Date(j.expiresAt) - Date.now();
   assert.ok(ms > 100_000 && ms <= 120_000, `expiry ${ms}`);
   assert.equal(await deviceRow(body.deviceUuid), undefined, 'not registered before a valid signature');

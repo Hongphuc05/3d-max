@@ -62,7 +62,7 @@ export function createDeviceRouter({ pool, rateLimit, legacyPublicKey = null }) 
     if (same.some((r) => r.device_uuid !== c.deviceUuid || !r.public_key_hash.equals(hash))) throw apiError('DEVICE_KEY_MISMATCH');
     if (same.some((r) => r.status === 'BLOCKED')) throw apiError('DEVICE_BLOCKED');
     const id = randomUUID();
-    const message = ['3DM-DEVICE-V2', id, randomBytes(24).toString('base64url'), c.deviceUuid, hash.toString('hex')].join('|');
+    const message = ['3DM-DEVICE-V2', id, randomBytes(32).toString('base64url'), c.deviceUuid, hash.toString('hex')].join('|');
     const { expires_at: expiresAt } = (await pool.query(
       `insert into device_auth_challenges (id, device_uuid, public_key, public_key_hash, key_protection, machine_code, device_name, message, expires_at)
        values ($1, $2, $3, $4, $5, $6, $7, $8, now() + interval '2 minutes') returning expires_at`,
