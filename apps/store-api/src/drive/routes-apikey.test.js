@@ -54,7 +54,7 @@ beforeEach(async () => {
   await pool.query('delete from drive_sync_jobs'); await pool.query('delete from drive_sources');
   const f = drive.state.files; f.length = 0;
   f.push({ id: ROOT, name: 'Thu vien goc', mimeType: FOLDER, parents: [] });
-  f.push({ id: 'apiKeyChildFile01', name: 'a.jpg', mimeType: 'image/jpeg', parents: [ROOT], size: 1000, md5Checksum: 'a'.repeat(32) });
+  f.push({ id: 'apiKeyChildFile01', name: 'a.jpg', mimeType: 'image/jpeg', parents: [ROOT], size: 1000, md5Checksum: 'a'.repeat(32), content: Buffer.from('jpeg-bytes') });
   drive.state.failures.length = 0; drive.state.requests.length = 0;
 });
 
@@ -133,7 +133,8 @@ test('test-access on an API_KEY source: lists and proves a real download; accoun
   const { id } = await (await j('/sources', { method: 'POST', body: { rootFolderUrlOrId: ROOT } })).json();
   const r = await (await j('/test-access', { method: 'POST', body: { sourceId: id } })).json();
   assert.equal(r.canList, true); assert.equal(r.sampleCount, 1); assert.equal(r.account, null);
-  assert.deepEqual(r.details.map((d) => [d.check, d.ok]), [['list', true], ['download', r.canDownloadSample]]);
+  assert.equal(r.canDownloadSample, true);
+  assert.deepEqual(r.details.map((d) => [d.check, d.ok]), [['list', true], ['download', true]]);
   assert.ok(!JSON.stringify(r).includes('AIzaSy'));
   // khong chi dinh sourceId: dung nguon dang bat dau tien
   assert.equal((await (await j('/test-access', { method: 'POST', body: {} })).json()).canList, true);
@@ -163,4 +164,49 @@ test('POST /sources with a resourceKey: sent to Google in the resource-key heade
   await pool.query('delete from drive_sources');
   await j('/sources', { method: 'POST', body: { rootFolderUrlOrId: `https://drive.google.com/drive/folders/${ROOT}?resourcekey=urlKey_9` } });
   assert.equal((await pool.query('select root_resource_key from drive_sources')).rows[0].root_resource_key, 'urlKey_9');
+});
+
+test('test-access finds a sample file BELOW the root when the root holds only folders (real libraries look like this)', { skip }, async () => {
+  const { id } = await (await j('/sources', { method: 'POST', body: { rootFolderUrlOrId: ROOT } })).json();
+  const f = drive.state.files; f.length = 0;
+  f.push({ id: ROOT, name: 'Thu vien goc', mimeType: FOLDER, parents: [] });
+  f.push({ id: 'apiKeySubFolder001', name: 'Phong khach', mimeType: FOLDER, parents: [ROOT] });
+  f.push({ id: 'apiKeyDeepFile0001', name: 'b.jpg', mimeType: 'image/jpeg', parents: ['apiKeySubFolder001'], size: 1000, md5Checksum: 'b'.repeat(32), content: Buffer.from('jpeg-bytes') });
+  const r = await (await j('/test-access', { method: 'POST', body: { sourceId: id } })).json();
+  assert.equal(r.canList, true); assert.equal(r.sampleCount, 1, 'sampleCount still counts the root listing');
+  assert.equal(r.canDownloadSample, true);
+  assert.deepEqual(r.details.map((d) => [d.check, d.ok]), [['list', true], ['download', true]]);
+});
+
+test('test-access search below the root is bounded: a file buried too deep is NO_SAMPLE_FILE and Drive is not hammered', { skip }, async () => {
+  const { id } = await (await j('/sources', { method: 'POST', body: { rootFolderUrlOrId: ROOT } })).json();
+  const f = drive.state.files; f.length = 0;
+  f.push({ id: ROOT, name: 'Thu vien goc', mimeType: FOLDER, parents: [] });
+  let parent = ROOT;
+  for (let i = 0; i < 20; i++) { const folder = `apiKeyChain${String(i).padStart(6, '0')}`; f.push({ id: folder, name: `c${i}`, mimeType: FOLDER, parents: [parent] }); parent = folder; }
+  f.push({ id: 'apiKeyBuriedFile01', name: 'deep.jpg', mimeType: 'image/jpeg', parents: [parent], size: 1000 });
+  drive.state.requests.length = 0;
+  const r = await (await j('/test-access', { method: 'POST', body: { sourceId: id } })).json();
+  assert.equal(r.canDownloadSample, false);
+  assert.deepEqual(r.details.find((d) => d.check === 'download'), { check: 'download', ok: false, code: 'NO_SAMPLE_FILE' });
+  const lists = drive.state.requests.filter((q) => q.path === '/drive/v3/files').length;
+  assert.ok(lists <= 9, `at most 1 root listing + 8 folder listings, got ${lists}`);
+});
+
+test('test-access picks a REAL downloadable file: skips empty and canDownload=false files, and goes down several levels', { skip }, async () => {
+  const { id } = await (await j('/sources', { method: 'POST', body: { rootFolderUrlOrId: ROOT } })).json();
+  const f = drive.state.files; f.length = 0;
+  const content = Buffer.from('jpeg-bytes');
+  f.push({ id: ROOT, name: 'Thu vien goc', mimeType: FOLDER, parents: [] });
+  f.push({ id: 'apiKeyEmptyFile001', name: 'empty.jpg', mimeType: 'image/jpeg', parents: [ROOT], size: 0, content: Buffer.alloc(0) });
+  f.push({ id: 'apiKeyBlockedFile01', name: 'blocked.jpg', mimeType: 'image/jpeg', parents: [ROOT], size: 1000, canDownload: false, content });
+  f.push({ id: 'apiKeyLevelA000001', name: 'A', mimeType: FOLDER, parents: [ROOT] });
+  f.push({ id: 'apiKeyLevelB000001', name: 'B', mimeType: FOLDER, parents: ['apiKeyLevelA000001'] });
+  f.push({ id: 'apiKeyGoodFile00001', name: 'good.jpg', mimeType: 'image/jpeg', parents: ['apiKeyLevelB000001'], size: 1000, content });
+  drive.state.requests.length = 0;
+  const r = await (await j('/test-access', { method: 'POST', body: { sourceId: id } })).json();
+  assert.equal(r.canDownloadSample, true);
+  const media = drive.state.requests.filter((q) => q.query.alt === 'media');
+  assert.equal(media.length, 1, 'exactly one download attempt');
+  assert.ok(media[0].path.endsWith('/apiKeyGoodFile00001'), `downloaded ${media[0].path}, expected the real file two levels down`);
 });

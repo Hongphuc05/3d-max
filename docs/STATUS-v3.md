@@ -6,7 +6,7 @@
 
 Chú giải: `[x]` xong và đã kiểm tra · `[~]` xong một phần / chưa kiểm tra đủ · `[ ]` chưa làm.
 
-**Tổng quan:** `npm test` trong `apps/store-api` → **366/366 pass** (baseline trước v3 là 194), chạy trên PostgreSQL 16 thật, mỗi file test dùng database cô lập.
+**Tổng quan:** `npm test` trong `apps/store-api` → **369/369 pass** (baseline trước v3 là 194), chạy trên PostgreSQL 16 thật, mỗi file test dùng database cô lập.
 
 ---
 
@@ -45,7 +45,7 @@ Quét bằng **API key** (D26), không OAuth. Đã chạy trên Drive thật, DB
 - [x] **API lượt đồng bộ cho admin (phần backend của P3.2/P3.3), khớp plan §2.2.** `POST /sync-jobs` (202 `{jobId}`, 409 khi đang chạy), `GET /sync-jobs` (phân trang `{items,nextCursor}`), `GET /sync-jobs/:id`, `GET /sync-jobs/:id/items?status=FAILED` (tên + đường dẫn, không Drive ID), `POST /sync-jobs/:id/cancel` (202), `POST /sync-jobs/:id/retry` (202 `{jobId}`), `GET /sync-jobs/:id/events` (SSE `progress`/`done`). Hình dạng `Job` được khóa bằng test (so khớp danh sách khóa chính xác). Guard: chưa đăng nhập 401, người dùng thường 403, không ghi gì vào DB.
   - 9 test trên PostgreSQL thật; thử phá **14/14** mutant bị bắt (lộ Drive ID, lộ checkpoint, lặp trang, bỏ trần SSE, hủy job đã xong, nguồn bị tắt ở POST và retry, retry đổi mode, tên trường sai, thêm trường ngoài plan).
 - [x] **P3.1 Kết nối Drive — phần backend, theo API key (chốt với chủ dự án: khóa chỉ ở `.env`).** `GET /drive/status` → `{configured, missingConfig, connection:null, sources}` (thiếu khóa chỉ báo TÊN biến `DRIVE_API_KEY`); `POST /drive/sources` → 201 `{id,rootFolderName,sourceType}`, idempotent, nhận resource key từ body hoặc URL; `POST /drive/test-access` kiểm liệt kê + tải thử bằng khóa. Khóa không nằm trong request/response/DB; thiếu khóa thì không gọi Google. 10 test trên PostgreSQL thật + Drive giả; thử phá **10/10** bắt được. Đã sửa luôn lỗi có từ P1: `sourceId` sai định dạng trả 500, nay 400.
-- [x] **Giao diện P3.1 trong `apps/store-web`** (mục "Kết nối Drive" của admin, route `/admin`): trạng thái khóa (không nhập/không hiển thị khóa), form thư mục gốc, bảng nguồn, "Kiểm tra truy cập" hiện từng mục. 9 test jsdom + 1 test route; thử phá **18/18** đột biến bị bắt; `vite build` ok; **store-web 79/79 pass**. Chưa mở trên trình duyệt thật, chưa chạy Playwright e2e.
+- [x] **Giao diện P3.1 trong `apps/store-web`** (mục "Kết nối Drive" của admin, route `/admin`): trạng thái khóa (không nhập/không hiển thị khóa), form thư mục gốc, bảng nguồn, "Kiểm tra truy cập" hiện từng mục. 9 test jsdom + 1 test route; thử phá **18/18** đột biến bị bắt; `vite build` ok; **store-web 79/79 pass**. Đã mở trên trình duyệt thật (chủ dự án): màn hiển thị đúng; "Kiểm tra truy cập" lộ lỗi tìm file mẫu một cấp, đã sửa (xem nhật ký), **chưa bấm lại sau sửa**. Chưa chạy Playwright e2e.
 - [ ] P3.1 chưa thử với Google thật qua endpoint admin (mới chạy với Drive giả).
 - [ ] P3.2 và P3.3 phía giao diện (`apps/store-web`): chưa làm.
 - [ ] P3.4 Mục cần duyệt (`/admin/catalog/review*`): chưa làm; cần chủ dự án duyệt 4 quyết định thiết kế trước.

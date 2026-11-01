@@ -9,6 +9,22 @@ import { createDriveRepository } from './repository.js';
 import { createSyncJobsRouter } from './sync-routes.js';
 import { ensureApiKeySource } from '../worker/source.js';
 
+// Thu vien that co file nam sau thu muc danh muc, goc chi chua thu muc. Tim theo chieu rong, toi da `maxLists` lan liet ke
+// de test-access khong dap vao Drive (shortcut: khong tim sau hon, nang len neu thu vien co nhieu tang rong).
+const isSample = f => f.mimeType !== FOLDER && f.capabilities?.canDownload !== false && Number(f.size) > 0;
+async function findSample(client, source, firstPage, { maxLists = 8 } = {}) {
+  const found = firstPage.files.find(isSample);
+  if (found) return found;
+  const queue = firstPage.files.filter(f => f.mimeType === FOLDER).map(f => f.id);
+  for (let n = 0; queue.length && n < maxLists; n++) {
+    const page = await client.listChildren(queue.shift(), { driveId: source.drive_id, pageSize: 100 });
+    const hit = page.files.find(isSample);
+    if (hit) return hit;
+    queue.push(...page.files.filter(f => f.mimeType === FOLDER).map(f => f.id));
+  }
+  return null;
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const bodyKeys = (body, allowed) => {
   if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(k => !allowed.includes(k))) throw apiError('INVALID_PARAMS');
@@ -114,7 +130,7 @@ export function createDriveRouter({ pool, oauth, config, guards = [], rateLimit,
       const details = [];
       const page = await client.listChildren(source.root_folder_id, { resourceKey: source.root_resource_key, driveId: source.drive_id, pageSize: 100 });
       details.push({ check: 'list', ok: true, count: page.files.length });
-      const sample = page.files.find(f => f.mimeType !== FOLDER && f.capabilities?.canDownload !== false && Number(f.size) > 0);
+      const sample = await findSample(client, source, page);
       let canDownloadSample = false;
       if (sample) {
         const ac = new AbortController();
