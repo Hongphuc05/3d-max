@@ -18,6 +18,7 @@ import { createPaymentRouter, createPayosWebhookRouter } from './payments/routes
 import { adminRouter } from './admin/routes.js';
 import { createOAuth, loadDriveConfig } from './drive/oauth.js';
 import { createDriveRouter } from './drive/routes.js';
+import { loadWorkerConfig } from './worker/config.js';
 import { requireAdmin } from './admin/access.js';
 import { createCatalogEvents, createCatalogV1Router, createPreviewRouter } from './catalog-v1/routes.js';
 
@@ -53,7 +54,8 @@ app.use('/api/admin/licenses', requireLicenseConfiguration, adminLicenseRouter);
 // v3 P1: Google Drive connection. Mounted BEFORE adminRouter so its public OAuth callback is not caught by
 // adminRouter's blanket requireAuth (the callback is protected by a single-use state instead).
 const driveConfig = loadDriveConfig();
-app.use('/api/admin/drive', createDriveRouter({ pool, oauth: createOAuth({ pool, config: driveConfig }), config: driveConfig,
+// v3 P3.1: quet Drive bang API key (D26); null = chua dat DRIVE_API_KEY (status bao `missingConfig`). Ma OAuth P1 van gan nhung khong la luong chinh.
+app.use('/api/admin/drive', createDriveRouter({ pool, oauth: createOAuth({ pool, config: driveConfig }), config: driveConfig, apiKey: loadWorkerConfig(process.env).apiKey ?? null,
   guards: [requireAuth, requireAdmin], rateLimit: rateLimit({ limit: 60 }) }));
 app.use('/api/admin', adminRouter(catalog));
 app.use('/api/payments', rateLimit({ limit: 120 }), createPaymentRouter({ service: payments, requireUser: requireAuth, rateLimit: rateLimit({ limit: 20 }) }));

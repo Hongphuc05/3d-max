@@ -1,12 +1,12 @@
 # STATUS v3 — đã làm tới đâu từ lúc bắt đầu kế hoạch v3
 
-> Cập nhật lần cuối: **2026-11-01** · nhánh `v3/p2-sync-worker` · commit đã kiểm chứng: `329afd9`.
+> Cập nhật lần cuối: **2026-11-01** · nhánh `v3/p2-sync-worker` · có kiểm chứng đến P3.1 backend.
 > Plan: [`v3-implementation-plan.md`](v3-implementation-plan.md) · Nhật ký chi tiết từng bước: [`STATUS.md`](STATUS.md), mục "Nhật ký P2".
 > **File này chỉ ghi trạng thái còn hiệu lực với code hiện tại.** Các kết quả đã bị thay thế (route/tên trường cũ, số test cũ, lần chạy hỏng giữa chừng, nhận định đã rút lại) không có ở đây; muốn xem lịch sử thì đọc `STATUS.md`.
 
 Chú giải: `[x]` xong và đã kiểm tra · `[~]` xong một phần / chưa kiểm tra đủ · `[ ]` chưa làm.
 
-**Tổng quan:** `npm test` trong `apps/store-api` → **356/356 pass** (baseline trước v3 là 194), chạy trên PostgreSQL 16 thật, mỗi file test dùng database cô lập.
+**Tổng quan:** `npm test` trong `apps/store-api` → **366/366 pass** (baseline trước v3 là 194), chạy trên PostgreSQL 16 thật, mỗi file test dùng database cô lập.
 
 ---
 
@@ -44,7 +44,9 @@ Quét bằng **API key** (D26), không OAuth. Đã chạy trên Drive thật, DB
 
 - [x] **API lượt đồng bộ cho admin (phần backend của P3.2/P3.3), khớp plan §2.2.** `POST /sync-jobs` (202 `{jobId}`, 409 khi đang chạy), `GET /sync-jobs` (phân trang `{items,nextCursor}`), `GET /sync-jobs/:id`, `GET /sync-jobs/:id/items?status=FAILED` (tên + đường dẫn, không Drive ID), `POST /sync-jobs/:id/cancel` (202), `POST /sync-jobs/:id/retry` (202 `{jobId}`), `GET /sync-jobs/:id/events` (SSE `progress`/`done`). Hình dạng `Job` được khóa bằng test (so khớp danh sách khóa chính xác). Guard: chưa đăng nhập 401, người dùng thường 403, không ghi gì vào DB.
   - 9 test trên PostgreSQL thật; thử phá **14/14** mutant bị bắt (lộ Drive ID, lộ checkpoint, lặp trang, bỏ trần SSE, hủy job đã xong, nguồn bị tắt ở POST và retry, retry đổi mode, tên trường sai, thêm trường ngoài plan).
-- [ ] P3.1 Kết nối Drive: `GET /drive/status` và `POST /drive/sources` vẫn theo OAuth; plan đổi sang cấu hình API key + thư mục gốc, **chưa làm**.
+- [x] **P3.1 Kết nối Drive — phần backend, theo API key (chốt với chủ dự án: khóa chỉ ở `.env`).** `GET /drive/status` → `{configured, missingConfig, connection:null, sources}` (thiếu khóa chỉ báo TÊN biến `DRIVE_API_KEY`); `POST /drive/sources` → 201 `{id,rootFolderName,sourceType}`, idempotent, nhận resource key từ body hoặc URL; `POST /drive/test-access` kiểm liệt kê + tải thử bằng khóa. Khóa không nằm trong request/response/DB; thiếu khóa thì không gọi Google. 10 test trên PostgreSQL thật + Drive giả; thử phá **10/10** bắt được. Đã sửa luôn lỗi có từ P1: `sourceId` sai định dạng trả 500, nay 400.
+- [ ] **Giao diện P3.1 trong `apps/store-web`** (hiện trạng `configured`/thiếu biến, ô nhập thư mục gốc, nút Test Access hiện kết quả từng mục): chưa làm.
+- [ ] P3.1 chưa thử với Google thật qua endpoint admin (mới chạy với Drive giả).
 - [ ] P3.2 và P3.3 phía giao diện (`apps/store-web`): chưa làm.
 - [ ] P3.4 Mục cần duyệt (`/admin/catalog/review*`): chưa làm; cần chủ dự án duyệt 4 quyết định thiết kế trước.
 - [ ] P3.5 Thiết bị và quyền, P3.6 Đơn hàng: chưa làm (phụ thuộc P4, P5).

@@ -7,7 +7,9 @@ import { apiError, requestId, v3ErrorHandler } from './errors.js';
 import { createDriveClient, FOLDER, validId } from './client.js';
 import { createDriveRepository } from './repository.js';
 import { createSyncJobsRouter } from './sync-routes.js';
+import { ensureApiKeySource } from '../worker/source.js';
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const bodyKeys = (body, allowed) => {
   if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(k => !allowed.includes(k))) throw apiError('INVALID_PARAMS');
   return body;
@@ -30,8 +32,16 @@ export function parseFolderRef(input, explicitKey) {
   return { id, resourceKey: key || null };
 }
 
-export function createDriveRouter({ pool, oauth, config, guards = [], rateLimit, fetchImpl, driveBase }) {
+// `apiKey` !== undefined bat che do API key (D26, plan 2.1 "P3.1 doi thanh cau hinh API key"): null = chua cau hinh DRIVE_API_KEY.
+// Key chi di tu env cua server toi Google; khong bao gio nhan tu request hay tra ra response.
+// Bo qua `apiKey` thi router giu nguyen hanh vi OAuth cua P1 (ma OAuth duoc giu lai theo plan).
+export function createDriveRouter({ pool, oauth, config, guards = [], rateLimit, fetchImpl, driveBase, apiKey }) {
   const repo = createDriveRepository(pool);
+  const apiMode = apiKey !== undefined;
+  const apiClient = () => {
+    if (!apiKey) throw apiError('DRIVE_NOT_CONNECTED');
+    return createDriveClient({ apiKey, ...(driveBase ? { baseUrl: driveBase } : {}), ...(fetchImpl ? { fetchImpl } : {}) });
+  };
   const router = Router();
   router.use(requestId, ...(rateLimit ? [rateLimit] : []));
 
@@ -62,6 +72,7 @@ export function createDriveRouter({ pool, oauth, config, guards = [], rateLimit,
 
   router.get('/status', async (_req, res, next) => {
     try {
+      if (apiMode) return res.json({ configured: Boolean(apiKey), missingConfig: apiKey ? [] : ['DRIVE_API_KEY'], connection: null, sources: await repo.listSources() });
       res.json({ configured: config.configured, missingConfig: config.errors, connection: await repo.latestConnection(), sources: await repo.listSources() });
     } catch (e) { next(e); }
   });
@@ -76,6 +87,10 @@ export function createDriveRouter({ pool, oauth, config, guards = [], rateLimit,
     try {
       bodyKeys(req.body, ['rootFolderUrlOrId', 'resourceKey']);
       const ref = parseFolderRef(req.body.rootFolderUrlOrId, req.body.resourceKey);
+      if (apiMode) {
+        const source = await ensureApiKeySource({ pool, client: apiClient(), rootFolderId: ref.id, resourceKey: ref.resourceKey });
+        return res.status(201).json(source);
+      }
       const connection = await connectedOrThrow();
       const meta = await (await clientFor(connection.id)).getFile(ref.id, { resourceKey: ref.resourceKey });
       if (meta.mimeType !== FOLDER) throw apiError('DRIVE_NOT_A_FOLDER');
@@ -91,10 +106,11 @@ export function createDriveRouter({ pool, oauth, config, guards = [], rateLimit,
   router.post('/test-access', async (req, res, next) => {
     try {
       const { sourceId } = bodyKeys(req.body ?? {}, ['sourceId']);
-      const connection = await connectedOrThrow();
+      if (sourceId !== undefined && !UUID.test(sourceId)) throw apiError('INVALID_PARAMS'); // neu khong, Postgres bao loi kieu uuid -> 500
+      const connection = apiMode ? null : await connectedOrThrow();
       const source = sourceId ? await repo.getSourceInternal(sourceId) : await repo.firstEnabledSourceInternal();
       if (!source) throw apiError('INVALID_PARAMS');
-      const client = await clientFor(source.connection_id);
+      const client = source.access_mode === 'API_KEY' ? apiClient() : await clientFor(source.connection_id);
       const details = [];
       const page = await client.listChildren(source.root_folder_id, { resourceKey: source.root_resource_key, driveId: source.drive_id, pageSize: 100 });
       details.push({ check: 'list', ok: true, count: page.files.length });
@@ -111,7 +127,7 @@ export function createDriveRouter({ pool, oauth, config, guards = [], rateLimit,
           details.push({ check: 'download', ok: false, code: error.code, reason: error.reason });
         } finally { ac.abort(); }
       } else details.push({ check: 'download', ok: false, code: 'NO_SAMPLE_FILE' });
-      res.json({ canList: true, sampleCount: page.files.length, canDownloadSample, account: connection.email, details });
+      res.json({ canList: true, sampleCount: page.files.length, canDownloadSample, account: connection?.email ?? null, details });
     } catch (e) { next(e); }
   });
 
