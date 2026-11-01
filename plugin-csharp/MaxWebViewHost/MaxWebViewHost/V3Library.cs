@@ -101,9 +101,10 @@ namespace MaxWebViewHost
 
         public async Task<Entitlements> GetEntitlementsAsync(CancellationToken ct)
         {
-            await Session.GetTokenAsync(ct).ConfigureAwait(false);
-            var session = Session.Current;
-            return session != null ? session.Entitlements : await Session.RefreshEntitlementsAsync(ct).ConfigureAwait(false);
+            // Always ask the server (rights can change within the 15-minute token life: a purchase, an admin grant or revoke);
+            // only when it cannot be reached fall back to what the last verify returned.
+            try { return await Session.RefreshEntitlementsAsync(ct).ConfigureAwait(false); }
+            catch (ApiException e) when (e.Code == "SERVER_UNAVAILABLE" && Session.Current != null) { return Session.Current.Entitlements; }
         }
 
         public static string EntitlementsJson(Entitlements e)
