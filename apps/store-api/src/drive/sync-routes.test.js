@@ -101,26 +101,65 @@ test('errors: failed files show name + path, never the Drive ID', { skip }, asyn
   const { jobId } = await (await j('/sync-jobs', { method: 'POST', body: { sourceId, mode: 'FULL' } })).json();
   await pool.query("insert into drive_inventory(source_id,drive_file_id,path,filename,mime_type) values($1,'DRIVEIDSECRET01','Living/Sofa/a.jpg','a.jpg','image/jpeg')", [sourceId]);
   await pool.query("insert into drive_sync_job_items(job_id,drive_file_id,action,status,error_code) values($1,'DRIVEIDSECRET01','PREVIEW','FAILED','PREVIEW_INVALID'), ($1,'GONEFROMINV0001','PREVIEW','FAILED','PREVIEW_TOO_LARGE'), ($1,'OKFILE000000001','PREVIEW','DONE',null)", [jobId]);
-  const text = await (await j(`/sync-jobs/${jobId}/errors`)).text();
+  const text = await (await j(`/sync-jobs/${jobId}/items?status=FAILED`)).text();
   assert.ok(!/DRIVEIDSECRET01|GONEFROMINV0001/.test(text), 'Drive ID leaked');
-  const { items } = JSON.parse(text);
+  const items = JSON.parse(text);
+  assert.ok(Array.isArray(items), 'plan 2.2: a plain array');
   assert.equal(items.length, 2);
-  assert.ok(items.some((i) => i.name === 'a.jpg' && i.path === 'Living/Sofa/a.jpg' && i.errorCode === 'PREVIEW_INVALID'));
-  assert.ok(items.some((i) => i.name === null && i.errorCode === 'PREVIEW_TOO_LARGE'), 'unknown file still listed, without a name');
+  assert.ok(items.every((i) => Object.keys(i).sort().join() === 'action,driveFileName,errorCode,errorMessage,path,status'), 'exact plan fields');
+  assert.ok(items.some((i) => i.driveFileName === 'a.jpg' && i.path === 'Living/Sofa/a.jpg' && i.errorCode === 'PREVIEW_INVALID' && i.status === 'FAILED'));
+  assert.ok(items.some((i) => i.driveFileName === null && i.errorCode === 'PREVIEW_TOO_LARGE'), 'unknown file still listed, without a name');
+  assert.equal((await (await j(`/sync-jobs/${jobId}/items`)).json()).length, 2, 'FAILED is the default');
+  assert.equal((await (await j(`/sync-jobs/${jobId}/items?status=DONE`)).json()).length, 1);
+  assert.equal((await j(`/sync-jobs/${jobId}/items?status=WRONG`)).status, 400);
+  assert.equal((await j(`/sync-jobs/${jobId}/items`, { user: 'user' })).status, 403);
 });
 
 test('cancel: QUEUED becomes CANCELLED, RUNNING becomes CANCELLING, finished job is 409', { skip }, async () => {
   const a = (await (await j('/sync-jobs', { method: 'POST', body: { sourceId, mode: 'FULL' } })).json()).jobId;
   const r = await j(`/sync-jobs/${a}/cancel`, { method: 'POST' });
-  assert.equal(r.status, 200); assert.equal((await r.json()).status, 'CANCELLED');
-  assert.equal((await j(`/sync-jobs/${a}/cancel`, { method: 'POST' })).status, 409);
+  assert.equal(r.status, 202); assert.equal(await r.text(), '');
+  assert.equal((await pool.query('select status from drive_sync_jobs where id=$1', [a])).rows[0].status, 'CANCELLED');
+  const again = await j(`/sync-jobs/${a}/cancel`, { method: 'POST' });
+  assert.equal(again.status, 409); assert.equal((await again.json()).error.code, 'JOB_NOT_CANCELLABLE');
 
   const b = (await (await j('/sync-jobs', { method: 'POST', body: { sourceId, mode: 'FULL' } })).json()).jobId;
   await q.claimJob(pool, 'w1');
   const r2 = await j(`/sync-jobs/${b}/cancel`, { method: 'POST' });
-  assert.equal((await r2.json()).status, 'CANCELLING');
+  assert.equal(r2.status, 202);
+  assert.equal((await pool.query('select status from drive_sync_jobs where id=$1', [b])).rows[0].status, 'CANCELLING');
   assert.equal((await j(`/sync-jobs/${randomUUID()}/cancel`, { method: 'POST' })).status, 422);
   assert.equal((await j(`/sync-jobs/${b}/cancel`, { method: 'POST', user: 'user' })).status, 403);
+});
+
+test('retry: a finished job can be retried (202 {jobId}, same source+mode); an active one is 409', { skip }, async () => {
+  const old = (await pool.query("insert into drive_sync_jobs(source_id,mode,status,finished_at) values($1,'INCREMENTAL','FAILED',now()) returning id", [sourceId])).rows[0].id;
+  const r = await j(`/sync-jobs/${old}/retry`, { method: 'POST' });
+  assert.equal(r.status, 202);
+  const { jobId } = await r.json();
+  assert.notEqual(jobId, old);
+  const row = (await pool.query('select source_id, mode, status, requested_by from drive_sync_jobs where id=$1', [jobId])).rows[0];
+  assert.equal(row.source_id, sourceId); assert.equal(row.mode, 'INCREMENTAL'); assert.equal(row.status, 'QUEUED'); assert.equal(row.requested_by, adminId);
+
+  const dup = await j(`/sync-jobs/${old}/retry`, { method: 'POST' });
+  assert.equal(dup.status, 409); assert.equal((await dup.json()).error.code, 'SYNC_ALREADY_RUNNING');
+  assert.equal((await j(`/sync-jobs/${randomUUID()}/retry`, { method: 'POST' })).status, 422);
+  assert.equal((await j(`/sync-jobs/${old}/retry`, { method: 'POST', user: 'user' })).status, 403);
+  assert.equal((await pool.query('select count(*)::int n from drive_sync_jobs')).rows[0].n, 2, 'a refused retry queues nothing');
+  await pool.query('delete from drive_sync_jobs where id <> $1', [old]);
+  await pool.query('update drive_sources set enabled=false where id=$1', [sourceId]);
+  assert.equal((await j(`/sync-jobs/${old}/retry`, { method: 'POST' })).status, 400, 'disabled source cannot be retried');
+  await pool.query('update drive_sources set enabled=true where id=$1', [sourceId]);
+  assert.equal((await pool.query('select count(*)::int n from drive_sync_jobs')).rows[0].n, 1, 'nothing queued for a disabled source');
+});
+
+test('Job shape is exactly plan 2.2 (counters new/updated/.../errors, heartbeatAt), nothing extra', { skip }, async () => {
+  const { jobId } = await (await j('/sync-jobs', { method: 'POST', body: { sourceId, mode: 'FULL' } })).json();
+  const job = await (await j(`/sync-jobs/${jobId}`)).json();
+  assert.deepEqual(Object.keys(job).sort(), ['bytesDownloaded', 'counters', 'errorCode', 'errorMessage', 'finishedAt', 'heartbeatAt', 'id', 'mode', 'sourceId', 'stage', 'startedAt', 'status']);
+  assert.deepEqual(Object.keys(job.counters).sort(), ['errors', 'missing', 'new', 'review', 'scannedFiles', 'scannedFolders', 'skipped', 'unchanged', 'updated']);
+  const list = await (await j('/sync-jobs')).json();
+  assert.deepEqual(Object.keys(list.items[0]).sort(), Object.keys(job).sort(), 'JobSummary has the same shape');
 });
 
 test('SSE: sends progress when it changes, then done and closes; the stream cap is enforced', { skip }, async () => {

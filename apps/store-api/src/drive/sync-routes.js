@@ -1,23 +1,25 @@
-// Admin API cho luot dong bo (docs/v3-implementation-plan.md §2.2, P3.2/P3.3). Mount SAU guard admin trong createDriveRouter.
+// Admin API cho luot dong bo, theo docs/v3-implementation-plan.md §2.2 (P3.2/P3.3). Mount SAU guard admin trong createDriveRouter.
 // Chi tra cot an toan: khong checkpoint, lease_owner, requested_by, Drive file ID. File loi hien ten + duong dan, khong ID.
 import express from 'express';
 import { apiError } from './errors.js';
 import { cancelJob, enqueueJob } from '../worker/queue.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ITEM_STATUSES = new Set(['PENDING', 'DONE', 'FAILED', 'SKIPPED']);
 const TERMINAL = new Set(['COMPLETED', 'COMPLETED_WITH_ERRORS', 'FAILED', 'CANCELLED']);
 const COLUMNS = `id, source_id, mode, status, stage, scanned_folders, scanned_files, new_count, updated_count, unchanged_count,
-  missing_count, review_count, skipped_count, error_count, bytes_downloaded, cancel_requested, attempt,
-  created_at, started_at, finished_at, error_code, error_message`;
+  missing_count, review_count, skipped_count, error_count, bytes_downloaded, started_at, finished_at, heartbeat_at, error_code, error_message`;
 
+// Job = {id,sourceId,mode,status,stage,counters:{scannedFolders,scannedFiles,new,updated,unchanged,missing,review,skipped,errors},
+//        bytesDownloaded,startedAt,finishedAt,heartbeatAt,errorCode,errorMessage}  (plan §2.2). JobSummary trong danh sach = cung dang.
 const publicJob = (r) => ({
   id: r.id, sourceId: r.source_id, mode: r.mode, status: r.status, stage: r.stage,
   counters: {
-    scannedFolders: r.scanned_folders, scannedFiles: r.scanned_files, newCount: r.new_count, updatedCount: r.updated_count,
-    unchangedCount: r.unchanged_count, missingCount: r.missing_count, reviewCount: r.review_count, skippedCount: r.skipped_count, errorCount: r.error_count,
+    scannedFolders: r.scanned_folders, scannedFiles: r.scanned_files, new: r.new_count, updated: r.updated_count,
+    unchanged: r.unchanged_count, missing: r.missing_count, review: r.review_count, skipped: r.skipped_count, errors: r.error_count,
   },
-  bytesDownloaded: Number(r.bytes_downloaded), cancelRequested: r.cancel_requested, attempt: r.attempt,
-  createdAt: r.created_at, startedAt: r.started_at, finishedAt: r.finished_at, errorCode: r.error_code, errorMessage: r.error_message,
+  bytesDownloaded: Number(r.bytes_downloaded), startedAt: r.started_at, finishedAt: r.finished_at, heartbeatAt: r.heartbeat_at,
+  errorCode: r.error_code, errorMessage: r.error_message,
 });
 
 const bodyKeys = (body, allowed) => {
@@ -67,15 +69,17 @@ export function createSyncJobsRouter({ pool, pollMs = 2000, maxStreams = 5 }) {
     try { res.json(publicJob(await mustGet(req.params.id))); } catch (e) { next(e); }
   });
 
-  // File loi cua mot luot: ten + duong dan (tu inventory); khong tra Drive ID.
-  router.get('/sync-jobs/:id/errors', async (req, res, next) => {
+  // Plan §2.2: GET /sync-jobs/:id/items?status=FAILED -> [{driveFileName,path,action,status,errorCode,errorMessage}]. Ten + duong dan, khong Drive ID.
+  router.get('/sync-jobs/:id/items', async (req, res, next) => {
     try {
       const job = await mustGet(req.params.id);
+      const status = req.query.status ?? 'FAILED';
+      if (!ITEM_STATUSES.has(status)) throw apiError('INVALID_PARAMS');
       const rows = (await pool.query(
-        `select i.action, i.error_code, i.error_message, v.filename, v.path
+        `select i.action, i.status, i.error_code, i.error_message, v.filename, v.path
            from drive_sync_job_items i left join drive_inventory v on v.source_id = $2 and v.drive_file_id = i.drive_file_id
-          where i.job_id = $1 and i.status = 'FAILED' order by v.path nulls last, i.id limit 500`, [job.id, job.source_id])).rows;
-      res.json({ items: rows.map((r) => ({ action: r.action, name: r.filename ?? null, path: r.path ?? null, errorCode: r.error_code, errorMessage: r.error_message })) });
+          where i.job_id = $1 and i.status = $3 order by v.path nulls last, i.id limit 500`, [job.id, job.source_id, status])).rows;
+      res.json(rows.map((r) => ({ driveFileName: r.filename ?? null, path: r.path ?? null, action: r.action, status: r.status, errorCode: r.error_code, errorMessage: r.error_message })));
     } catch (e) { next(e); }
   });
 
@@ -83,7 +87,18 @@ export function createSyncJobsRouter({ pool, pollMs = 2000, maxStreams = 5 }) {
     try {
       const job = await mustGet(req.params.id);
       if (!(await cancelJob(pool, job.id))) throw apiError('JOB_NOT_CANCELLABLE');
-      res.json(publicJob(await mustGet(job.id)));
+      res.status(202).end();
+    } catch (e) { next(e); }
+  });
+
+  // Thu lai = xep job moi cung nguon + mode. Dang co job chay/cho -> 409 SYNC_ALREADY_RUNNING (tu enqueueJob).
+  router.post('/sync-jobs/:id/retry', async (req, res, next) => {
+    try {
+      const job = await mustGet(req.params.id);
+      const source = (await pool.query('select enabled from drive_sources where id = $1', [job.source_id])).rows[0];
+      if (!source?.enabled) throw apiError('INVALID_PARAMS');
+      const created = await enqueueJob(pool, { sourceId: job.source_id, mode: job.mode, requestedBy: req.user?.id ?? null });
+      res.status(202).json({ jobId: created.id });
     } catch (e) { next(e); }
   });
 
