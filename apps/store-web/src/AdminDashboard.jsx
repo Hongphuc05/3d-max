@@ -4,10 +4,11 @@ import * as api from './api.js';
 import { CatalogSyncButton } from './CatalogSyncButton.jsx';
 import AdminAccount from './AdminAccount.jsx';
 import AdminUsers from './AdminUsers.jsx';
+import AdminDrive from './AdminDrive.jsx';
 import { AdminOrders, AdminAudit } from './AdminRecords.jsx';
 import { dateTime, panel, secondary, useAdminResource, ResourceState } from './AdminShared.jsx';
 
-const sections = [['overview', 'Tổng quan'], ['users', 'Tài khoản & license'], ['orders', 'Thanh toán'], ['audit', 'Lịch sử thao tác'], ['account', 'Thông tin đăng nhập']];
+const sections = [['overview', 'Tổng quan'], ['drive', 'Kết nối Drive'], ['users', 'Tài khoản & license'], ['orders', 'Thanh toán'], ['audit', 'Lịch sử thao tác'], ['account', 'Thông tin đăng nhập']];
 const catalogStates = { ready: 'Đã đồng bộ', empty: 'Catalog trống', configuration_required: 'Cần cấu hình', not_synced: 'Chưa đồng bộ', syncing: 'Đang đồng bộ', error: 'Đồng bộ gặp lỗi' };
 function Overview() {
   const [version, setVersion] = useState(0);
@@ -43,6 +44,7 @@ export default function AdminDashboard() {
       </nav>
       <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4 md:p-6"><div className="mx-auto max-w-6xl">
         {active === 'overview' && <Overview />}
+        {active === 'drive' && <AdminDrive />}
         {active === 'users' && <AdminUsers />}
         {active === 'orders' && <AdminOrders />}
         {active === 'audit' && <AdminAudit />}

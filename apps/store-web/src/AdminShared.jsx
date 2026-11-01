@@ -20,7 +20,7 @@ const messages = {
   LICENSE_NOT_FOUND: 'Tài khoản này chưa có license.',
   USER_NOT_FOUND: 'Không tìm thấy tài khoản này.',
 };
-export const adminError = error => messages[error?.code] || 'Không thể hoàn tất yêu cầu. Vui lòng thử lại.';
+export const adminError = error => messages[error?.code] || error?.detail || 'Không thể hoàn tất yêu cầu. Vui lòng thử lại.';
 export const dateTime = value => value ? new Date(value).toLocaleString('vi-VN') : '—';
 const labels = { ACTIVE: 'Đang hoạt động', SUSPENDED: 'Tạm khóa', REVOKED: 'Đã thu hồi', PAID: 'Đã thanh toán', PENDING: 'Chờ thanh toán', CANCELLED: 'Đã hủy', FAILED: 'Thất bại', EXPIRED: 'Hết hạn' };
 export function Status({ value }) {

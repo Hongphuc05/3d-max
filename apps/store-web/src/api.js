@@ -1,6 +1,7 @@
 // Moi call toi backend di qua day. Sau nay them auth header o 1 cho nay.
 export class ApiError extends Error {
-  constructor(status, code) { super(code || `HTTP ${status}`); this.status = status; this.code = code; }
+  // `detail` = thong diep tieng Viet cua may chu (envelope v3 {error:{code,message,requestId}}); khong chua token/payload nha cung cap.
+  constructor(status, code, detail) { super(code || `HTTP ${status}`); this.status = status; this.code = code; this.detail = detail; }
 }
 
 async function request(method, path, { params, body, signal } = {}) {
@@ -11,7 +12,10 @@ async function request(method, path, { params, body, signal } = {}) {
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await r.json().catch(() => null);
-  if (!r.ok) throw new ApiError(r.status, data?.error);
+  if (!r.ok) {
+    const e = data?.error; // API cu: chuoi ma loi; API v3: { code, message, requestId }
+    throw typeof e === 'object' && e ? new ApiError(r.status, e.code, typeof e.message === 'string' ? e.message : undefined) : new ApiError(r.status, e);
+  }
   return data;
 }
 const get = (path, params, signal) => request('GET', path, { params, signal });
@@ -46,6 +50,9 @@ export const adminUsers = (params, signal) => get('/admin/users', params, signal
 export const adminUser = (id, signal) => get(`/admin/users/${encodeURIComponent(id)}`, null, signal);
 export const adminOrders = (params, signal) => get('/admin/orders', params, signal);
 export const adminAudit = (params, signal) => get('/admin/audit', params, signal);
+export const adminDriveStatus = (signal) => get('/admin/drive/status', null, signal);
+export const adminDriveAddSource = (body) => request('POST', '/admin/drive/sources', { body });
+export const adminDriveTestAccess = (sourceId, signal) => request('POST', '/admin/drive/test-access', { body: { sourceId }, signal });
 export const updateAdminAccount = (body) => request('PATCH', '/admin/account', { body });
 export const issueAdminLicense = (userId) => request('POST', '/admin/licenses/issue', { body: { userId } });
 export const resumeAdminLicense = (userId) => request('POST', '/admin/licenses/resume', { body: { userId } });
