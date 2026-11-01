@@ -297,3 +297,15 @@ test('INCREMENTAL is offered but honestly labelled: the note appears only for it
   assert.equal(calls('/api/admin/drive/sync-jobs', 'POST')[0].body.mode, 'INCREMENTAL');
   await pick('mode', 'FULL').catch(() => {}); // o chon bi khoa khi job dang chay: khong the doi
 });
+
+test('the indeterminate bar is a moving segment (class animate-indeterminate), not a static fill that looks like a percentage', async () => {
+  await mount();
+  await click(mustButton('Quét đồng bộ'));
+  await emit('progress', job('job-1', 'RUNNING', { stage: 'SCANNING' }));
+  const inner = container.querySelector('[role="progressbar"] > div');
+  assert.ok(inner.className.includes('animate-indeterminate'), inner.className);
+  assert.equal(inner.className.includes('animate-pulse'), false, 'the old static pulse is gone');
+  const css = (await import('node:fs')).readFileSync(new URL('./index.css', import.meta.url), 'utf8');
+  assert.match(css, /@keyframes indeterminate/);
+  assert.match(css, /prefers-reduced-motion[\s\S]*animate-indeterminate/, 'reduced motion is handled without implying a percentage');
+});

@@ -52,7 +52,7 @@ function useJob(jobId, pollMs) {
 function Progress({ job }) {
   return <div className="space-y-4">
     {['RUNNING', 'CANCELLING'].includes(job.status) && <div role="progressbar" aria-label="Tiến độ đồng bộ" aria-busy="true" className="h-2 overflow-hidden rounded bg-raised">
-      <div className="h-full w-1/3 rounded bg-accent motion-safe:animate-pulse" /></div>}
+      <div className="h-full w-1/3 rounded bg-accent animate-indeterminate" /></div>}
     <dl className="grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-line bg-line">
       {counterLabels.map(([key, label]) => <div key={key} className="bg-panel px-4 py-3"><dt className="text-xs text-mute">{label}</dt><dd className="mt-1 text-lg font-bold tabular-nums">{job.counters[key]}</dd></div>)}
     </dl>
