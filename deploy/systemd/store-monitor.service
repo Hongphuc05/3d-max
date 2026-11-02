@@ -1,0 +1,19 @@
+# P6.3: moi lan chay mot kiem tra (thoat 2 = co van de, systemd danh dau failed: xem `systemctl status store-monitor`).
+[Unit]
+Description=3DS Mood health check
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=dsmood
+Group=dsmood
+WorkingDirectory=/opt/3dsmood/apps/store-api
+EnvironmentFile=/etc/3dsmood/store.env
+Environment=NODE_ENV=production STORAGE_DIR=/var/lib/3dsmood
+ExecStart=/usr/bin/node scripts/monitor.js
+SuccessExitStatus=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/3dsmood

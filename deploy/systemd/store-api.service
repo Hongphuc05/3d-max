@@ -1,0 +1,25 @@
+# P6.1: chay API. Dat env o /etc/3dsmood/store.env (mau: apps/store-api/.env.example), KHONG commit.
+[Unit]
+Description=3DS Mood store-api
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=dsmood
+Group=dsmood
+WorkingDirectory=/opt/3dsmood/apps/store-api
+EnvironmentFile=/etc/3dsmood/store.env
+Environment=NODE_ENV=production HOST=127.0.0.1 PORT=4000 TRUST_PROXY=127.0.0.1 STORAGE_DIR=/var/lib/3dsmood
+ExecStart=/usr/bin/node src/server.js
+Restart=always
+RestartSec=3
+# VPS 2 GB: API va worker moi ben toi da ~900 MB, vuot thi bi dung roi systemd khoi dong lai.
+MemoryMax=900M
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/3dsmood
+
+[Install]
+WantedBy=multi-user.target

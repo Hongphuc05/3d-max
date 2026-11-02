@@ -1,0 +1,12 @@
+# P6.4: pg_dump hang ngay (giu 14 ban) - xem deploy/backup.sh.
+[Unit]
+Description=3DS Mood PostgreSQL backup
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=dsmood
+Group=dsmood
+EnvironmentFile=/etc/3dsmood/store.env
+Environment=BACKUP_DIR=/var/backups/3dsmood
+ExecStart=/opt/3dsmood/deploy/backup.sh

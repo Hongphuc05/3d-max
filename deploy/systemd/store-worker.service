@@ -1,0 +1,24 @@
+# P6.1: worker dong bo Drive -> catalog. Cung env voi API.
+[Unit]
+Description=3DS Mood store-worker
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=dsmood
+Group=dsmood
+WorkingDirectory=/opt/3dsmood/apps/store-api
+EnvironmentFile=/etc/3dsmood/store.env
+Environment=NODE_ENV=production STORAGE_DIR=/var/lib/3dsmood
+ExecStart=/usr/bin/node src/worker.js
+Restart=always
+RestartSec=5
+MemoryMax=900M
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/3dsmood
+
+[Install]
+WantedBy=multi-user.target
