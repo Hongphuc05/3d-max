@@ -2,6 +2,7 @@
 
 > **v3 (2026-10-29) — đã chốt, sẵn sàng implement:** Drive private → VPS → plugin, quyền theo thiết bị, thanh toán xác nhận qua Telegram.
 > Đọc theo thứ tự: [`v3-implementation-plan.md`](v3-implementation-plan.md) → [`v3-architecture.md`](v3-architecture.md) → [`v3-database.md`](v3-database.md).
+> **Phase 4 đã nghiệm thu trên 3ds Max thật (02/11/2026)** — việc chưa kiểm chứng, lỗi đã gặp và cách lặp lại bài test: [`p4-open-issues.md`](p4-open-issues.md).
 
 ## Hướng dẫn hiện tại
 

@@ -30,7 +30,7 @@ Ghi lúc kết thúc phiên test P4.5 trên 3ds Max 2022 thật (01–02/11/2026
   $hits = foreach ($f in $files) { try { if (Select-String -LiteralPath $f.FullName -SimpleMatch $id -List -ErrorAction Stop) { $f.FullName } } catch { $unreadable++ } }
   "scanned $($files.Count) files, unreadable $unreadable, hits: $(@($hits).Count)"; $hits
   ```
-  Kết quả đạt = `unreadable 0` và không có hit. Tìm thêm cả Drive ID của `80891x Muro Lightstar` (`1WCDp9cXC7ASuvRLvUGKowKL1Sge-IRMc`, copy từ DB để chắc chắn đúng ký tự).
+  Kết quả đạt = `unreadable 0` và không có hit. Tìm thêm cả Drive ID của `80891x Muro Lightstar` (lấy ID từ DB, không ghi vào tài liệu).
 - Suy luận (chưa đo): web chỉ nhận JSON không có Drive ID; native không gửi ID cho web; `V3Routes` chặn mọi endpoint khác.
 
 ### 2.2 License MXL1 cũ → ALL_MODELS
