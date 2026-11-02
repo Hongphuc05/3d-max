@@ -1,3 +1,5 @@
+> **ĐÃ NGỪNG DÙNG (P7, 2026-11-03):** hệ thống thanh toán payOS đã được gỡ khỏi code; thay bằng đơn hàng + Telegram (xem `docs/v3-implementation-plan.md` §2.6, D21). Tài liệu giữ lại để tra cứu hệ thống cũ.
+
 # 3DsMood — License & payOS implementation report
 
 Ngày kiểm chứng: **2026-10-25**, Windows, PostgreSQL18, Node24.11, Max2022/.NET Framework4.8.

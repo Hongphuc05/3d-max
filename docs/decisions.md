@@ -274,3 +274,22 @@ Chi tiết: [`v3-architecture.md`](v3-architecture.md), [`v3-database.md`](v3-da
 ## D26 — Lấy file model: VPS tải hộ link công khai + lưu bản sao (locked 2026-10-30)
 
 Chủ dự án chọn để tránh OAuth. **Thay phần "Drive private + OAuth" của D19.** VPS giữ link, kiểm license, tải từ Drive một lần, lưu đĩa rồi phục vụ khách; plugin không nhận link hay Drive ID. Quét thư mục dùng Drive API key. Rủi ro đã chấp nhận và chi tiết: mục "Bàn giao" trong [`v3-implementation-plan.md`](v3-implementation-plan.md).
+
+## D27 — Dọn code cũ P7: làm một phần, phần còn lại có điều kiện (2026-11-03)
+
+Plan ghi P7 chỉ làm "khi P6 ổn định ≥ 2 tuần"; P6 chưa deploy nên điều kiện này **chưa đạt**. Theo yêu cầu của chủ dự án, đã làm
+phần **không làm hỏng chức năng đang dùng**, phần còn lại giữ nguyên kèm lý do:
+
+| Hạng mục | Quyết định | Lý do |
+|---|---|---|
+| payOS (API `src/payments`, `/api/payments`, `/api/webhooks/payos`, 2 script, `@payos/node`, `PAYOS_*`) và giao diện thanh toán web | **Đã gỡ** (2026-11-03) | Thay bằng luồng đơn hàng + Telegram (D21) |
+| `OfflineLibrary.jsx` (giao diện thư viện offline cũ) | **Đã gỡ** | Không còn được mount từ `main.jsx` |
+| Bảng DB cũ (`orders`, `payment_events`, …) | **Giữ** | Admin cũ còn đọc `orders` (doanh thu, danh sách `legacy-orders`); xóa bảng cần gỡ các màn đó, sao lưu và chủ dự án duyệt |
+| `src/r2/`, `r2-http.js`, `cloudflare/`, `assets.js`, catalog cũ | **Giữ** | `catalog-runtime`, `/api/admin/overview`, tải asset cũ vẫn phụ thuộc; cần gỡ cả cụm cùng admin dashboard cũ |
+| Đăng ký/đăng nhập khách (`auth.js`), `StoreApp` trong `App.jsx` | **Giữ** | Hiện là **cách duy nhất tạo tài khoản admin đầu tiên** (đăng ký rồi cấp quyền bằng `LICENSE_ADMIN_USER_IDS`); cần script tạo admin trước khi gỡ |
+| `apps/license-admin` (Vercel) | **Giữ** | Plan: chỉ gỡ sau khi P3.5 thay thế; **P3.5 chưa làm** → đây là công cụ ký MXL1 duy nhất (tiêu chí #17) |
+| `GoogleDriveDownloader.cs`, `StaticCatalogService.cs`, chế độ đóng gói | **Giữ** | Plan: "nếu bỏ chế độ đóng gói" — chủ dự án chưa quyết định |
+| `licensing/` (license Lifetime theo tài khoản, phiên thiết bị cũ) | **Giữ** | Plan không liệt kê; plugin cũ và `devices/` còn dùng |
+
+Điều kiện để làm nốt: (1) P3.5 xong → gỡ `apps/license-admin`; (2) script tạo admin → gỡ đăng ký khách + `StoreApp`;
+(3) gỡ các màn admin đọc payOS/R2 → backup rồi xóa bảng cũ; (4) quyết định chế độ đóng gói → dọn C#; (5) P6 deploy ổn ≥ 2 tuần.

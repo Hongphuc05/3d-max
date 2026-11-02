@@ -144,6 +144,7 @@ Trung thực quan trọng hơn việc cố gắng đưa ra một câu trả lờ
 ## B. Tổng quan project
 
 > **Đang làm v3:** đọc mục "Bàn giao" trong [`docs/v3-implementation-plan.md`](docs/v3-implementation-plan.md) và [`docs/STATUS.md`](docs/STATUS.md) trước. Phần còn lại của mục B đã lỗi thời.
+> **Tình trạng mới nhất (2026-11-03):** P5–P7 đã làm phần trong repo; phần chưa test/chưa nghiệm thu tóm gọn ở cuối [`docs/STATUS-v3.md`](docs/STATUS-v3.md); P7 làm một phần có chủ đích, xem D27 trong [`docs/decisions.md`](docs/decisions.md).
 
 ### 1. Mục tiêu
 

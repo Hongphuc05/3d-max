@@ -1,12 +1,12 @@
 # STATUS v3 — đã làm tới đâu từ lúc bắt đầu kế hoạch v3
 
-> Cập nhật lần cuối: **2026-11-01** · nhánh `v3/p2-sync-worker` · có kiểm chứng đến P3.1 (backend + giao diện).
+> Cập nhật lần cuối: **2026-11-03** · nhánh `v3/p2-sync-worker` · P0–P7 đã có phần trong repo; **phần chưa test / chưa nghiệm thu tóm gọn ở CUỐI file**.
 > Plan: [`v3-implementation-plan.md`](v3-implementation-plan.md) · Nhật ký chi tiết từng bước: [`STATUS.md`](STATUS.md), mục "Nhật ký P2".
 > **File này chỉ ghi trạng thái còn hiệu lực với code hiện tại.** Các kết quả đã bị thay thế (route/tên trường cũ, số test cũ, lần chạy hỏng giữa chừng, nhận định đã rút lại) không có ở đây; muốn xem lịch sử thì đọc `STATUS.md`.
 
 Chú giải: `[x]` xong và đã kiểm tra · `[~]` xong một phần / chưa kiểm tra đủ · `[ ]` chưa làm.
 
-**Tổng quan:** `npm test` trong `apps/store-api` → **374/374 pass** (baseline trước v3 là 194), chạy trên PostgreSQL 16 thật, mỗi file test dùng database cô lập.
+**Tổng quan:** `npm test` trong `apps/store-api` → **555/555 pass**, `apps/store-web` → **158/158 pass**, diễn tập deploy Docker **30/30** (PostgreSQL 16 thật, mỗi file test dùng database cô lập). Số test giảm so với 583/182 vì đã xóa test của tính năng payOS/OfflineLibrary bị gỡ ở P7.
 
 ---
 
@@ -62,7 +62,7 @@ Quét bằng **API key** (D26), không OAuth. Đã chạy trên Drive thật, DB
 - [x] **P4.3 plugin native + P4.4 giao diện — ĐÃ NGHIỆM THU TRÊN 3ds Max 2022 THẬT (xem dòng P4.5 trong STATUS.md).** Luồng chính đạt: catalog + ảnh + seed, đăng ký thiết bị bằng TPM, nút theo quyền, tải qua backend và import vào scene, thu hồi quyền bị chặn, offline, tự cập nhật, không lộ Drive ID (quét chưa trọn vẹn: cache WebView2 đang bị Max khóa, cần quét lại khi đóng Max). **Còn mở:** 3 model là RAR lồng chưa import được (cần quyết định), 43 file chưa kiểm được định dạng, MXL1 và thanh toán chưa thử. Mô tả code bên dưới giữ nguyên: Plugin C# build thật `Release x64` thành công; 12 bộ test native xanh; web 165/165. Gồm: phiên thiết bị (ký thách thức `3DM-DEVICE-V2`), cache catalog nguyên khối, cache preview + seed cài đặt + tải nền 4 luồng, bộ theo dõi cập nhật (poll 5 phút + SSE), tải model qua backend, UI chỉ đọc dữ liệu cục bộ đã kiểm (endpoint thiết bị/tải bị chặn với JS), đọc license MXL1 cũ và gửi lên server (giữ nguyên file), `asset.import {modelId}`, `build-installer.ps1 -ApiBaseUrl` kéo seed (build thất bại nếu thiếu ảnh), giao diện UI-1 trên dữ liệu v3 (nút theo quyền, tab Đã tải, tự làm mới giữ bộ lọc, thiết bị thay tài khoản). **Chưa kiểm chứng (P4.5 — cần Max 2022 thật):** WebView2 + `PackagedAppRuntime` trả `/api/v1` & `/previews` từ cache, mở lại khi mất mạng, merge model vào scene, thiếu quyền báo rõ, grep `%LOCALAPPDATA%\3dMood` không có Drive ID; chạy `build-installer.ps1 -ApiBaseUrl` đầy đủ; Google thật cho đường tải; áp migration 021/022 vào `store_p2`. **Nợ biết trước (đã xử lý ở 02/11):** 3 bộ test native cũ từng hỏng sẵn nay đã xanh; nút Mua chờ P5; chế độ offline cũ (`assetId` + license thủ công) và cookie-session cũ vẫn còn trong mã, dọn ở P7.
 - [ ] **P5 — code + test + đột biến xong (2026-11-02), CHƯA nghiệm thu thật**: đơn hàng, VietQR, bot Telegram (backend), hộp thoại mua trong plugin (web + native). Chi tiết, các chỗ lệch plan và việc chưa kiểm chứng: hai dòng P5 trong `STATUS.md`. Cần chủ dự án: tạo bot (P5.1), nhập thông tin ngân hàng ở admin, quét thử VietQR bằng app ngân hàng thật, chạy nghiệm thu thật.
 - [ ] **P6 — mới làm phần trong repo (2026-11-02):** cấu hình Nginx (đã kiểm hành vi bằng container) và systemd (đã verify cú pháp), giám sát, backup + diễn tập restore (PASS trên DB dev), rollback migration, runbook `docs/p6-runbook.md`. **Chưa có VPS nên chưa deploy, chưa chạy failure test và E2E.** Cần chủ dự án: VPS + domain, và gửi 18 tiêu chí nghiệm thu gốc (không có trong repo).
-- [ ] P7: chưa làm.
+- [~] **P7 — làm MỘT PHẦN có chủ đích (2026-11-03):** đã gỡ payOS (API + web) và OfflineLibrary; R2/catalog cũ, đăng ký khách, `apps/license-admin`, bảng DB cũ, file C# cũ được giữ vì còn phụ thuộc hoặc cần quyết định (xem D27 trong `decisions.md` và mục C ở cuối file này). Điều kiện "P6 ổn định ≥ 2 tuần" của plan chưa đạt.
 
 ---
 
@@ -79,3 +79,49 @@ Quét bằng **API key** (D26), không OAuth. Đã chạy trên Drive thật, DB
 
 ## Quy trình đang áp dụng
 Mỗi bước: ghi log vào `STATUS.md` → viết test (PostgreSQL thật) → thử phá bằng đột biến → chạy cả bộ `npm test` → commit **local**. Không push, không tạo PR, không commit secret.
+
+---
+
+## TÓM GỌN CUỐI — mọi thứ CHƯA test và CHƯA nghiệm thu (cập nhật 2026-11-02)
+
+> Đọc phần này trước khi tin rằng "phase X xong". **Có test tự động xanh ≠ đã nghiệm thu.** Số liệu tự động hiện tại: API **555/555**, web **158/158**, ~17 bộ test native xanh (mã thoát 0), diễn tập deploy bằng Docker **30/30**. Toàn bộ test native dùng HTTP/Drive/Telegram **giả**.
+> Chi tiết từng mục: `STATUS.md` (nhật ký), `p4-open-issues.md` (P4), `p6-runbook.md` (P6).
+
+### A. Việc cần CHỦ DỰ ÁN làm hoặc quyết định (chặn nghiệm thu)
+1. **Tạo lại API key Drive** (khóa cũ từng lộ, và một lần in ra log hội thoại).
+2. **Gửi 18 tiêu chí nghiệm thu gốc** ("master prompt §14", không có trong repo; chỉ biết tiêu chí #17). Checklist trong `p6-runbook.md` §9 chỉ là bản nháp 21 dòng.
+3. **Thuê VPS + domain** (P6 cần), và một máy sạch thứ hai để diễn tập restore.
+4. **P5.1 thủ công:** tạo bot @BotFather, lấy chat_id, điền `TELEGRAM_*`, dựng HTTPS (tunnel/domain), chạy `scripts/telegram-set-webhook.js`, nhập thông tin ngân hàng ở admin → Cài đặt.
+5. **Quyết định thiết kế đang chờ:** (a) đơn đã báo chuyển tiền mà chủ bấm quá hạn thì cấp tay hay kéo dài TTL; (b) 3 model RAR lồng (3/360) — giải nén lồng hay đóng gói lại; (c) 4 quyết định ở P2.5 + chỗ lệch migration 018; (d) INCREMENTAL ở worker; (e) nguồn thông tin ngân hàng (plan tự mâu thuẫn: env `PAYMENT_BANK_*` hay `app_settings` — đang dùng `app_settings`); (f) xác nhận mã lỗi `JOB_NOT_FOUND` 422; (g) có bỏ chế độ đóng gói/offline của plugin hay không (quyết định P7 native).
+
+### B. Theo phase — chưa kiểm chứng / chưa nghiệm thu
+
+**P1** — OAuth + Drive client: chưa chạy với Google OAuth thật; Q4 chưa chốt (OAuth không còn là luồng chính, D26).
+
+**P2** — Worker & catalog: RAM worker suốt cả job (tiêu chí < 400 MB) chưa đo; kill cứng giữa job trên Drive thật chưa thử (chỉ Drive giả); 1 test không ổn định (`disk guard`) từng fail 1 lần chưa rõ nguyên nhân; INCREMENTAL chưa làm; dọn ảnh preview mồ côi (P2-6) chưa làm; nguyên nhân Google chặn tải ảnh chưa xác nhận; nợ P2-1…P2-8.
+
+**P3** — Web admin: P3.1 chưa thử với Google thật qua endpoint admin; **P3.5 (quản lý thiết bị / cấp–thu hồi quyền / ký MXL1 có ghi DB + audit — tiêu chí #17) CHƯA LÀM**, hiện cấp quyền bằng SQL; **P3.6 (màn đơn hàng cho admin) chưa có giao diện** (API `/api/admin/orders` có và có test, UI thì chưa); P3.4 gộp remap/Chấp nhận trên model chờ duyệt thật chưa thử, ghép tay + chọn ảnh chính chưa làm; P3.3 "Xem lỗi" của job lỗi chưa nhìn bằng mắt; P3.7 ẩn model qua giao diện và màn hình hẹp chưa thử; API admin chưa chạy trên server thật với token admin thật; Playwright e2e chưa chạy lần nào.
+
+**P4** — API thiết bị + tải + plugin (đã nghiệm thu trên Max 2022 thật cho luồng chính): **MXL1 cũ → ALL_MODELS chưa thử thật**; **không lộ Drive ID chưa đủ bằng chứng** (cache WebView2 bị Max khóa, quét lại khi đã đóng Max); thu hồi quyền *giữa* lúc đã có phiên chỉ có test tự động; file lớn qua trang xác nhận virus-scan của Google chưa gặp thật (chỉ thử 2 file nhỏ); chưa biết 360 file đều "Anyone with the link"; 3 model RAR lồng không import được; 43 file chưa biết định dạng; độ trễ lần tải đầu chưa đo; giới hạn tải đồng thời/phiên theo giờ là **trong tiến trình** (nhiều tiến trình API sẽ không dùng chung); cache đầy chưa thử thật; thời gian tự cập nhật trên Max thật chưa ghi; `devMockHost` chưa mô phỏng `library.*`; **bộ cài production** (HTTPS thật, ký số, cập nhật/rollback) chưa hoàn thiện, mới build `-TestBuild` loopback; áp migration 021/022 lên DB production.
+
+**P5** — Đơn hàng + Telegram: toàn bộ **chưa nghiệm thu thật** (cần mục A.4): chưa tạo bot, chưa gửi/nhận Telegram thật, **VietQR chưa quét bằng app ngân hàng thật** ([CHƯA KIỂM CHỨNG] của plan còn nguyên), chưa đo "bấm ✅ → Download ≤ 10 giây"; `OrdersClient` (native) chưa chạy trong Max thật; chưa biết gửi `inline_keyboard: []` có làm nút biến mất không (tài liệu Telegram không nói); nhiều owner chỉ lưu 1 mã tin nhắn; đơn giá 0 bị từ chối và mã `ORDER_NOT_FOUND` do tôi thêm (plan không định nghĩa).
+
+**P6** — VPS / E2E / deploy: **chưa có VPS nên chưa deploy.** Đã kiểm trên máy dev: cấu hình Nginx (18 ca hành vi), cú pháp systemd, backup + diễn tập restore, giám sát, rollback migration, **diễn tập deploy production bằng Docker 30/30**. **Chưa:** systemd thật (`MemoryMax=900M`, hardening, tự lên sau reboot), TLS Let's Encrypt, `TRUST_PROXY=127.0.0.1` (diễn tập dùng CIDR Docker), `limit_conn`/`limit_req`, tải model 30 phút qua Nginx, worker xử lý ảnh với Drive thật (RAM đỉnh), restore trên máy sạch khác, chép backup ra ngoài VPS, **8 failure test** (chỉ F5 đã đạt trên Max thật), checklist E2E 21 dòng chưa chạy dòng nào, đo tải (autocannon/k6), hành vi khi quên chạy migrate ở production, đĩa đầy thật, giám sát từ bên ngoài, dọn ảnh preview mồ côi.
+
+**P7** — Dọn code cũ: chỉ làm một phần (payOS, OfflineLibrary); phần còn lại cố ý giữ — xem mục C ngay bên dưới.
+
+### C. P7 — phần đã làm và phần cố ý KHÔNG làm
+**Đã làm (2026-11-03):** gỡ payOS khỏi API (`src/payments`, `/api/payments/*`, `/api/webhooks/payos`, 2 script, `@payos/node`, biến `PAYOS_*`) và web (`Purchase`, `PaymentDialog`, `payment-*`, hàm thanh toán trong `api.js`/`license-flow.js`, phần Mua trong `LicensePanel`); gỡ `OfflineLibrary`; tắt Playwright (spec cũ chưa từng chạy lại); banner "ĐÃ NGỪNG DÙNG" lên tài liệu payOS; quyết định D27. Kiểm: API 555/555, web 158/158, `vite build` ok, diễn tập deploy 30/30. **Cố ý KHÔNG làm, kèm điều kiện để làm tiếp** (chi tiết D27):
+- **Xóa bảng DB cũ** (`orders`, `payment_events`, …): admin cũ còn đọc `orders` → gỡ màn doanh thu/`legacy-orders` trước, backup, chủ dự án duyệt. *Không có file SQL xóa bảng nào được tạo.*
+- **Gỡ R2 / `catalog-runtime` / `assets.js` / `cloudflare/`:** admin dashboard và tải asset cũ còn dùng; phải gỡ cả cụm.
+- **Gỡ đăng ký khách + `StoreApp`:** hiện là cách duy nhất tạo admin đầu tiên (đăng ký rồi cấp quyền bằng `LICENSE_ADMIN_USER_IDS`) → cần script tạo admin trước.
+- **Gỡ `apps/license-admin`:** chờ **P3.5** (chưa làm); đây là công cụ ký MXL1 duy nhất (tiêu chí #17).
+- **File C# `GoogleDriveDownloader.cs`, `StaticCatalogService.cs`, chế độ đóng gói:** chờ chủ dự án quyết định bỏ chế độ đóng gói.
+- **`licensing/`:** plan không liệt kê; plugin cũ và `devices/` còn dùng.
+**Chưa kiểm chứng sau P7:** chưa mở trang admin và `/license` bằng mắt sau khi gỡ phần Mua; Playwright không chạy; chưa đóng gói bản web mới vào bộ cài và thử trong Max.
+
+### D. Rủi ro xuyên suốt
+- Test native hiện **không** chạm API/Telegram/Drive thật; lỗi ghép nối chỉ lộ khi chạy end-to-end.
+- Mọi kết quả "sau 2 tuần ổn định" của plan (điều kiện cho P7) **chưa có** vì chưa deploy.
+- Nhánh `v3/p2-sync-worker` đã gom P2→P7; plan ghi nhánh khác cho từng phase — chưa xác nhận cách đặt nhánh khi merge.
+- Đã **push** lên origin tới commit `24197b1`; mọi commit sau đó (P5, P6, P7) **chỉ ở local**.

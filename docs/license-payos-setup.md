@@ -1,3 +1,5 @@
+> **ĐÃ NGỪNG DÙNG (P7, 2026-11-03):** hệ thống thanh toán payOS đã được gỡ khỏi code; thay bằng đơn hàng + Telegram (xem `docs/v3-implementation-plan.md` §2.6, D21). Tài liệu giữ lại để tra cứu hệ thống cũ.
+
 # License Lifetime + payOS: cấu hình và vận hành
 
 ## Chính sách

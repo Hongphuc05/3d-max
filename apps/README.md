@@ -2,7 +2,7 @@
 
 Tiến độ và việc còn lại: [`../docs/STATUS.md`](../docs/STATUS.md).
 
-License Lifetime + payOS: xem [setup](../docs/license-payos-setup.md) và [API](../docs/license-payos-api.md).
+License Lifetime + payOS (ĐÃ NGỪNG DÙNG, P7): xem [setup](../docs/license-payos-setup.md) và [API](../docs/license-payos-api.md).
 Catalog mặc định lấy từ Cloudflare R2 private qua PostgreSQL; backend quét metadata khi khởi động và mỗi 10 phút, rồi gửi thay đổi qua SSE. Xem [cấu hình và vận hành](../docs/r2-catalog.md).
 API tài khoản/license chạy khi R2 chưa sẵn sàng; status catalog phân biệt thiếu cấu hình, chưa sync, lỗi R2 và snapshot cũ.
 Tải/import yêu cầu license ACTIVE và phiên thiết bị đã chứng minh khóa CNG. Cấu hình hai secret license trước khi kích hoạt.
