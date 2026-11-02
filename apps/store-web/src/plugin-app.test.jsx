@@ -74,16 +74,38 @@ test('cards show Download for owned models and Mua + price for the others; the b
   await done(root);
 });
 
-test('Mua explains that payment is not available yet instead of doing nothing', async () => {
-  server(); const root = await mount();
+test('Mua opens the order dialog; after the owner confirms, the card turns into Download without pressing refresh', async () => {
+  server();
+  const base = globalThis.fetch; let status = 'PENDING_PAYMENT'; const orderCalls = [];
+  const bed = id(103);
+  globalThis.fetch = async (url, init = {}) => {
+    const path = String(url), method = init.method || 'GET';
+    if (path.startsWith('/api/v1/orders')) {
+      orderCalls.push(method + ' ' + path);
+      if (method === 'POST' && path === '/api/v1/orders') return json({ orderId: 'o-1', code: '3DMK7Q2XA', amountVnd: 15000, status, expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        payment: { bankName: 'Test Bank', accountNo: '0123456789012', accountName: 'TEST', transferContent: '3DMK7Q2XA', qrPayload: '000201...' } }, 201);
+      if (path.endsWith('/claim-paid')) { status = 'AWAITING_OWNER'; return json({ status }); }
+      if (method === 'GET') { if (status === 'AWAITING_OWNER') { status = 'CONFIRMED'; rights = { allModels: false, modelIds: [id(101), bed] }; } return json({ orderId: 'o-1', status }); }
+    }
+    return base(url, init);
+  };
+  const r = createRoot(document.getElementById('root'));
+  await act(async () => { r.render(<PluginApp orderPollMs={30} />); await flush(); }); await act(flush); await act(flush);
   const buy = [...document.querySelectorAll('.group')][0].querySelectorAll('button')[2];
   assert.match(buy.textContent, /Mua/);
-  await act(async () => { buy.click(); await flush(); });
-  assert.match(document.querySelector('[role=alert]').textContent, /Thanh toán đang được hoàn thiện/);
-  await act(async () => { document.querySelector('[aria-label="Đóng thông báo"]').click(); await flush(); });
-  assert.equal(document.querySelector('[role=alert]'), null);
-  assert.equal(calls.filter((c) => c.method === 'asset.import').length, 1, 'only the earlier owned download happened');
-  await done(root);
+  const importsBefore = calls.filter((c) => c.method === 'asset.import').length;
+  await act(async () => { buy.click(); await flush(); }); await act(flush);
+  assert.ok(document.querySelector('[role=dialog]'), 'the order dialog is open');
+  assert.match(text(), /Test Bank/); assert.match(text(), /3DMK7Q2XA/);
+  await act(async () => { button('Tôi đã chuyển khoản').click(); await flush(); });
+  await act(() => flush(300)); await act(flush); await act(flush);
+  assert.match(text(), /Đã xác nhận thanh toán/);
+  const card = [...document.querySelectorAll('.group')][0].textContent;
+  assert.match(card, /Download/, 'the bought model is now downloadable');
+  assert.equal(calls.filter((c) => c.method === 'asset.import').length, importsBefore, 'buying never starts a download by itself');
+  assert.deepEqual(orderCalls.filter((c) => c.startsWith('POST /api/v1/orders') && !c.endsWith('claim-paid')), ['POST /api/v1/orders']);
+  globalThis.fetch = base;
+  await act(() => r.unmount()); getJobs().forEach((j) => remove(j.slug));
 });
 
 test('tab "Đã tải" lists exactly the owned models; unknown rights never list anything', async () => {
@@ -101,6 +123,11 @@ test('tab "Đã tải" lists exactly the owned models; unknown rights never list
 test('unknown rights: every card says it cannot verify instead of offering Download or Mua', async () => {
   server(); rights = null; const root = await mount();
   for (const c of cards()) { assert.match(c, /Chưa xác minh được quyền/); assert.doesNotMatch(c, /Download|Mua/); }
+  const actions = [...document.querySelectorAll('.group')].map((g) => g.querySelectorAll('button')[2]);
+  assert.ok(actions.every((b) => b.disabled), 'the buttons are disabled, not just relabelled');
+  const before = calls.filter((c) => c.method === 'asset.import').length;
+  await act(async () => { actions[0].click(); await flush(); });
+  assert.equal(calls.filter((c) => c.method === 'asset.import').length, before, 'clicking an unverified card downloads nothing');
   emit('library.offline', { offline: true });
   await act(flush);
   assert.match(cards()[0], /Cần Internet để xác minh quyền/);
@@ -153,6 +180,29 @@ test('a download error from the host is shown in Vietnamese in the queue', async
   await done(root);
 });
 
+test('the header badge follows the host: ONLINE, then OFFLINE when the host reports it, then ONLINE again', async () => {
+  server(); const root = await mount();
+  assert.match(document.querySelector('header').textContent, /ONLINE/);
+  await act(async () => { emit('library.offline', { offline: true }); await flush(); });
+  assert.match(document.querySelector('header').textContent, /OFFLINE/);
+  await act(async () => { emit('library.offline', { offline: false }); await flush(); });
+  assert.match(document.querySelector('header').textContent, /ONLINE/);
+  await done(root);
+});
+
+test('changing the search goes back to page 1', async () => {
+  server(); const many = globalThis.fetch;
+  globalThis.fetch = async (url, init) => String(url) === '/api/v1/catalog' ? json({ catalogVersion: 1, models: Array.from({ length: 70 }, (_, i) => ({ id: id(500 + i), name: 'Lamp ' + String(i).padStart(2, '0'), categoryId: id(1), priceVnd: 15000, sizeBytes: 1048576, fileType: 'rar', status: 'PUBLISHED' })) }) : many(url, init);
+  const root = await mount();
+  await act(async () => { button('Sau').click(); await flush(); });
+  assert.ok(text().includes("Trang 2 / 3"), "second page of 70 models");
+  const input = document.querySelector('input[placeholder="Tìm model…"]');
+  await act(async () => { const set = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value').set; set.call(input, 'lamp'); input.dispatchEvent(new dom.window.Event('input', { bubbles: true })); await flush(); });
+  assert.ok(!text().includes("Trang 2"), "after searching, the grid is not stuck on page 2"); assert.match(text(), /Lamp 00/);
+  globalThis.fetch = many;
+  await done(root);
+});
+
 test('the device popup shows the machine code from the host; category filter narrows the grid', async () => {
   server(); const root = await mount();
   await act(async () => { button('Thiết bị').click(); await flush(); });
@@ -161,3 +211,4 @@ test('the device popup shows the machine code from the host; category filter nar
   assert.ok(document.querySelectorAll('.group').length < 3, 'selecting a category narrows the list');
   await done(root);
 });
+

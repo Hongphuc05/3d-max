@@ -76,3 +76,11 @@ test('action state: browser views only; queue states win; unknown rights never o
   assert.deepEqual(actionState(base), { kind: 'download', label: 'Download', disabled: false });
   assert.equal(actionState({ ...base, owned: false, job: { status: 'failed' } }).kind, 'buy', 'a stale failed job never unlocks a model the device does not own');
 });
+
+test('a model whose category sits in a parent cycle still gets a finite ancestry; a model with only a large preview uses it for the thumbnail too', () => {
+  const cyc = [{ id: 'a', parentId: 'b', name: 'A', fullPath: 'A' }, { id: 'b', parentId: 'a', name: 'B', fullPath: 'B' }];
+  const { products } = buildCatalog({ catalog: { models: [{ id: id(300), name: 'Cyclic', categoryId: 'a', status: 'PUBLISHED' }] }, categories: cyc, manifest: { previews: [] } });
+  assert.deepEqual(products[0].folderIds.sort(), ['a', 'b']);
+  const lgOnly = buildCatalog({ catalog: { models: [model(9)] }, categories, manifest: { previews: [{ modelId: id(109), variant: 'lg', sha256: sha('d') }] } }).products[0];
+  assert.deepEqual([lgOnly.thumb, lgOnly.image], [previewUrl(sha('d')), previewUrl(sha('d'))]);
+});

@@ -7,6 +7,7 @@ import { HostBar } from './HostBar.jsx';
 import { Icon } from './icons.jsx';
 import { getLibraryStatus, isMaxHost } from './integrations/3dsmax/bridge.js';
 import { PluginCard, PluginDetail } from './plugin-components.jsx';
+import OrderDialog from './OrderDialog.jsx';
 import { Queue } from './Queue.jsx';
 import { useJobs } from './queue.js';
 import { owns } from './v3-catalog.js';
@@ -18,7 +19,6 @@ const SORTS = {
   small: ['Nhẹ → nặng', (a, b) => (a.info.sizeMB ?? 0) - (b.info.sizeMB ?? 0)],
   big: ['Nặng → nhẹ', (a, b) => (b.info.sizeMB ?? 0) - (a.info.sizeMB ?? 0)],
 };
-const BUY_NOTICE = 'Thanh toán đang được hoàn thiện. Vui lòng quay lại sau.';
 
 function Device({ max }) {
   const [machineCode, setMachineCode] = useState(null);
@@ -40,7 +40,7 @@ function Device({ max }) {
   );
 }
 
-export default function PluginApp() {
+export default function PluginApp({ orderPollMs }) {
   const [subs, setSubs] = useState(() => new Set());
   const [text, setText] = useState('');
   const [sort, setSort] = useState('name');
@@ -49,11 +49,11 @@ export default function PluginApp() {
   const [activeId, setActiveId] = useState(null);
   const [drawer, setDrawer] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const [notice, setNotice] = useState('');
+  const [buying, setBuying] = useState(null);
   const { products, tree, state, error, offline, progress, entitlements } = usePluginCatalog(reloadKey);
   const jobs = useJobs();
   const max = isMaxHost();
-  const ctx = useMemo(() => ({ max, entitlements, offline, onBuy: () => setNotice(BUY_NOTICE) }), [max, entitlements, offline]);
+  const ctx = useMemo(() => ({ max, entitlements, offline, onBuy: (p) => setBuying(p) }), [max, entitlements, offline]);
 
   // Chon model theo id (khong giu doi tuong cu): khi catalog tu lam moi, panel chi tiet cap nhat theo ban moi hoac dong neu model da bi go.
   const active = useMemo(() => products.find((p) => p.id === activeId) || null, [products, activeId]);
@@ -81,12 +81,6 @@ export default function PluginApp() {
       <HostBar reloadKey={reloadKey} onRefresh={() => setReloadKey((k) => k + 1)} apiStatus={max ? (offline ? 'down' : 'ok') : null} />
       {offline && <div role="status" className="border-b border-warn/40 bg-warn/10 px-3 py-1 font-mono text-[11px] text-warn">Đang offline — hiển thị catalog đã lưu trên máy. Cần Internet để tải model.</div>}
       {progress && <div role="status" className="border-b border-line px-3 py-1 font-mono text-[11px] text-mute">Đang tải ảnh xem trước {progress.done}/{progress.total}…</div>}
-      {notice && (
-        <div role="alert" className="flex items-center gap-2 border-b border-accent/40 bg-accent/10 px-3 py-1.5 font-mono text-[11px] text-accent">
-          <span className="flex-1">{notice}</span>
-          <button onClick={() => setNotice('')} aria-label="Đóng thông báo" className="rounded p-0.5 hover:bg-line"><Icon name="close" className="size-3.5" /></button>
-        </div>
-      )}
 
       <div className="flex min-h-0 flex-1">
         <nav className="flex w-14 shrink-0 flex-col items-center gap-2 border-r border-line bg-panel py-3">
@@ -153,6 +147,8 @@ export default function PluginApp() {
 
         <PluginDetail p={active} onClose={() => setActiveId(null)} ctx={ctx} />
       </div>
+      {/* Thanh toan xong (chu xac nhan) -> tai lai catalog + quyen: nut chuyen sang Download khong can bam Lam moi. */}
+      {buying && <OrderDialog model={buying} pollMs={orderPollMs} onClose={() => setBuying(null)} onConfirmed={() => setReloadKey((k) => k + 1)} />}
     </div>
   );
 }
