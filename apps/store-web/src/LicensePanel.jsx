@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from './auth.jsx';
 import { useLicense } from './license.jsx';
-import Purchase from './Purchase.jsx';
 
 const button = 'rounded-md bg-accent px-4 py-2 text-sm font-bold text-accent-ink disabled:opacity-50';
 const secondary = 'rounded-md border border-line px-3 py-2 text-sm hover:bg-raised disabled:opacity-50';
@@ -68,7 +67,6 @@ export default function LicensePanel({ onLogin }) {
         {!max && <p className="text-sm text-mute">Mở plugin trong 3ds Max để kích hoạt thiết bị và import model.</p>}
         <button disabled={loading} className={secondary} onClick={() => refresh()}>Làm mới license</button>
       </>}
-      <Purchase key={user?.id || 'guest'} />
     </div>
   </div>;
 }

@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import * as api from './api.js';
 import { useAuth } from './auth.jsx';
 import * as native from './integrations/3dsmax/bridge.js';
-import { proveDevice, licenseError, orderIdFromLocation } from './license-flow.js';
+import { proveDevice, licenseError } from './license-flow.js';
 
 const Context = createContext(null);
 export const useLicense = () => useContext(Context);
@@ -15,7 +15,7 @@ export function LicenseProvider({ children }) {
   const max = native.isMaxHost();
   const generation = useRef(0);
   const [state, setState] = useState(empty);
-  const [open, setOpen] = useState(() => location.pathname === '/license' || Boolean(orderIdFromLocation(location.search)));
+  const [open, setOpen] = useState(() => location.pathname === '/license');
 
   const refresh = useCallback(async (restore = true) => {
     const current = ++generation.current;

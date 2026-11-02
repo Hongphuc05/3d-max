@@ -31,24 +31,22 @@ after(async () => {
   if (dispose) await dispose(pool);
 });
 
-test('assembled API health and disabled payments work without model catalog', { skip: !configured }, async () => {
+test('assembled API health works without model catalog; the retired payOS endpoints no longer exist (P7)', { skip: !configured }, async () => {
   const health = await fetch(base + '/api/health');
   assert.equal(health.status, 200);
   assert.equal(health.headers.get('cache-control'), 'no-store');
   assert.deepEqual(await health.json(), { ok: true, db: true, products: 0,
-    catalogAvailable: false, licensingAvailable: true, paymentsAvailable: false });
+    catalogAvailable: false, licensingAvailable: true });
   assert.equal((await fetch(base + '/api/products')).status, 200);
   const status = await (await fetch(base + '/api/catalog/version')).json();
   assert.equal(status.provider,'r2');
   assert.equal(status.state,'configuration_required');
   assert.equal(JSON.stringify(status).includes('secretAccessKey'),false);
   assert.equal((await fetch(base + '/api/licenses/me')).status, 401);
-  assert.equal((await (await fetch(base + '/api/payments/product')).json()).product.available, false);
-  const webhook = await fetch(base + '/api/webhooks/payos', {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}',
-  });
-  assert.equal(webhook.status, 503);
-  assert.deepEqual(await webhook.json(), { error: 'PAYMENTS_UNAVAILABLE' });
+  for (const [path, method] of [['/api/payments/product', 'GET'], ['/api/payments/create', 'POST'], ['/api/webhooks/payos', 'POST']]) {
+    const r = await fetch(base + path, { method, headers: { 'content-type': 'application/json' }, body: method === 'POST' ? '{}' : undefined });
+    assert.equal(r.status, 404, `${method} ${path} must be gone`);
+  }
 });
 
 test('v3 P1: Drive admin API is wired in order — protected routes need auth, the OAuth callback does not', { skip: !configured }, async () => {

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { proveDevice, safeCheckoutUrl, orderIdFromLocation, licenseError } from './license-flow.js';
+import { proveDevice, licenseError } from './license-flow.js';
 
 test('activation obtains native identity and signs server challenge before sending key', async () => {
   const calls = [];
@@ -41,12 +41,6 @@ test('failed native proof never calls activation API', async () => {
   assert.equal(activated, false);
 });
 
-test('checkout only allows exact HTTPS payOS host and ignores forged paid flags', () => {
-  assert.equal(safeCheckoutUrl('https://pay.payos.vn/web/abc'), 'https://pay.payos.vn/web/abc');
-  for (const value of ['javascript:alert(1)', 'http://pay.payos.vn/x', 'https://pay.payos.vn.evil.test/x', 'https://user:pass@pay.payos.vn/x']) {
-    assert.equal(safeCheckoutUrl(value), null);
-  }
-  assert.equal(orderIdFromLocation('?status=PAID&success=true'), null);
-  assert.equal(orderIdFromLocation('?orderId=8f7a0302-85f1-4405-9c06-1dcffba8da5a&status=PAID'), '8f7a0302-85f1-4405-9c06-1dcffba8da5a');
+test('license errors are shown in Vietnamese', () => {
   assert.match(licenseError({ code: 'DEVICE_LIMIT_REACHED' }), /2 thiết bị/);
 });

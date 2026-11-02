@@ -11,19 +11,6 @@ export async function proveDevice({ api, native, licenseKey, identity: knownIden
   return { ...session, identity };
 }
 
-export function safeCheckoutUrl(value) {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:' && url.hostname === 'pay.payos.vn'
-      && !url.username && !url.password && !url.port ? url.href : null;
-  } catch { return null; }
-}
-
-export function orderIdFromLocation(search) {
-  const id = new URLSearchParams(search).get('orderId');
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id || '') ? id : null;
-}
-
 const messages = {
   UNAUTHENTICATED: 'Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.',
   LICENSE_NOT_FOUND: 'Tài khoản chưa có license Lifetime.',
@@ -48,10 +35,7 @@ const messages = {
   INVALID_SIGNATURE: 'Không xác minh được chữ ký của thiết bị.',
   CHALLENGE_EXPIRED: 'Yêu cầu xác minh đã hết hạn. Vui lòng thử lại.',
   CHALLENGE_USED: 'Yêu cầu xác minh đã được dùng. Vui lòng thử lại.',
-  PAYMENTS_UNAVAILABLE: 'Thanh toán chưa được cấu hình hoặc tạm thời không khả dụng.',
   ALREADY_LICENSED: 'Tài khoản đã có license. Mở My License để xem.',
-  PAYMENT_CREATION_PENDING: 'Đơn đang được kiểm tra với payOS. Thử lại để tiếp tục cùng đơn, không tạo khoản mua mới.',
-  PAYMENT_REQUEST_TIMEOUT: 'Kết nối thanh toán quá thời gian chờ. Thử lại để tiếp tục cùng đơn; máy chủ vẫn tự xác minh thanh toán.',
   TOO_MANY_REQUESTS: 'Đã gửi quá nhiều yêu cầu. Vui lòng đợi rồi thử lại.',
   TOO_MANY_ATTEMPTS: 'Đã gửi quá nhiều yêu cầu. Vui lòng đợi một phút rồi thử lại.',
 };

@@ -9,12 +9,6 @@ import { migrate, pool } from './db.js';
 import { errorHandler, originGuard, rateLimit } from './security.js';
 import { licenseRouter, deviceRouter, adminLicenseRouter, startLicenseMaintenance } from './licensing/routes.js';
 import { validateLicenseConfiguration } from './licensing/crypto.js';
-import * as licenseService from './licensing/service.js';
-import { loadPaymentConfig } from './payments/config.js';
-import { startPaymentMaintenance } from './payments/maintenance.js';
-import { createPaymentProvider } from './payments/provider.js';
-import { createPaymentService } from './payments/service.js';
-import { createPaymentRouter, createPayosWebhookRouter } from './payments/routes.js';
 import { adminRouter } from './admin/routes.js';
 import { createOAuth, loadDriveConfig } from './drive/oauth.js';
 import { createDriveRouter } from './drive/routes.js';
@@ -48,9 +42,6 @@ export const catalogEvents = createCatalogEvents({ pool });
 
 let licenseConfigured = false;
 try { validateLicenseConfiguration(); licenseConfigured = true; } catch { /* Fail closed below. */ }
-const configuredPayment = loadPaymentConfig();
-const paymentConfig = { ...configuredPayment, enabled: configuredPayment.enabled && licenseConfigured };
-const payments = createPaymentService({ pool, licenseService, config: paymentConfig, provider: createPaymentProvider(paymentConfig) });
 
 export const app = express();
 app.disable('x-powered-by');
@@ -59,7 +50,6 @@ if (process.env.TRUST_PROXY) app.set('trust proxy', process.env.TRUST_PROXY.spli
 if (catalog.config.webhookEnabled) app.use('/internal/r2/events', r2WebhookRouter(catalog));
 app.use(express.json({ limit: '10kb' }));
 app.use('/api', (_req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
-app.use('/api/webhooks/payos', createPayosWebhookRouter({ service: payments, rateLimit: rateLimit({ limit: 300 }) }));
 app.use(originGuard);
 app.use('/previews', createPreviewRouter({ dir: PREVIEW_DIR }));
 app.use('/previews', express.static(path.join(STORAGE, 'previews'), { maxAge: '30d', immutable: true }));
@@ -84,13 +74,12 @@ app.use('/api/admin', createOrderAdminRouter({ service: orders, client: telegram
 // v3 P3.7: cai dat + bang model. Guard gan tung route, duong dan khac roi xuong adminRouter cu.
 app.use('/api/admin', createCatalogAdminRouter({ pool, guards: [requireAuth, requireAdmin], rateLimit: rateLimit({ limit: 60 }), envDefaultPrice: loadWorkerConfig(process.env).defaultPriceVnd }));
 app.use('/api/admin', adminRouter(catalog));
-app.use('/api/payments', rateLimit({ limit: 120 }), createPaymentRouter({ service: payments, requireUser: requireAuth, rateLimit: rateLimit({ limit: 20 }) }));
 app.get('/api/health', async (_q, r) => {
   const db = await pool.query('select 1').then(() => true, () => false);
   const snapshot = db ? await catalog.snapshot().catch(() => null) : null;
   const available = db && await catalog.available().catch(() => false);
   r.status(db ? 200 : 503).json({ ok: db, db, products: snapshot?.products.length || 0,
-    catalogAvailable: available, licensingAvailable: licenseConfigured, paymentsAvailable: paymentConfig.enabled });
+    catalogAvailable: available, licensingAvailable: licenseConfigured });
 });
 // v3 P4.1: dang ky thiet bi + quyen so huu. Guard gan tung route nen /api/v1/catalog/* roi xuong router catalog.
 // LICENSE_PUBLIC_KEY_B64 (khoa cong khai MXL1): khong dat hoac sai = bo qua MXL1 (chi log TEN bien, khong log gia tri).
@@ -126,17 +115,15 @@ if (process.argv[1] === import.meta.filename) {
   const port = process.env.PORT || 4000;
   if (!licenseConfigured) console.warn('Licensing disabled: configure distinct LICENSE_HMAC_SECRET and LICENSE_ENCRYPTION_KEY (32-byte base64).');
   if (!driveConfig.configured) console.warn('Google Drive disabled: set', driveConfig.errors.join(', '), '(docs/drive-setup.md).');
-  if (!paymentConfig.enabled) console.warn('Payments disabled: configure valid payment and license environment variables.');
   if (!catalog.config.configured) console.warn('Catalog configuration required:', catalog.config.errors.join(', '), 'See docs/r2-catalog.md.');
   const stopCatalog = catalog.start();
   await catalogEvents.start();
   const stopMaintenance = startLicenseMaintenance();
-  const stopPayments = startPaymentMaintenance(payments, paymentConfig.enabled);
   if (!telegramConfig.enabled) console.warn('Telegram disabled: set TELEGRAM_BOT_TOKEN, TELEGRAM_OWNER_CHAT_IDS, TELEGRAM_WEBHOOK_SECRET, TELEGRAM_WEBHOOK_PATH; orders can still be confirmed from the admin web.');
   const orderMaintenance = createOrderMaintenance({ service: orders, client: telegramClient });
   orderMaintenance.start();
   const server = app.listen(port, process.env.HOST || '127.0.0.1', () => console.log(`store-api http://localhost:${port}`));
-  const stop = () => { const catalogStopped=stopCatalog(); orderMaintenance.stop(); stopPayments(); stopMaintenance(); const eventsStopped = catalogEvents.stop(); server.close(async() => { await catalogStopped; await eventsStopped; await pool.end(); }); };
+  const stop = () => { const catalogStopped=stopCatalog(); orderMaintenance.stop(); stopMaintenance(); const eventsStopped = catalogEvents.stop(); server.close(async() => { await catalogStopped; await eventsStopped; await pool.end(); }); };
   process.once('SIGINT', stop);
   process.once('SIGTERM', stop);
 }

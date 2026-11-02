@@ -68,16 +68,6 @@ async function mount({ host = false, loggedIn = false, licensed = false, activat
       fixture.activated = true;
       return response({ license: { id: fixture.sessionLicenseId, type: license.type, status: license.status }, device: { ...identity }, expiresAt: new Date(Date.now() + 900000).toISOString() });
     }
-    if (path === '/api/payments/product') return response({ product: { amountVnd: 2000, available: fixture.available } });
-    if (path.startsWith('/api/payments/')) {
-      if (path === '/api/payments/create' && fixture.stallCreate) return fixture.stallCreate;
-      if (path.endsWith('/reconcile')) { fixture.paid = true; fixture.licensed = true; }
-      return response({ order: { id: orderId, orderCode: 1234, amountVnd: 2000,
-        qrCode: '00020101021238570010A0000007270127000697042201131234567890123520459995303704540420005802VN6304ABCD',
-        accountNumber: '1234567890123', accountName: '3DSMOOD', bankBin: '970422', description: '3DsMood',
-        expiresAt: new Date(Date.now() + 900000).toISOString(),
-        status: fixture.paid ? 'PAID' : 'PENDING', checkoutUrl: 'https://pay.payos.vn/web/fixture' } });
-    }
     throw new Error(`Unhandled fixture route ${path}`);
   };
   root = createRoot(container);
@@ -191,7 +181,6 @@ test('UI: an account without its own license cannot import from a machine activa
   assert.match(container.textContent, /Máy này đã được kích hoạt bằng license của tài khoản khác/);
   assert.equal(container.textContent.includes(key), false);
   assert.equal(container.querySelector('input[placeholder="3DM-…"]') !== null, false);
-  assert.ok(buttons().some(element => element.textContent === 'Mua Lifetime'));
   assert.equal(fixture.requests.some(r => r.path === '/api/licenses/activate'), false);
 });
 
@@ -224,97 +213,4 @@ test('UI: an unlicensed Max account can see a preview but has no Download or imp
   assert.equal(container.querySelector('img[alt="Preview only"]')?.getAttribute('src'), product.thumb);
   assert.equal(buttons().some(element => ['Download', 'Download & import vào 3ds Max'].includes(element.textContent)), false);
   assert.ok(buttons().some(element => element.textContent === 'Mua license để tải'));
-});
-
-test('UI: fake paid query remains pending; only server reconciliation exposes license', async () => {
-  dom.window.history.replaceState(null, '', `/license?orderId=${orderId}&status=PAID&success=true`);
-  await mount({ loggedIn: true });
-  assert.match(container.textContent, /Đang chờ thanh toán/);
-  assert.equal(container.textContent.includes(key), false);
-  assert.equal(container.querySelector('a[href="https://pay.payos.vn/web/fixture"]')?.rel, 'noopener noreferrer');
-  await click(button('Kiểm tra thanh toán'));
-  assert.equal(Boolean(container.querySelector('#payment-title')), false, 'paid modal must reveal the license automatically');
-  assert.match(container.textContent, /Thanh toán thành công/);
-  assert.equal(container.querySelector('code')?.textContent, key);
-  assert.equal(sessionStorage.getItem(`3dm-order:${user.id}`), null);
-  assert.match(container.textContent, /3DsMood Lifetime - Active/);
-  assert.equal(fixture.requests.some((value) => value.path === '/api/payments/create'), false);
-});
-
-test('UI: paid confirmation closes payment immediately while the owner key is still loading', async () => {
-  dom.window.history.replaceState(null, '', `/license?orderId=${orderId}`);
-  await mount({ loggedIn: true });
-  const fetchFixture = globalThis.fetch;
-  let resolveLicense;
-  globalThis.fetch = async (url, init) => String(url) === '/api/licenses/me'
-    ? new Promise(resolve => { resolveLicense = resolve; }) : fetchFixture(url, init);
-  await click(button('Kiểm tra thanh toán'));
-  assert.equal(Boolean(container.querySelector('#payment-title')), false);
-  assert.match(container.textContent, /Đang tải key license từ máy chủ/);
-  await act(async () => { resolveLicense(response({ license })); });
-  assert.equal(Boolean(container.querySelector('#payment-title')), false);
-  assert.equal(container.querySelector('code')?.textContent, key);
-});
-
-test('UI: payment confirmation loads the key without starting another native device verification', async () => {
-  dom.window.history.replaceState(null, '', `/license?orderId=${orderId}`);
-  await mount({ host: true, loggedIn: true });
-  const fetchFixture = globalThis.fetch;
-  let resolveVerification, verificationStarted = false;
-  globalThis.fetch = async (url, init) => String(url) === '/api/devices/verify'
-    ? new Promise(resolve => { verificationStarted = true; resolveVerification = resolve; }) : fetchFixture(url, init);
-  await click(button('Kiểm tra thanh toán'));
-  try {
-    assert.equal(container.querySelector('code')?.textContent, key);
-    assert.equal(Boolean(container.querySelector('#payment-title')), false);
-    assert.equal(verificationStarted, false);
-  } finally {
-    if (resolveVerification) await act(async () => { resolveVerification(response({ error: 'DEVICE_NOT_ACTIVATED' }, 403)); });
-  }
-});
-
-test('UI: missing provider configuration disables purchase', async () => {
-  await mount({ loggedIn: true, available: false });
-  await click(button('My License · Lifetime'));
-  assert.equal(button('Mua Lifetime').disabled, true);
-  assert.match(container.textContent, /Thanh toán tạm thời chưa khả dụng/);
-});
-
-test('UI: buy displays local VietQR, price, bank fields and countdown; close keeps pending order for reload', async () => {
-  await mount({ loggedIn: true });
-  await click(button('My License · Lifetime'));
-  assert.match(container.textContent, /2\.000 ₫/);
-  await click(button('Mua Lifetime'));
-  assert.match(container.textContent, /Thanh toán 3DsMood Lifetime/);
-  assert.ok(container.querySelector('svg[aria-label="Mã VietQR thanh toán"] path'));
-  assert.match(container.textContent, /1234567890123/);
-  assert.match(container.textContent, /QR hết hạn sau/);
-  assert.equal(sessionStorage.getItem(`3dm-order:${user.id}`), orderId);
-  await click(button('Đóng thanh toán'));
-  assert.equal(container.querySelector('svg[aria-label="Mã VietQR thanh toán"]'), null);
-  await click(button('Tiếp tục đơn thanh toán'));
-  assert.ok(container.querySelector('svg[aria-label="Mã VietQR thanh toán"]'));
-  assert.equal(fixture.requests.filter(r => r.path === '/api/payments/create').length, 1);
-});
-
-test('UI: custom callback path opens owner order without trusting cancel or paid URL status', async () => {
-  dom.window.history.replaceState(null, '', `/payment/cancel?orderId=${orderId}&status=PAID&cancel=true`);
-  await mount({ loggedIn: true });
-  assert.match(container.textContent, /Thanh toán 3DsMood Lifetime/);
-  assert.match(container.textContent, /Đang chờ thanh toán/);
-  assert.equal(fixture.requests.some(r => r.path === '/api/payments/create'), false);
-});
-
-test('UI: account change cancels stale checkout and restores purchase controls', async () => {
-  await mount({ loggedIn: true });
-  await click(button('My License · Lifetime'));
-  let resolve;
-  fixture.stallCreate = new Promise(done => { resolve = done; });
-  await click(button('Mua Lifetime'));
-  assert.equal(button('Đang xử lý…').disabled, true);
-  await act(async () => { await fixture.auth.logout(); });
-  await act(async () => { await fixture.auth.login('ui@example.test', 'password'); });
-  assert.equal(button('Mua Lifetime').disabled, false);
-  await act(async () => { resolve(response({ order: { id: orderId, status: 'PENDING' } })); });
-  assert.equal(container.textContent.includes('Thanh toán 3DsMood Lifetime'), false);
 });
