@@ -28,7 +28,7 @@ Không gửi token trong JSON/Authorization/localStorage. Cookie cũ trước kh
 | GET `/admin/overview` | sid admin | `{stats:{users,activeLicenses,paidOrders,revenueVnd},catalog}` |
 | GET `/admin/users?q=&page=` | sid admin | `{items:[{id,email,createdAt,license,deviceCount}],total,page,limit}` |
 | GET `/admin/users/:id` | sid admin | `{user,license,devices,orders,audit}`; tối đa 25 đơn/50 audit gần đây |
-| GET `/admin/orders?q=&status=&page=` | sid admin | `{items:[{id,userId,email,orderCode,amountVnd,status,createdAt,paidAt,fulfillmentResult}],total,page,limit}` |
+| GET `/admin/legacy-orders?q=&status=&page=` | sid admin | `{items:[{id,userId,email,orderCode,amountVnd,status,createdAt,paidAt,fulfillmentResult}],total,page,limit}` |
 | GET `/admin/audit?page=` | sid admin | `{items:[{id,eventType,actorEmail,targetEmail,licenseId,createdAt,details}],total,page,limit}` |
 | PATCH `/admin/account` | sid admin, kể cả first login; `{username,currentPassword,newPassword?}` | `{user}`; thu hồi mọi session cũ, Set-Cookie sid mới |
 | POST `/admin/licenses/issue` | sid admin; `{userId}` | 201 `{license}` (không raw key của người khác) |
