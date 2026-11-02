@@ -1,0 +1,20 @@
+# Build context cua deploy/rehearsal/Dockerfile la goc repo: loai bo moi thu khong phai store-api (source/ nang ~10 GB).
+.git
+source
+storage
+web
+library
+installer
+plugin-csharp
+maxscript
+frontend
+cloudflare
+docs
+apps/store-web
+apps/license-admin
+**/node_modules
+**/dist
+**/*.log
+.env
+**/.env
+deploy/rehearsal/.state

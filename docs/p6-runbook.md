@@ -13,6 +13,7 @@
 | `deploy/backup.sh` + `restore-drill.sh` | Sao lưu thật DB dev (360 model), giữ đúng N bản, đối chiếu số dòng, **restore sang DB tạm = PASS**; ca phải FAIL đều FAIL (trùng production / lệch số dòng / dump cụt); không để lại DB tạm | container `postgres:16` | Restore trên **máy sạch khác**, `BACKUP_RSYNC_TARGET` ra ngoài VPS, dữ liệu production |
 | Giám sát (`scripts/monitor.js`) | Logic + SQL trên PostgreSQL thật (15 test, đột biến) | `npm test` | Chạy bằng systemd timer, `systemctl show MainPID`, gửi Telegram thật |
 | Rollback migration (`npm run migrate -- rollback`) | Test trên PostgreSQL thật, chạy tay trên DB dev | `src/rollback.test.js` | Diễn tập rollback trên bản sao production (plan E5) |
+| Diễn tập deploy production (`deploy/rehearsal/rehearse.sh`) | Cả stack Postgres + API + worker + Nginx thật trong Docker: 30 kiểm tra PASS (migrate, health, 401, preview chung volume, SSE, giám sát, backup+restore, job Drive lỗi, DB sập rồi hồi phục) | `bash deploy/rehearsal/rehearse.sh` (cần Docker; `... down` để dọn) | systemd, TLS thật, `TRUST_PROXY=127.0.0.1`, tải model qua Nginx, Drive thật, RAM worker khi xử lý ảnh |
 
 ## 1. Chuẩn bị VPS (một lần)
 
