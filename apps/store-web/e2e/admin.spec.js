@@ -20,7 +20,7 @@ async function fixture(page, { authenticated = false, firstLogin = true } = {}) 
     else if (path === '/api/admin/licenses/issue') { expect(request.postDataJSON()).toEqual({ userId: customer.id }); state.issues++; state.license = { id: 'license-fixture', type: 'LIFETIME', status: 'ACTIVE', last4: 'ABCD' }; json = { license: state.license }; }
     else if (path === '/api/admin/licenses/revoke') { const body = request.postDataJSON(); state.revokes.push(body); state.license = { ...state.license, status: body.status }; json = { license: state.license }; }
     else if (path === '/api/admin/licenses/resume') { expect(request.postDataJSON()).toEqual({ userId: customer.id }); state.resumes++; state.license = { ...state.license, status: 'ACTIVE' }; json = { license: state.license }; }
-    else if (path === '/api/admin/orders') json = { items: [{ id: 'order-fixture', email: customer.email, userId: customer.id, orderCode: 100000000001, status: 'PAID', amountVnd: 2000, createdAt: customer.createdAt, paidAt: customer.createdAt }], page: 1, limit: 20, total: 1 };
+    else if (path === '/api/admin/legacy-orders') json = { items: [{ id: 'order-fixture', email: customer.email, userId: customer.id, orderCode: 100000000001, status: 'PAID', amountVnd: 2000, createdAt: customer.createdAt, paidAt: customer.createdAt }], page: 1, limit: 20, total: 1 };
     else if (path === '/api/admin/audit') json = { items: [{ id: 'audit-fixture', eventType: 'LICENSE_REVOKED', actorEmail: originalAdmin.email, targetEmail: customer.email, createdAt: customer.createdAt, details: { reason: 'Đối chiếu vi phạm' } }], page: 1, limit: 20, total: 1 };
     else if (path === '/api/health') json = { ok: true };
     else if (path === '/api/categories') json = [];

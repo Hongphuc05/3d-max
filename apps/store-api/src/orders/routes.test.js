@@ -292,13 +292,13 @@ test('reject: AWAITING_OWNER -> REJECTED, no entitlements, audited; a decided or
   assert.equal((await rights(y.dev.id)).length, 1, 'a confirmed order cannot be rejected afterwards');
 });
 
-test('only the web admin may confirm an order the customer never marked as paid (Telegram may not)', { skip }, async () => {
+test('nobody — Telegram or the web admin — may confirm an order the customer never marked as paid (plan P5.6)', { skip }, async () => {
   const x = await placed();
   assert.equal((await svc.decide(x.order.orderId, 'CONFIRM', { kind: 'TELEGRAM_OWNER', ref: '1' })).outcome, 'ALREADY_DECIDED', 'not awaiting the owner: refused for Telegram');
   assert.equal((await rights(x.dev.id)).length, 0);
-  const out = await svc.decide(x.order.orderId, 'CONFIRM', { kind: 'ADMIN', ref: 'admin-1' });
-  assert.equal(out.outcome, 'CONFIRMED'); assert.equal((await rights(x.dev.id)).length, 1);
-  assert.equal((await audits('ORDER_CONFIRMED'))[0].actor_kind, 'ADMIN');
+  assert.equal((await svc.decide(x.order.orderId, 'CONFIRM', { kind: 'ADMIN', ref: 'admin-1' })).outcome, 'ALREADY_DECIDED');
+  assert.equal((await svc.decide(x.order.orderId, 'REJECT', { kind: 'ADMIN', ref: 'admin-1' })).outcome, 'ALREADY_DECIDED');
+  assert.equal((await rights(x.dev.id)).length, 0); assert.equal((await audits('ORDER_CONFIRMED')).length, 0);
 });
 
 test('a database failure in the middle of confirming leaves no orphan entitlement and the order stays awaiting', { skip }, async () => {

@@ -1,5 +1,5 @@
 // P5 / plan §2.7: admin xu ly don tu web (phong khi Telegram loi hoac khach quen bam "da chuyen khoan"). requireAdmin that, xac thuc gia.
-// Duong dan la /purchase-orders (khong phai /orders): /api/admin/orders cua he thanh toan cu van con va dang duoc trang admin cu dung.
+// Duong dan theo plan §2.7: /api/admin/orders (danh sach thanh toan payOS cu da doi sang /api/admin/legacy-orders).
 import test, { after, afterEach, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
@@ -60,7 +60,7 @@ afterEach(async () => { for (const s of servers.splice(0)) { s.closeAllConnectio
 
 test('guards: anonymous 401 and an ordinary user 403 on every route; nothing changes', { skip }, async () => {
   const x = await order();
-  for (const [path, method] of [['/purchase-orders', 'GET'], [`/purchase-orders/${x.o.orderId}/confirm`, 'POST'], [`/purchase-orders/${x.o.orderId}/reject`, 'POST']]) {
+  for (const [path, method] of [['/orders', 'GET'], [`/orders/${x.o.orderId}/confirm`, 'POST'], [`/orders/${x.o.orderId}/reject`, 'POST']]) {
     assert.equal((await api(path, { method, user: null })).status, 401, `anon ${method} ${path}`);
     assert.equal((await api(path, { method, user: 'user' })).status, 403, `user ${method} ${path}`);
   }
@@ -69,49 +69,49 @@ test('guards: anonymous 401 and an ordinary user 403 on every route; nothing cha
 
 test('list: filter by status, newest first, no bank data; a bad filter is a 400', { skip }, async () => {
   const a = await order('AWAITING_OWNER'), b = await order('PENDING_PAYMENT');
-  const r = await api('/purchase-orders');
+  const r = await api('/orders');
   assert.equal(r.status, 200);
   const body = await r.json();
   assert.deepEqual(body.items.map((o) => o.orderId), [b.o.orderId, a.o.orderId]);
   assert.equal(JSON.stringify(body).includes('0123456789012'), false);
-  assert.deepEqual((await (await api('/purchase-orders?status=AWAITING_OWNER')).json()).items.map((o) => o.orderId), [a.o.orderId]);
-  const bad = await api('/purchase-orders?status=NOPE');
+  assert.deepEqual((await (await api('/orders?status=AWAITING_OWNER')).json()).items.map((o) => o.orderId), [a.o.orderId]);
+  const bad = await api('/orders?status=NOPE');
   assert.equal(bad.status, 400); assert.equal(await code(bad), 'INVALID_PARAMS');
 });
 
 test('confirm: grants the entitlement, audits the admin, edits the Telegram message if there is one', { skip }, async () => {
   const x = await order();
   await pool.query('update purchase_orders set telegram_chat_id=5, telegram_message_id=9 where id=$1', [x.o.orderId]);
-  const r = await api(`/purchase-orders/${x.o.orderId}/confirm`, { method: 'POST' });
+  const r = await api(`/orders/${x.o.orderId}/confirm`, { method: 'POST' });
   assert.equal(r.status, 200); assert.deepEqual(await r.json(), { status: 'CONFIRMED' });
   assert.equal(await rights(x.device), 1);
   const a = (await pool.query("select actor_kind, actor_ref from audit_events where action='ORDER_CONFIRMED'")).rows;
   assert.deepEqual(a, [{ actor_kind: 'ADMIN', actor_ref: adminId }]);
   assert.equal(edits.length, 1); assert.deepEqual([edits[0].chatId, edits[0].messageId], ['5', '9']); assert.match(edits[0].text, /web/i);
-  const again = await api(`/purchase-orders/${x.o.orderId}/confirm`, { method: 'POST' });
+  const again = await api(`/orders/${x.o.orderId}/confirm`, { method: 'POST' });
   assert.equal(again.status, 409); assert.equal(await code(again), 'ORDER_STATE_INVALID');
   assert.equal(await rights(x.device), 1); assert.equal(edits.length, 1);
 });
 
-test('the admin may confirm an order the customer never marked as paid; reject works; expired / decided / unknown are refused with the right codes', { skip }, async () => {
+test('the admin decides only orders the customer marked as paid (like Telegram); reject works; never-claimed / expired / decided / unknown are refused with the right codes', { skip }, async () => {
   const p = await order('PENDING_PAYMENT');
-  assert.equal((await api(`/purchase-orders/${p.o.orderId}/confirm`, { method: 'POST' })).status, 200);
-  assert.equal(await rights(p.device), 1);
+  const early = await api(`/orders/${p.o.orderId}/confirm`, { method: 'POST' });
+  assert.equal(early.status, 409); assert.equal(await code(early), 'ORDER_STATE_INVALID'); assert.equal(await rights(p.device), 0, 'plan P5.6: only AWAITING_OWNER can be confirmed');
   const x = await order();
-  const rej = await api(`/purchase-orders/${x.o.orderId}/reject`, { method: 'POST' });
+  const rej = await api(`/orders/${x.o.orderId}/reject`, { method: 'POST' });
   assert.equal(rej.status, 200); assert.deepEqual(await rej.json(), { status: 'REJECTED' }); assert.equal(await rights(x.device), 0);
-  assert.equal(await code(await api(`/purchase-orders/${x.o.orderId}/confirm`, { method: 'POST' })), 'ORDER_STATE_INVALID');
+  assert.equal(await code(await api(`/orders/${x.o.orderId}/confirm`, { method: 'POST' })), 'ORDER_STATE_INVALID');
   const late = await order();
   await pool.query("update purchase_orders set expires_at = now() - interval '1 second' where id=$1", [late.o.orderId]);
-  const r = await api(`/purchase-orders/${late.o.orderId}/confirm`, { method: 'POST' });
+  const r = await api(`/orders/${late.o.orderId}/confirm`, { method: 'POST' });
   assert.equal(r.status, 409); assert.equal(await code(r), 'ORDER_STATE_INVALID'); assert.equal(await rights(late.device), 0);
   for (const id of [randomUUID(), 'not-a-uuid']) {
-    const u = await api(`/purchase-orders/${id}/confirm`, { method: 'POST' });
+    const u = await api(`/orders/${id}/confirm`, { method: 'POST' });
     assert.equal(u.status, 404); assert.equal(await code(u), 'ORDER_NOT_FOUND');
   }
 });
 
-test('other /api/admin paths still fall through to the next router (legacy /orders is untouched)', { skip }, async () => {
-  assert.deepEqual(await (await api('/orders')).json(), { legacy: 'next' });
-  assert.deepEqual(await (await api('/purchase-orders/x/unknown', { method: 'POST' })).json(), { legacy: 'next' });
+test('other /api/admin paths still fall through to the next router (the legacy payOS list lives at /legacy-orders)', { skip }, async () => {
+  assert.deepEqual(await (await api('/legacy-orders')).json(), { legacy: 'next' });
+  assert.deepEqual(await (await api('/orders/x/unknown', { method: 'POST' })).json(), { legacy: 'next' });
 });

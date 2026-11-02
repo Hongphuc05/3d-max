@@ -95,8 +95,7 @@ export function createOrderService({ pool }) {
   /** @returns {{outcome:'CONFIRMED'|'REJECTED'|'EXPIRED'|'ALREADY_DECIDED'|'NOT_FOUND', order?}} */
   async function decide(orderId, action, actor) {
     if (!UUID.test(orderId ?? '')) return { outcome: 'NOT_FOUND' };
-    // Telegram chi quyet duoc don khach DA bao chuyen khoan; admin web con duoc xac nhan don khach quen bam.
-    const allowed = actor.kind === 'ADMIN' ? OPEN : ['AWAITING_OWNER'];
+    const allowed = ['AWAITING_OWNER']; // plan P5.6: chi don khach DA bao chuyen khoan, ca Telegram lan admin web
     const tgUser = actor.kind === 'TELEGRAM_OWNER' && /^\d{1,18}$/.test(String(actor.ref)) ? String(actor.ref) : null;
     const confirm = action === 'CONFIRM';
     return inTransaction(pool, async (db) => {

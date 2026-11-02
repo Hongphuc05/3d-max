@@ -102,7 +102,7 @@ dbTest('migration 013 disables the old shared bootstrap admin and revokes its se
 
 dbTest('anonymous and ordinary users cannot read or mutate admin data or self-assign admin', async () => {
   const anon = client(), { c } = await customer();
-  for (const path of ['/admin/overview', '/admin/users', '/admin/orders', '/admin/audit']) {
+  for (const path of ['/admin/overview', '/admin/users', '/admin/legacy-orders', '/admin/audit']) {
     assert.equal((await anon.call('GET', path)).status, 401);
     assert.equal((await c.call('GET', path)).status, 403);
   }
@@ -171,7 +171,7 @@ dbTest('administrator searches users and reviews license, device, payment and au
     assert.equal(JSON.stringify(detail.body).includes(secret), false, secret);
   }
   assert.equal(detail.body.license.key, undefined);
-  const orders = await c.call('GET', `/admin/orders?status=PAID&q=${encodeURIComponent(user.email)}`);
+  const orders = await c.call('GET', `/admin/legacy-orders?status=PAID&q=${encodeURIComponent(user.email)}`);
   assert.equal(orders.body.total, 1);
   assert.equal(orders.body.items[0].email, user.email);
   const overview = await c.call('GET', '/admin/overview');
@@ -197,7 +197,7 @@ dbTest('administrator searches users and reviews license, device, payment and au
 
 dbTest('admin endpoints reject malformed pagination, filters, IDs and duplicate usernames', async () => {
   const c = await admin();
-  for (const path of ['/admin/users?page=0', '/admin/users?page=abc', '/admin/orders?status=UNKNOWN',
+  for (const path of ['/admin/users?page=0', '/admin/users?page=abc', '/admin/legacy-orders?status=UNKNOWN',
     '/admin/audit?page=-1', '/admin/users?q=' + 'x'.repeat(255), '/admin/users/not-a-uuid']) {
     assert.equal((await c.call('GET', path)).status, 400, path);
   }

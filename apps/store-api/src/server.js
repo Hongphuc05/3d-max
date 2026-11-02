@@ -79,7 +79,7 @@ const telegramConfig = loadTelegramConfig(process.env);
 if (telegramConfig.errors.length) throw new Error(`Invalid Telegram configuration: ${telegramConfig.errors.join(', ')}`);
 const telegramClient = telegramConfig.enabled ? createTelegramClient({ token: telegramConfig.botToken }) : null;
 const orders = createOrderService({ pool });
-// Admin xu ly don: gan TRUOC adminRouter cu (cung tien to /api/admin); duong dan /purchase-orders khong dung /orders cua he thanh toan cu.
+// Admin xu ly don: gan TRUOC adminRouter cu (cung tien to /api/admin); plan §2.7: /api/admin/orders. Danh sach payOS cu o /api/admin/legacy-orders.
 app.use('/api/admin', createOrderAdminRouter({ service: orders, client: telegramClient, guards: [requireAuth, requireAdmin], rateLimit: rateLimit({ limit: 60 }) }));
 // v3 P3.7: cai dat + bang model. Guard gan tung route, duong dan khac roi xuong adminRouter cu.
 app.use('/api/admin', createCatalogAdminRouter({ pool, guards: [requireAuth, requireAdmin], rateLimit: rateLimit({ limit: 60 }), envDefaultPrice: loadWorkerConfig(process.env).defaultPriceVnd }));

@@ -48,7 +48,7 @@ export const logout = () => request('POST', '/auth/logout', { body: {} });
 export const adminOverview = (signal) => get('/admin/overview', null, signal);
 export const adminUsers = (params, signal) => get('/admin/users', params, signal);
 export const adminUser = (id, signal) => get(`/admin/users/${encodeURIComponent(id)}`, null, signal);
-export const adminOrders = (params, signal) => get('/admin/orders', params, signal);
+export const adminOrders = (params, signal) => get('/admin/legacy-orders', params, signal);
 export const adminAudit = (params, signal) => get('/admin/audit', params, signal);
 export const adminDriveStatus = (signal) => get('/admin/drive/status', null, signal);
 export const adminDriveAddSource = (body) => request('POST', '/admin/drive/sources', { body });
