@@ -28,6 +28,14 @@ import { loadDownloadConfig } from './downloads/config.js';
 import { createModelCache } from './downloads/cache.js';
 import { createPublicLinkFetcher } from './downloads/public-link.js';
 import { createDownloadRouter } from './downloads/routes.js';
+import { createOrderService } from './orders/service.js';
+import { createOrderRouter } from './orders/routes.js';
+import { createOrderAdminRouter } from './orders/admin-routes.js';
+import { createOrderMaintenance } from './orders/maintenance.js';
+import { loadTelegramConfig } from './telegram/config.js';
+import { createTelegramClient } from './telegram/client.js';
+import { createTelegramNotifier } from './telegram/notifier.js';
+import { createTelegramRouter } from './telegram/routes.js';
 
 const publicLink = createPublicLinkFetcher();
 
@@ -66,6 +74,13 @@ const driveConfig = loadDriveConfig();
 // v3 P3.1: quet Drive bang API key (D26); null = chua dat DRIVE_API_KEY (status bao `missingConfig`). Ma OAuth P1 van gan nhung khong la luong chinh.
 app.use('/api/admin/drive', createDriveRouter({ pool, oauth: createOAuth({ pool, config: driveConfig }), config: driveConfig, apiKey: loadWorkerConfig(process.env).apiKey ?? null,
   guards: [requireAuth, requireAdmin], rateLimit: rateLimit({ limit: 60 }) }));
+// v3 P5: don hang + Telegram. Khong dat bien TELEGRAM_* = tat bot (khach van mua, admin xac nhan tren web); dat thieu/sai = dung ngay, chi neu TEN bien.
+const telegramConfig = loadTelegramConfig(process.env);
+if (telegramConfig.errors.length) throw new Error(`Invalid Telegram configuration: ${telegramConfig.errors.join(', ')}`);
+const telegramClient = telegramConfig.enabled ? createTelegramClient({ token: telegramConfig.botToken }) : null;
+const orders = createOrderService({ pool });
+// Admin xu ly don: gan TRUOC adminRouter cu (cung tien to /api/admin); duong dan /purchase-orders khong dung /orders cua he thanh toan cu.
+app.use('/api/admin', createOrderAdminRouter({ service: orders, client: telegramClient, guards: [requireAuth, requireAdmin], rateLimit: rateLimit({ limit: 60 }) }));
 // v3 P3.7: cai dat + bang model. Guard gan tung route, duong dan khac roi xuong adminRouter cu.
 app.use('/api/admin', createCatalogAdminRouter({ pool, guards: [requireAuth, requireAdmin], rateLimit: rateLimit({ limit: 60 }), envDefaultPrice: loadWorkerConfig(process.env).defaultPriceVnd }));
 app.use('/api/admin', adminRouter(catalog));
@@ -82,6 +97,10 @@ app.get('/api/health', async (_q, r) => {
 let legacyPublicKey = null;
 try { legacyPublicKey = loadLegacyPublicKey(process.env.LICENSE_PUBLIC_KEY_B64); } catch { console.error('[v3] LICENSE_PUBLIC_KEY_B64 khong dung duoc; bo qua license MXL1'); }
 app.use('/api/v1', createDeviceRouter({ pool, legacyPublicKey, rateLimit: rateLimit({ limit: 60 }) }));
+// v3 P5: don hang cua khach + webhook Telegram (guard gan tung route nen cac duong dan khac roi xuong router phia sau).
+app.use('/api/v1', createOrderRouter({ pool, service: orders, rateLimit: rateLimit({ limit: 60 }),
+  notifier: telegramClient ? createTelegramNotifier({ client: telegramClient, service: orders, ownerChatIds: telegramConfig.ownerChatIds }) : null }));
+if (telegramClient) app.use('/api/telegram', rateLimit({ limit: 120 }), createTelegramRouter({ config: telegramConfig, client: telegramClient, service: orders }));
 // v3 P4.2: phien tai model (D26: VPS tai ho tu link cong khai, luu ban sao tren dia). Cau hinh sai -> dung ngay, chi neu TEN bien.
 const downloadConfig = loadDownloadConfig(process.env);
 if (downloadConfig.errors.length) throw new Error(`Invalid download configuration: ${downloadConfig.errors.join(', ')}`);
@@ -113,8 +132,11 @@ if (process.argv[1] === import.meta.filename) {
   await catalogEvents.start();
   const stopMaintenance = startLicenseMaintenance();
   const stopPayments = startPaymentMaintenance(payments, paymentConfig.enabled);
+  if (!telegramConfig.enabled) console.warn('Telegram disabled: set TELEGRAM_BOT_TOKEN, TELEGRAM_OWNER_CHAT_IDS, TELEGRAM_WEBHOOK_SECRET, TELEGRAM_WEBHOOK_PATH; orders can still be confirmed from the admin web.');
+  const orderMaintenance = createOrderMaintenance({ service: orders, client: telegramClient });
+  orderMaintenance.start();
   const server = app.listen(port, process.env.HOST || '127.0.0.1', () => console.log(`store-api http://localhost:${port}`));
-  const stop = () => { const catalogStopped=stopCatalog(); stopPayments(); stopMaintenance(); const eventsStopped = catalogEvents.stop(); server.close(async() => { await catalogStopped; await eventsStopped; await pool.end(); }); };
+  const stop = () => { const catalogStopped=stopCatalog(); orderMaintenance.stop(); stopPayments(); stopMaintenance(); const eventsStopped = catalogEvents.stop(); server.close(async() => { await catalogStopped; await eventsStopped; await pool.end(); }); };
   process.once('SIGINT', stop);
   process.once('SIGTERM', stop);
 }

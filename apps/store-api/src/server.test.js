@@ -105,6 +105,22 @@ test('P4.1 device API is mounted before the catalog router: anonymous /me/entitl
   assert.equal((await fetch(base + '/api/v1/catalog/version')).status, 200, 'catalog routes fall through the device router');
 });
 
+test('P5 orders are mounted: anonymous customer calls get a v3 401, the admin order routes sit behind the admin guard, the legacy /api/admin/orders is untouched, and the Telegram webhook does not exist while the bot is not configured', { skip: !configured }, async () => {
+  const id = '00000000-0000-4000-8000-000000000000';
+  for (const [path, method] of [['/api/v1/orders', 'POST'], [`/api/v1/orders/${id}`, 'GET'], [`/api/v1/orders/${id}/claim-paid`, 'POST'], [`/api/v1/orders/${id}/cancel`, 'POST']]) {
+    const r = await fetch(base + path, { method, headers: { 'content-type': 'application/json' }, body: method === 'POST' ? '{}' : undefined });
+    assert.equal(r.status, 401, `${method} ${path}`);
+    assert.ok(r.headers.get('x-request-id')); assert.equal((await r.json()).error.code, 'UNAUTHENTICATED');
+  }
+  for (const [path, method] of [['/api/admin/purchase-orders', 'GET'], [`/api/admin/purchase-orders/${id}/confirm`, 'POST'], [`/api/admin/purchase-orders/${id}/reject`, 'POST']]) {
+    const r = await fetch(base + path, { method, headers: { 'content-type': 'application/json' }, body: method === 'POST' ? '{}' : undefined });
+    assert.equal(r.status, 401, `${method} ${path}`); assert.ok(r.headers.get('x-request-id'), 'answered by the new router');
+  }
+  const legacy = await fetch(base + '/api/admin/orders');
+  assert.equal(legacy.status, 401); assert.equal(legacy.headers.get('x-request-id'), null, 'the legacy orders list is still answered by the legacy router');
+  assert.equal((await fetch(base + '/api/telegram/webhook/anything_at_all_1234567', { method: 'POST' })).status, 404, 'no webhook route when Telegram is off');
+});
+
 test('P4.2 download API is mounted: anonymous callers get a v3 401 from the new routers, not a legacy answer', { skip: !configured }, async () => {
   const id = '00000000-0000-4000-8000-000000000000';
   for (const [path, method] of [[`/api/v1/models/${id}/import-session`, 'POST'], ['/api/v1/model-downloads/' + 'A'.repeat(43), 'GET']]) {

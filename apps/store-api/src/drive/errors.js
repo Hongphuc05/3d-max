@@ -39,6 +39,11 @@ const MESSAGES = {
   SESSION_INVALID: 'Phiên tải không hợp lệ, đã dùng hoặc đã hết hạn. Hãy bấm tải lại.',
   DOWNLOAD_BUSY: 'Máy chủ đang phục vụ quá nhiều lượt tải. Thử lại sau ít phút.',
   STORAGE_DOWNLOAD_FAILED: 'Máy chủ chưa lấy được file model. Thử lại sau.',
+  ALREADY_ENTITLED: 'Thiết bị này đã sở hữu model trong đơn.',
+  TOO_MANY_PENDING_ORDERS: 'Bạn đang có quá nhiều đơn chờ thanh toán. Hủy hoặc chờ đơn cũ hết hạn rồi thử lại.',
+  PAYMENT_NOT_CONFIGURED: 'Thanh toán chưa được cấu hình trên máy chủ. Vui lòng quay lại sau.',
+  ORDER_STATE_INVALID: 'Đơn hàng không ở trạng thái cho phép thao tác này.',
+  ORDER_NOT_FOUND: 'Không tìm thấy đơn hàng.',
   INTERNAL: 'Lỗi hệ thống. Thử lại sau.',
 };
 
@@ -60,6 +65,7 @@ const STATUS = {
   INVALID_PARAMS: 400, FORBIDDEN: 403, UNAUTHENTICATED: 401, RATE_LIMITED: 429, CATALOG_EVENTS_BUSY: 503, DISK_SPACE_LOW: 409, PLAN_STALE: 409, JOB_NOT_FOUND: 422, MODEL_NOT_FOUND: 422, REVIEW_NOT_FOUND: 422, REVIEW_ALREADY_RESOLVED: 409, REVIEW_NOT_APPLICABLE: 409, JOB_NOT_CANCELLABLE: 409, SYNC_ALREADY_RUNNING: 409, SCAN_LIMIT_EXCEEDED: 422,
   DEVICE_BLOCKED: 403, DEVICE_KEY_MISMATCH: 403, CHALLENGE_INVALID: 403, SIGNATURE_INVALID: 403,
   NOT_ENTITLED: 403, MODEL_NOT_AVAILABLE: 409, MODEL_DOWNLOAD_RESTRICTED: 409, SESSION_INVALID: 404, DOWNLOAD_BUSY: 503, STORAGE_DOWNLOAD_FAILED: 502,
+  ALREADY_ENTITLED: 409, TOO_MANY_PENDING_ORDERS: 429, PAYMENT_NOT_CONFIGURED: 503, ORDER_STATE_INVALID: 409, ORDER_NOT_FOUND: 404,
 };
 export const apiError = (code, opts) => new ApiError(code, STATUS[code] ?? 400, opts);
 export const messageFor = (code) => MESSAGES[code];
