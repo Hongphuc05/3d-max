@@ -85,6 +85,7 @@
     <Compile Include="CatalogUpdateWatcher.cs" />
     <Compile Include="BackendModelDownloader.cs" />
     <Compile Include="V3Routes.cs" />
+    <Compile Include="OrdersClient.cs" />
     <Compile Include="V3Library.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

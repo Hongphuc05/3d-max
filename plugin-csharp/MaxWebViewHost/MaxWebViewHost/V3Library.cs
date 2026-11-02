@@ -25,6 +25,7 @@ namespace MaxWebViewHost
         public PreviewCacheService Previews { get; private set; }
         public CatalogUpdateWatcher Watcher { get; private set; }
         public BackendModelDownloader Downloader { get; private set; }
+        public OrdersClient Orders { get; private set; }
         public bool Offline { get; private set; }
 
         /// <summary>Events for the web UI (library.updated, library.offline, library.previewProgress). Raised on a worker thread.</summary>
@@ -48,6 +49,7 @@ namespace MaxWebViewHost
             library.Previews = new PreviewCacheService(Path.Combine(dataRoot, "Previews"), configuration.SeedDirectory, api);
             library.Watcher = new CatalogUpdateWatcher(library.Catalog, library.Previews, api, TimeSpan.FromMinutes(5));
             library.Downloader = new BackendModelDownloader(downloadApi, library.Session);
+            library.Orders = new OrdersClient(api, library.Session);
             library.Watcher.Updated += c => library.Raise("library.updated", new Dictionary<string, object> { { "catalogVersion", c.CatalogVersion } });
             library.Watcher.OfflineChanged += offline => { library.Offline = offline; library.Raise("library.offline", new Dictionary<string, object> { { "offline", offline } }); };
             library.Previews.Progress += (done, total) =>

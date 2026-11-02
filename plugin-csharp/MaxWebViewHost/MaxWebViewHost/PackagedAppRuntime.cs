@@ -206,6 +206,18 @@ namespace MaxWebViewHost
             if (route == V3Route.Blocked) return Response(404, "{\"error\":{\"code\":\"NOT_FOUND\"}}");
             try
             {
+                if (route == V3Route.OrderCreate || route == V3Route.OrderGet || route == V3Route.OrderClaim || route == V3Route.OrderCancel)
+                {
+                    byte[] body = null;
+                    if (route == V3Route.OrderCreate && request.Content != null)
+                    {
+                        try { body = await ReadBoundedAsync(request.Content, 4096, ct); }
+                        catch (IOException) { throw new ApiException("INVALID_PARAMS", 400, "Yêu cầu không hợp lệ."); }
+                    }
+                    var order = await V3.Orders.HandleAsync(route, sha, body, ct);
+                    return core.Environment.CreateWebResourceResponse(new MemoryStream(order.Body), order.Status, order.Status == 201 ? "Created" : "OK",
+                        "Content-Type: application/json\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n");
+                }
                 if (route == V3Route.Entitlements)
                     return Json(Encoding.UTF8.GetBytes(V3Library.EntitlementsJson(await V3.GetEntitlementsAsync(ct))));
                 if (route == V3Route.Preview)
