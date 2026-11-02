@@ -125,3 +125,87 @@ Mỗi bước: ghi log vào `STATUS.md` → viết test (PostgreSQL thật) → 
 - Mọi kết quả "sau 2 tuần ổn định" của plan (điều kiện cho P7) **chưa có** vì chưa deploy.
 - Nhánh `v3/p2-sync-worker` đã gom P2→P7; plan ghi nhánh khác cho từng phase — chưa xác nhận cách đặt nhánh khi merge.
 - Đã **push** lên origin tới commit `24197b1`; mọi commit sau đó (P5, P6, P7) **chỉ ở local**.
+
+---
+
+## HƯỚNG GIẢI QUYẾT THEO PLAN — các bước cần làm để đóng từng phần còn mở
+
+> Gắn nhãn: **[plan]** = đúng mục/ghi chú của `v3-implementation-plan.md` hoặc `v3-architecture.md`; **[đề xuất]** = tôi đề xuất, plan không nói, cần chủ dự án duyệt.
+> Người làm: **CDA** = chủ dự án (việc chỉ bạn làm được hoặc phải quyết định); **CODE** = việc code do tôi/agent làm (vẫn theo quy trình: test trước → code → đột biến → chạy cả bộ → ghi log → commit local, push khi được yêu cầu).
+> Thứ tự đã xếp theo **đường găng**: (1) mở khóa → (2) code còn thiếu → (3) nghiệm thu thật P2–P5 → (4) P6 trên VPS → (5) P7 làm nốt.
+
+### Bước 1 — Mở khóa (CDA, làm trước, không cần code)
+| # | Việc | Mục đích / nguồn |
+|---|---|---|
+| 1.1 | Tạo lại **API key Drive**, cập nhật `.env` | Khóa cũ đã lộ (STATUS, `p4-open-issues.md` §3.5) |
+| 1.2 | Gửi **18 tiêu chí nghiệm thu gốc** ("master prompt §14") | **[plan]** P6.5 yêu cầu E2E theo 18 tiêu chí; repo chỉ có #17. Khi có, thay bảng nháp ở `p6-runbook.md` §9 |
+| 1.3 | **Chốt các quyết định đang chờ** (bảng dưới) | Nhiều bước code bên dưới bị chặn bởi đây |
+| 1.4 | Đóng hẳn 3ds Max rồi **quét lại Drive ID** trong cache WebView2 (lệnh ở `p4-open-issues.md` §2.1) | Hoàn tất bằng chứng "không lộ Drive ID" (mục nghiệm thu P4.5, chưa đủ bằng chứng) |
+
+Các quyết định cần chốt (mỗi dòng: lựa chọn đề xuất → bước nào được mở khóa):
+| Quyết định | Đề xuất của tôi | Mở khóa |
+|---|---|---|
+| Đơn đã báo chuyển tiền nhưng chủ bấm ✅ **sau khi hết hạn** | Giữ đúng plan ("không cấp"), thêm quy trình cấp tay ở trang thiết bị (P3.5) + nhắc đơn `AWAITING_OWNER` (đã có cảnh báo > 60 phút) | 2.3, 3.5 |
+| Chỗ lưu **khóa riêng ký MXL1** (server hay giữ ở máy chủ dự án) | **[plan]** ghi "private key nếu ký MXL1 trên server — Q P0": cần chốt; nếu để trên server thì nằm trong `/etc/3dsmood/store.env`, không commit | 2.1 |
+| **3 model RAR lồng** | (a) giải nén lồng 1 lớp có giới hạn (**[plan]** nêu cả hai phương án ở `p4-open-issues.md` §3.1) | 2.7 |
+| **Bỏ chế độ đóng gói** (bundled/offline) của plugin? | **[plan]** kiến trúc §10.2.4: phát hành 2 bước — (a) bản có cả hai chế độ, (b) bỏ bundled khi đa số khách đã cập nhật. Giữ cả hai ở bản đầu | 5.5 |
+| Nguồn thông tin ngân hàng: `app_settings` hay env `PAYMENT_BANK_*` | Giữ `app_settings` (đã duyệt ở P3.7); sửa chỗ mâu thuẫn trong plan P5.1/P6.2 | — |
+| 4 quyết định P2.5 + lệch migration 018 | Duyệt như đã trình ở `STATUS.md` | — |
+| INCREMENTAL ở worker | Thiết kế riêng rồi duyệt (hiện luôn quét đầy đủ) | 2.5 |
+| Mã lỗi `JOB_NOT_FOUND` 422, `ORDER_NOT_FOUND` 404 (plan không định nghĩa) | Chấp nhận | — |
+
+### Bước 2 — Code còn thiếu theo plan (CODE)
+| # | Việc | Chi tiết theo plan | Nghiệm thu |
+|---|---|---|---|
+| 2.1 | **P3.5 Thiết bị & quyền** (**chặn việc gỡ `apps/license-admin`**) | **[plan]** §2.7: `GET /api/admin/devices?q=` (tìm theo machine code/tên), `GET /api/admin/devices/:id` (thiết bị + entitlements + đơn + log tải), `POST /api/admin/entitlements` `{deviceId, scope, modelId?}` (có audit), `POST /api/admin/entitlements/:id/revoke` (audit), `POST /api/admin/licenses/mxl1` `{machineCode, licenseId?}` (ký MXL1 **như `apps/license-admin`, có ghi DB + audit**). Giao diện trong `apps/store-web` (giữ theme UI-1, không tạo app admin mới). Dùng lại logic ký ở `apps/license-admin/server/license-core.mjs` | Cấp tay hoạt động (**tiêu chí #17**); thu hồi chặn tải ngay (A6); ghi DB + audit; test guard 401/403; đột biến |
+| 2.2 | **P3.6 Đơn hàng — giao diện** | **[plan]** danh sách đơn chờ + xác nhận/từ chối từ web (API `/api/admin/orders` đã có và có test) | Admin xác nhận được đơn `AWAITING_OWNER` từ web khi Telegram lỗi |
+| 2.3 | Quy trình cho đơn **quá hạn đã báo tiền** | **[đề xuất]** nút "cấp quyền thủ công theo đơn" ở màn đơn (dùng 2.1) | Khách trả tiền mà chủ bấm trễ vẫn được xử lý, có audit |
+| 2.4 | **P3.4 phần còn thiếu**: chọn ảnh chính, ghép tay | **[plan]** P3.4 ("chọn ảnh chính; xác nhận remap"); hiện API từ chối `choice` | Admin chọn được ảnh chính; test + đột biến |
+| 2.5 | **INCREMENTAL** ở worker | **[plan]** P3.2 có nút FULL/INCREMENTAL; worker chưa đọc `job.mode` → thiết kế + duyệt rồi làm | Quét tăng dần không bỏ sót/không xóa nhầm |
+| 2.6 | **Dọn ảnh preview mồ côi** | **[plan]** nợ P2-6 ghi "job GC an toàn — P6": chỉ xóa file không còn `model_previews` trỏ tới và đủ cũ | Test: không xóa ảnh đang dùng; không xóa ảnh mới tải dở |
+| 2.7 | **RAR lồng** (3/360) | Theo quyết định ở bước 1.3: giải nén lồng 1 lớp với giới hạn dung lượng/số file/độ sâu + chống zip-slip + test (`ArchivePackage`), hoặc đóng gói lại 3 file | Import `80891x Muro Lightstar` thành công trên Max |
+| 2.8 | **Script kiểm hàng loạt 360 file "Anyone with the link"** | **[đề xuất]** (gợi ý ở `p4-open-issues.md` §2.4): gọi `public-link.open()` cho từng `drive_file_id`, báo file nào không tải được | Danh sách file lỗi trước khi mở bán |
+| 2.9 | Script tạo admin đầu tiên | **[đề xuất]** để không còn phụ thuộc "đăng ký khách rồi cấp `LICENSE_ADMIN_USER_IDS`" | Mở khóa việc gỡ đăng ký khách (5.2) |
+| 2.10 | Giới hạn tải theo **nhiều tiến trình** | **[đề xuất]** (`p4-open-issues.md` §2.9): hiện đếm trong tiến trình; nếu chạy >1 tiến trình API thì chuyển đếm vào DB; nếu không thì ghi rõ "chạy 1 tiến trình" trong runbook | Giới hạn đúng khi có nhiều tiến trình |
+| 2.11 | Nợ nhỏ | `devMockHost` thiếu sự kiện `library.*` (P4.4); test `disk guard` không ổn định cần điều tra nếu tái diễn; dọn cảnh báo khởi động của code cũ (OAuth/R2/Licensing) khi làm 5.x | — |
+
+### Bước 3 — Nghiệm thu thật P2–P5 (CDA chạy, CODE hỗ trợ)
+| # | Việc | Theo plan | Tiêu chí |
+|---|---|---|---|
+| 3.1 | **P5.1**: tạo bot @BotFather, lấy chat_id; điền `TELEGRAM_*`; dựng HTTPS (tunnel/domain); chạy `node --env-file-if-exists=.env scripts/telegram-set-webhook.js`; nhập thông tin ngân hàng ở admin → Cài đặt | **[plan]** P5.1, P5.7 | Chỉ chủ bấm được; người lạ bị bỏ qua |
+| 3.2 | **Quét VietQR** bằng ≥ 2 app ngân hàng thật; xác nhận số tiền + nội dung | **[plan]** P5.3 ([CHƯA KIỂM CHỨNG]) | QR hợp lệ; nếu sai định dạng thì sửa `orders/qr.js` theo tài liệu NAPAS |
+| 3.3 | **Nghiệm thu P5**: 1 model, chủ nhận tin, bấm ✅, plugin sang Download **≤ 10 giây (đo thật)**, tải và merge được | **[plan]** "Nghiệm thu (thật)" P5 | Đạt thời gian + import thành công |
+| 3.4 | Thử trên bot thật: `inline_keyboard: []` có làm nút biến mất không; nhiều owner | tài liệu Telegram không nói rõ | Nếu nút còn → đổi cách sửa tin theo kết quả |
+| 3.5 | **P4 còn lại**: MXL1 thật (cần `LICENSE_PUBLIC_KEY_B64` + `license.txt` hợp lệ), thu hồi giữa phiên, file lớn qua trang virus-scan, bộ cài HTTPS thật + ký số + cập nhật/rollback | `p4-open-issues.md` §2.2–2.6; **[plan]** D6 (tương thích ngược) | Mỗi mục ghi pass/fail + bằng chứng |
+| 3.6 | **P2 còn lại**: đo RAM worker suốt job (< 400 MB), kill cứng giữa job trên Drive thật, thử Google OAuth thật nếu còn dùng | **[plan]** P2.8 | Số liệu vào `STATUS.md` |
+| 3.7 | **P3 còn lại** (chạy trên server thật với token admin thật): P3.1 qua endpoint admin với Google thật; P3.4 gộp remap trên model chờ duyệt thật; "Xem lỗi" của job lỗi; ẩn model qua UI; màn hẹp; Playwright viết lại cho admin | **[plan]** P3.x | Bằng chứng ảnh chụp/log |
+| 3.8 | Chạy **43 file không liệt kê được** qua `ArchivePackage` (SharpCompress) | `p4-open-issues.md` §2.7 | Biết file nào thật sự hỏng |
+
+### Bước 4 — P6 trên VPS (CDA thuê VPS, làm theo `p6-runbook.md`)
+Thứ tự **[plan]** P6 + kiến trúc §10.2:
+1. Thuê VPS ~2 GB + domain; cài Node, PostgreSQL 16 (chỉ localhost), `postgresql-client`, nginx, certbot, rsync (`p6-runbook.md` §1).
+2. Cấp TLS Let's Encrypt; cài `deploy/nginx/3dsmood.conf` và unit systemd (§3); đặt `TRUST_PROXY=127.0.0.1`.
+3. **Staging trước** (cùng cấu hình 2 GB): khôi phục bản sao DB, migrate trên bản sao, smoke test (§4.1).
+4. Production: backup → `npm run migrate` → restart API → worker → admin web (§4.2); kiểm `/api/health`.
+5. **Bộ cài:** `installer\build-installer.ps1 -ApiBaseUrl https://<domain>` kéo seed preview (**[plan]** P6.0).
+6. **8 failure test** F1–F8 (§8) — ghi pass/fail.
+7. **E2E 18 tiêu chí** (sau bước 1.2) + luồng Telegram — mỗi tiêu chí pass/fail + bằng chứng.
+8. **Diễn tập restore trên máy sạch khác** + chép backup ra ngoài VPS (`BACKUP_RSYNC_TARGET`) + **diễn tập rollback** (**[plan]** E3, E5).
+9. Đo tải (k6/autocannon) cho `503 DOWNLOAD_BUSY` và RSS (**[plan]** kiến trúc §10.1 "Tải"); RAM worker với Drive thật so với `MemoryMax=900M`.
+10. Thêm giám sát từ bên ngoài (ping `/api/health`) **[đề xuất]**.
+11. Phát hành plugin **2 bước** (kiến trúc §10.2.4): (a) bản có cả hai chế độ, (b) bỏ bundled khi đa số khách đã cập nhật.
+Mọi sai khác với diễn tập Docker (systemd, `MemoryMax`, `ProtectSystem=strict`, `TRUST_PROXY`) được ghi vào `STATUS.md` và sửa file trong `deploy/`.
+
+### Bước 5 — Làm nốt P7 (chỉ sau khi 4 ổn định ≥ 2 tuần **[plan]**)
+| # | Việc | Điều kiện trước | Ghi chú |
+|---|---|---|---|
+| 5.1 | Gỡ `apps/license-admin` (Vercel) | **2.1 xong và nghiệm thu** (tiêu chí #17 đạt trên web mới) | **[plan]** P7 "sau khi P3.5 thay thế" |
+| 5.2 | Gỡ đăng ký/đăng nhập khách (`auth.js`) và `StoreApp` trong `App.jsx` | **2.9** + admin có form đăng nhập riêng | Giữ đăng nhập admin |
+| 5.3 | Gỡ `src/r2/`, `r2-http.js`, `cloudflare/`, `scripts/*r2*`, `@aws-sdk/client-s3`, `catalog-runtime` R2, `assets.js` | Gỡ trước các màn admin cũ (overview/đồng bộ R2, `CatalogSyncButton`) | **[plan]** P7; gỡ cả cụm cùng lúc, chạy lại cả bộ test |
+| 5.4 | **Xóa bảng DB cũ** (`orders`, `payment_events`, `licenses`, …) bằng migration + rollback | Gỡ các màn admin đọc `orders`; **backup trước; chủ dự án duyệt** | **[plan]** P7 "(backup trước, chủ dự án duyệt)"; kiểm bằng `restore-drill.sh` trước |
+| 5.5 | Gỡ `GoogleDriveDownloader.cs`, `StaticCatalogService.cs` (và dọn test native) | Quyết định bỏ chế độ đóng gói (bước 1.3) + đa số khách đã cập nhật | **[plan]** "nếu bỏ chế độ đóng gói" |
+| 5.6 | Gỡ `licensing/` (license Lifetime theo tài khoản) nếu không còn khách dùng | **[đề xuất]** xác nhận không còn khách cũ cần; plan không liệt kê | — |
+| 5.7 | Cập nhật `docs/decisions.md`, `README.md`, `CLAUDE.md` | Sau mỗi mục trên | **[plan]** P7 |
+
+### Quy tắc áp dụng cho mọi bước
+Mỗi bước code: viết test trước (PostgreSQL thật) → code → **đột biến** → chạy **cả bộ** `npm test` (api + web) và native liên quan, kiểm mã thoát thật → ghi `STATUS.md` (bảng "Nhật ký P2") + `STATUS-v3.md` → commit **local**. Push chỉ khi chủ dự án yêu cầu. Không commit bí mật hay thông tin ngân hàng thật. Việc "chưa kiểm chứng" phải ghi rõ, không ghi là xong.
