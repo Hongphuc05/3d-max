@@ -39,8 +39,9 @@ const field = (name) => { const el = container.querySelector(`[name="${name}"]`)
 async function type(name, value) {
   await act(async () => {
     const el = field(name);
-    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(el, value);
-    el.dispatchEvent(new window.Event('input', { bubbles: true }));
+    const proto = el.tagName === 'SELECT' ? window.HTMLSelectElement.prototype : window.HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, value);
+    el.dispatchEvent(new window.Event(el.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }));
   });
 }
 const saveButton = () => [...container.querySelectorAll('button')].find((b) => b.textContent === 'Lưu cài đặt');
@@ -86,7 +87,7 @@ test('save: PUT carries all seven fields, trimmed text and real numbers; success
 
 test('empty optional bank fields are sent as null (clears them), not as empty text', async () => {
   await mount(saved);
-  await type('bankName', ''); await type('bankBin', '   '); await type('accountNo', ''); await type('accountName', '');
+  await type('bankName', ''); await type('bankBin', ''); await type('accountNo', ''); await type('accountName', '');
   await submit();
   assert.deepEqual([puts()[0].body.bankName, puts()[0].body.bankBin, puts()[0].body.accountNo, puts()[0].body.accountName], [null, null, null, null]);
 });
@@ -94,7 +95,6 @@ test('empty optional bank fields are sent as null (clears them), not as empty te
 test('client-side checks block bad input with a clear message and send NOTHING', async () => {
   await mount();
   const cases = [
-    ['bankBin', '12345', /BIN gồm đúng 6 chữ số/], ['bankBin', '12345a', /BIN gồm đúng 6 chữ số/],
     ['accountNo', '12345', /Số tài khoản gồm 6–19 chữ số/], ['accountNo', 'ABC123456', /Số tài khoản gồm 6–19 chữ số/],
     ['bankName', 'x'.repeat(101), /Tối đa 100 ký tự/],
     ['libraryPriceVnd', '100000001', /từ 1 đến 100\.000\.000/], ['libraryPriceVnd', '0', /từ 1 đến 100\.000\.000/], ['libraryPriceVnd', '-1', /từ 1 đến 100\.000\.000/], ['libraryPriceVnd', '1.5', /từ 1 đến 100\.000\.000/], ['libraryPriceVnd', '', /từ 1 đến 100\.000\.000/],
@@ -150,4 +150,12 @@ test('a failed load shows the error with a retry', async () => {
   assert.match(container.querySelector('[role="alert"]').textContent, /Lỗi hệ thống/);
   assert.ok([...container.querySelectorAll('button')].some((b) => b.textContent === 'Thử lại'));
   assert.equal(container.querySelector('form'), null, 'no form when the settings could not be loaded (cannot overwrite blindly)');
+});
+
+test('BIN is picked from the VietQR bank list and fills an empty bank name', async () => {
+  await mount();
+  await type('bankName', '');
+  await type('bankBin', '970436');
+  assert.equal(field('bankBin').value, '970436');
+  assert.equal(field('bankName').value, 'Vietcombank');
 });

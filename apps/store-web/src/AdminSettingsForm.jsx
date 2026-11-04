@@ -2,6 +2,7 @@
 // Kiem tra dinh dang o day giong may chu (may chu van la noi quyet dinh cuoi). Khong the luu khi chua tai duoc cai dat hien tai.
 import { useState } from 'react';
 import * as api from './api.js';
+import { BANKS } from './bank-bins.js';
 import { adminError, dateTime, inputClass, panel, primary, ResourceState, useAdminResource } from './AdminShared.jsx';
 
 const TEXT = ['bankName', 'bankBin', 'accountNo', 'accountName'];
@@ -30,7 +31,7 @@ function validate(form) {
   return { body };
 }
 
-const labels = { bankName: 'Tên ngân hàng', bankBin: 'Mã BIN ngân hàng (6 số)', accountNo: 'Số tài khoản', accountName: 'Tên chủ tài khoản',
+const labels = { bankName: 'Tên ngân hàng', bankBin: 'Mã BIN ngân hàng (chọn ngân hàng)', accountNo: 'Số tài khoản', accountName: 'Tên chủ tài khoản',
   libraryPriceVnd: 'Giá license thư viện (₫)', orderTtlMinutes: 'Thời hạn đơn (phút)', maxPendingOrdersPerDevice: 'Số đơn chờ tối đa mỗi thiết bị' };
 
 function Form({ initial }) {
@@ -59,8 +60,14 @@ function Form({ initial }) {
       <p className="mt-1 text-xs text-mute">{base.updatedAt ? `Lần lưu gần nhất: ${dateTime(base.updatedAt)}` : 'Chưa lưu lần nào: đang dùng giá trị mặc định.'}</p></div>
     <div className="grid gap-3 md:grid-cols-2">
       {[...TEXT, ...NUMBERS].map((key) => <label key={key} className="block text-sm"><span className="text-mute">{labels[key]}</span>
-        <input className={`${inputClass} mt-1`} name={key} autoComplete="off" inputMode={TEXT.includes(key) && key !== 'bankName' && key !== 'accountName' || NUMBERS.includes(key) ? 'numeric' : 'text'}
-          value={form[key]} onChange={(event) => edit(key, event.target.value)} /></label>)}
+        {key === 'bankBin' ? <select className={`${inputClass} mt-1`} name={key} value={form.bankBin}
+          onChange={(event) => { const bin = event.target.value; edit('bankBin', bin);
+            const bank = BANKS.find(([b]) => b === bin); if (bank && !form.bankName.trim()) edit('bankName', bank[1]); }}>
+          <option value="">— Chọn ngân hàng —</option>
+          {form.bankBin && !BANKS.some(([b]) => b === form.bankBin) && <option value={form.bankBin}>{form.bankBin}</option>}
+          {BANKS.map(([bin, name]) => <option key={bin} value={bin}>{name} — {bin}</option>)}
+        </select> : <input className={`${inputClass} mt-1`} name={key} autoComplete="off" inputMode={TEXT.includes(key) && key !== 'bankName' && key !== 'accountName' || NUMBERS.includes(key) ? 'numeric' : 'text'}
+          value={form[key]} onChange={(event) => edit(key, event.target.value)} />}</label>)}
     </div>
     {bankIncomplete && <p className="text-xs text-warn">Điền đủ cả 4 thông tin ngân hàng thì mới tạo được đơn thanh toán.</p>}
     {state.error && <p role="alert" className="text-sm text-danger">{state.error}</p>}
