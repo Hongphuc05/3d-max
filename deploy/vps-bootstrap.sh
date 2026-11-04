@@ -9,7 +9,7 @@ id ci >/dev/null 2>&1 || adduser --disabled-password --gecos "" ci >/dev/null
 install -d -m700 -o ci -g ci /home/ci/.ssh
 grep -qxF "$CI_PUBKEY" /home/ci/.ssh/authorized_keys 2>/dev/null || echo "$CI_PUBKEY" >> /home/ci/.ssh/authorized_keys
 chown ci:ci /home/ci/.ssh/authorized_keys; chmod 600 /home/ci/.ssh/authorized_keys
-install -d -o ci -g ci /opt/3dsmood /opt/3dsmood/apps /opt/3dsmood/apps/store-api /opt/3dsmood/deploy /var/www/3dsmood
+install -d -o ci -g ci /opt/3dsmood /opt/3dsmood/apps /opt/3dsmood/apps/store-api /opt/3dsmood/deploy /var/www/3dsmood /var/www/3dsmood-download
 install -d -o dsmood -g dsmood /var/lib/3dsmood /var/backups/3dsmood
 
 install -m755 -o root -g root "$SRC/release.sh" /usr/local/bin/3dsmood-release

@@ -1,0 +1,44 @@
+# Dua goi cai dat thu vien (asset `3dsmood-library.zip` cua GitHub Release) len VPS -> nut "Tai xuong thu vien" tren web co hieu luc.
+# Secrets dung chung voi deploy.yml: VPS_HOST, VPS_SSH_KEY, VPS_KNOWN_HOSTS.
+name: release
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag: { description: 'Tag cua release can dua len VPS (vd v1.0.0)', required: true }
+concurrency: { group: release-vps, cancel-in-progress: false }
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    environment: production
+    permissions: { contents: read }
+    steps:
+      - name: Download release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern '3dsmood-library.zip' --dir .
+          test -f 3dsmood-library.zip
+      - name: Sanity check
+        run: |
+          unzip -tq 3dsmood-library.zip
+          size=$(stat -c %s 3dsmood-library.zip)
+          echo "size=$size"
+          [ "$size" -gt 0 ] && [ "$size" -lt 524288000 ]
+      - name: SSH key
+        run: |
+          install -m700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ci && chmod 600 ~/.ssh/id_ci
+          printf '%s\n' "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+      - name: Upload (temp name, then atomic mv)
+        env: { HOST: "${{ secrets.VPS_HOST }}" }
+        run: |
+          SSH="ssh -i ~/.ssh/id_ci -o StrictHostKeyChecking=yes"
+          D=/var/www/3dsmood-download
+          rsync -az -e "$SSH" 3dsmood-library.zip ci@$HOST:$D/.3dsmood-library.zip.tmp
+          $SSH ci@$HOST "chmod 644 $D/.3dsmood-library.zip.tmp && mv -f $D/.3dsmood-library.zip.tmp $D/3dsmood-library.zip"
+      - name: Verify
+        run: curl -fsSI https://3dsmood.io.vn/download/3dsmood-library.zip

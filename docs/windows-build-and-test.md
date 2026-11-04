@@ -79,3 +79,7 @@ Ghi kết quả từng dòng (đạt / lỗi + ảnh chụp + MAXScript Listener
 - **Chưa ký số (code signing)** → Windows SmartScreen sẽ cảnh báo "Windows protected your PC": khách bấm *More info → Run anyway*. Muốn hết cảnh báo phải mua chứng chỉ ký code (trả phí hằng năm) — chưa làm.
 - Installer chỉ hỗ trợ **Max 2022 bản ENU** (đường dẫn cố định `2022 - 64bit\ENU`). Max bản ngôn ngữ khác sẽ báo không tìm thấy thư mục — nợ kỹ thuật.
 - 1 license = 1 máy. Khách cài lại Windows / đổi máy → nhắn chủ để chuyển license trong admin.
+
+## 5. Đóng gói và phát hành bản tải về trên web
+
+Nút "Tải xuống thư viện" trên https://3dsmood.io.vn/ trỏ tới `/download/3dsmood-library.zip`. Cách đóng gói và đưa lên VPS (GitHub Release -> workflow `release`): xem `installer/release/README-template.md`. Script đóng gói: `installer/release/make-release-zip.ps1`; hướng dẫn cho khách: `installer/release/HUONG-DAN-CAI-DAT.txt`.

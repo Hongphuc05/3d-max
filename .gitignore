@@ -18,3 +18,4 @@ dist/
 test-results/
 playwright-report/
 .claude/worktrees/
+installer/release/out/
