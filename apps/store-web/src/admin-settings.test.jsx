@@ -15,8 +15,8 @@ let root, fixture;
 
 const response = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
 const v3Error = (status, code, message) => response({ error: { code, message, requestId: 'req-1' } }, status);
-const unsaved = { bankName: null, bankBin: null, accountNo: null, accountName: null, defaultModelPriceVnd: 20000, orderTtlMinutes: 1440, maxPendingOrdersPerDevice: 3, updatedAt: null };
-const saved = { bankName: 'Vietcombank', bankBin: '970436', accountNo: '0123456789', accountName: 'NGUYEN VAN A', defaultModelPriceVnd: 25000, orderTtlMinutes: 720, maxPendingOrdersPerDevice: 2, updatedAt: '2026-11-01T08:00:00Z' };
+const unsaved = { bankName: null, bankBin: null, accountNo: null, accountName: null, libraryPriceVnd: 20000, orderTtlMinutes: 1440, maxPendingOrdersPerDevice: 3, updatedAt: null };
+const saved = { bankName: 'Vietcombank', bankBin: '970436', accountNo: '0123456789', accountName: 'NGUYEN VAN A', libraryPriceVnd: 25000, orderTtlMinutes: 720, maxPendingOrdersPerDevice: 2, updatedAt: '2026-11-01T08:00:00Z' };
 
 async function mount(initial = unsaved) {
   fixture = { current: initial, requests: [], putError: null, getError: null };
@@ -53,7 +53,7 @@ after(() => { globalThis.fetch = originalFetch; dom.window.close(); });
 test('before the first save: shows the defaults, says nothing was saved yet, and the save button is off (nothing to save)', async () => {
   await mount();
   assert.match(container.textContent, /Chưa lưu lần nào/);
-  assert.equal(field('defaultModelPriceVnd').value, '20000');
+  assert.equal(field('libraryPriceVnd').value, '20000');
   assert.equal(field('orderTtlMinutes').value, '1440');
   assert.equal(field('bankName').value, '');
   assert.equal(saveButton().disabled, true, 'unchanged form cannot be saved');
@@ -64,7 +64,7 @@ test('saved settings are loaded into the form; when all four bank fields are set
   await mount(saved);
   assert.equal(field('bankName').value, 'Vietcombank'); assert.equal(field('bankBin').value, '970436');
   assert.equal(field('accountNo').value, '0123456789'); assert.equal(field('accountName').value, 'NGUYEN VAN A');
-  assert.equal(field('defaultModelPriceVnd').value, '25000'); assert.equal(field('maxPendingOrdersPerDevice').value, '2');
+  assert.equal(field('libraryPriceVnd').value, '25000'); assert.equal(field('maxPendingOrdersPerDevice').value, '2');
   assert.equal(container.textContent.includes('Chưa lưu lần nào'), false);
   assert.match(container.textContent, /Lần lưu gần nhất/);
   assert.equal(container.textContent.includes('Điền đủ cả 4 thông tin ngân hàng'), false);
@@ -73,12 +73,12 @@ test('saved settings are loaded into the form; when all four bank fields are set
 test('save: PUT carries all seven fields, trimmed text and real numbers; success is acknowledged and the button goes off again', async () => {
   await mount();
   await type('bankName', '  Vietcombank '); await type('bankBin', '970436'); await type('accountNo', '0123456789'); await type('accountName', 'NGUYEN VAN A');
-  await type('defaultModelPriceVnd', '30000'); await type('orderTtlMinutes', '60'); await type('maxPendingOrdersPerDevice', '5');
+  await type('libraryPriceVnd', '30000'); await type('orderTtlMinutes', '60'); await type('maxPendingOrdersPerDevice', '5');
   assert.equal(saveButton().disabled, false);
   await submit();
   assert.equal(puts().length, 1);
   assert.deepEqual(puts()[0].body, { bankName: 'Vietcombank', bankBin: '970436', accountNo: '0123456789', accountName: 'NGUYEN VAN A',
-    defaultModelPriceVnd: 30000, orderTtlMinutes: 60, maxPendingOrdersPerDevice: 5 });
+    libraryPriceVnd: 30000, orderTtlMinutes: 60, maxPendingOrdersPerDevice: 5 });
   assert.match(container.textContent, /Đã lưu cài đặt/);
   assert.equal(container.textContent.includes('Chưa lưu lần nào'), false);
   assert.equal(saveButton().disabled, true, 'nothing left to save');
@@ -97,7 +97,7 @@ test('client-side checks block bad input with a clear message and send NOTHING',
     ['bankBin', '12345', /BIN gồm đúng 6 chữ số/], ['bankBin', '12345a', /BIN gồm đúng 6 chữ số/],
     ['accountNo', '12345', /Số tài khoản gồm 6–19 chữ số/], ['accountNo', 'ABC123456', /Số tài khoản gồm 6–19 chữ số/],
     ['bankName', 'x'.repeat(101), /Tối đa 100 ký tự/],
-    ['defaultModelPriceVnd', '100000001', /từ 0 đến 100\.000\.000/], ['defaultModelPriceVnd', '-1', /từ 0 đến 100\.000\.000/], ['defaultModelPriceVnd', '1.5', /từ 0 đến 100\.000\.000/], ['defaultModelPriceVnd', '', /từ 0 đến 100\.000\.000/],
+    ['libraryPriceVnd', '100000001', /từ 1 đến 100\.000\.000/], ['libraryPriceVnd', '0', /từ 1 đến 100\.000\.000/], ['libraryPriceVnd', '-1', /từ 1 đến 100\.000\.000/], ['libraryPriceVnd', '1.5', /từ 1 đến 100\.000\.000/], ['libraryPriceVnd', '', /từ 1 đến 100\.000\.000/],
     ['orderTtlMinutes', '0', /từ 1 đến 43\.200/], ['orderTtlMinutes', '43201', /từ 1 đến 43\.200/],
     ['maxPendingOrdersPerDevice', '0', /từ 1 đến 20/], ['maxPendingOrdersPerDevice', '21', /từ 1 đến 20/],
   ];

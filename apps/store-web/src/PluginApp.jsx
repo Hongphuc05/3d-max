@@ -6,7 +6,7 @@ import { matchesCategory } from './catalog-view.js';
 import { HostBar } from './HostBar.jsx';
 import { Icon } from './icons.jsx';
 import { getLibraryStatus, isMaxHost } from './integrations/3dsmax/bridge.js';
-import { PluginCard, PluginDetail } from './plugin-components.jsx';
+import { BuyLibrary, PluginCard, PluginDetail } from './plugin-components.jsx';
 import OrderDialog from './OrderDialog.jsx';
 import { Queue } from './Queue.jsx';
 import { useJobs } from './queue.js';
@@ -49,15 +49,16 @@ export default function PluginApp({ orderPollMs }) {
   const [activeId, setActiveId] = useState(null);
   const [drawer, setDrawer] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const [buying, setBuying] = useState(null);
+  const [buying, setBuying] = useState(false);
   const { products, tree, state, error, offline, progress, entitlements } = usePluginCatalog(reloadKey);
   const jobs = useJobs();
   const max = isMaxHost();
-  const ctx = useMemo(() => ({ max, entitlements, offline, onBuy: (p) => setBuying(p) }), [max, entitlements, offline]);
+  const ctx = useMemo(() => ({ max, entitlements, offline, onBuy: () => setBuying(true) }), [max, entitlements, offline]);
 
   // Chon model theo id (khong giu doi tuong cu): khi catalog tu lam moi, panel chi tiet cap nhat theo ban moi hoac dong neu model da bi go.
   const active = useMemo(() => products.find((p) => p.id === activeId) || null, [products, activeId]);
-  const mine = useMemo(() => products.filter((p) => owns(entitlements, p.id)), [products, entitlements]);
+  const licensed = owns(entitlements);
+  const mine = useMemo(() => products.filter((p) => jobs.some((j) => j.slug === p.slug && j.status === 'done')), [products, jobs]); // tab "Đã tải": model da import trong phien nay
   const rows = useMemo(() => {
     const needle = text.trim().toLowerCase();
     return (tab === 'online' ? products : mine)
@@ -80,6 +81,11 @@ export default function PluginApp({ orderPollMs }) {
     <div className="flex h-screen flex-col">
       <HostBar reloadKey={reloadKey} onRefresh={() => setReloadKey((k) => k + 1)} apiStatus={max ? (offline ? 'down' : 'ok') : null} />
       {offline && <div role="status" className="border-b border-warn/40 bg-warn/10 px-3 py-1 font-mono text-[11px] text-warn">Đang offline — hiển thị catalog đã lưu trên máy. Cần Internet để tải model.</div>}
+      {max && entitlements && !licensed && !offline && (
+        <div role="status" className="flex flex-wrap items-center justify-between gap-2 border-b border-accent/40 bg-accent/10 px-3 py-2 text-sm">
+          <span>Thiết bị này chưa có license thư viện — các model đang bị khóa.</span><BuyLibrary ctx={ctx} className="!w-auto px-4" />
+        </div>
+      )}
       {progress && (
         <div role="status" className="border-b border-line px-3 py-1 font-mono text-[11px] text-mute">
           Đang tải ảnh xem trước {progress.done}/{progress.total}…
@@ -137,7 +143,7 @@ export default function PluginApp({ orderPollMs }) {
             )}
             {state === 'ready' && rows.length === 0 && (
               <p className="py-16 text-center font-mono text-xs text-mute">
-                {tab === 'done' ? (entitlements ? 'Thiết bị này chưa sở hữu model nào.' : 'Chưa xác minh được quyền của thiết bị này.')
+                {tab === 'done' ? 'Chưa import model nào trong phiên này.'
                   : products.length ? 'Không có model nào khớp bộ lọc.' : 'Catalog hiện đang trống.'}
               </p>
             )}
@@ -161,7 +167,7 @@ export default function PluginApp({ orderPollMs }) {
         <PluginDetail p={active} onClose={() => setActiveId(null)} ctx={ctx} />
       </div>
       {/* Thanh toan xong (chu xac nhan) -> tai lai catalog + quyen: nut chuyen sang Download khong can bam Lam moi. */}
-      {buying && <OrderDialog model={buying} pollMs={orderPollMs} onClose={() => setBuying(null)} onConfirmed={() => setReloadKey((k) => k + 1)} />}
+      {buying && <OrderDialog pollMs={orderPollMs} onClose={() => setBuying(false)} onConfirmed={() => setReloadKey((k) => k + 1)} />}
     </div>
   );
 }

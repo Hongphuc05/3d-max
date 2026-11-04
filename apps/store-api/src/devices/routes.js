@@ -34,7 +34,8 @@ function parseChallenge(body) {
 
 async function entitlementsOf(db, deviceId) {
   const owned = await db.query('select 1 from entitlements where device_id = $1 and revoked_at is null', [deviceId]);
-  return { allModels: owned.rowCount > 0 }; // D28.1: license ca thu vien
+  // D28.1: license ca thu vien. `modelIds` luon rong, chi giu de host C# (DeviceSessionService) con doc duoc dinh dang cu.
+  return { allModels: owned.rowCount > 0, modelIds: [] };
 }
 
 /** Middleware: `Authorization: Device <token>`; gan req.device = { id, deviceUuid }. Moi truong hop sai -> UNAUTHENTICATED. */

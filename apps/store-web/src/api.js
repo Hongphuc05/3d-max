@@ -44,6 +44,11 @@ export const adminSettings = (signal) => get('/admin/settings', null, signal);
 export const adminSaveSettings = (body) => request('PUT', '/admin/settings', { body });
 export const adminModels = (params, signal) => get('/admin/models', params, signal);
 export const adminPatchModel = (id, body) => request('PATCH', `/admin/models/${encodeURIComponent(id)}`, { body });
+export const adminOrders = (params, signal) => get('/admin/orders', params, signal);
+export const adminDecideOrder = (id, action) => request('POST', `/admin/orders/${encodeURIComponent(id)}/${action}`, { body: {} });
+export const adminDevices = (signal) => get('/admin/devices', null, signal);
+export const adminRevokeLicense = (id) => request('POST', `/admin/devices/${encodeURIComponent(id)}/license/revoke`, { body: {} });
+export const adminTransferLicense = (id, toDeviceId) => request('POST', `/admin/devices/${encodeURIComponent(id)}/license/transfer`, { body: { toDeviceId } });
 export const updateAdminAccount = (body) => request('PATCH', '/admin/account', { body });
 
 

@@ -17,8 +17,12 @@ const messages = {
   TOO_MANY_ATTEMPTS: 'Thao tác quá nhiều lần. Vui lòng thử lại sau.',
   TOO_MANY_REQUESTS: 'Thao tác quá nhanh. Vui lòng thử lại sau.',
   LICENSE_CONFIGURATION_REQUIRED: 'Máy chủ chưa cấu hình tính năng license.',
-  LICENSE_NOT_FOUND: 'Tài khoản này chưa có license.',
+  LICENSE_NOT_FOUND: 'Thiết bị này chưa có license thư viện.',
   USER_NOT_FOUND: 'Không tìm thấy tài khoản này.',
+  ORDER_STATE_INVALID: 'Đơn không ở trạng thái cho phép thao tác này (chưa được khách báo đã chuyển khoản, hoặc đã xử lý).',
+  ORDER_NOT_FOUND: 'Không tìm thấy đơn hàng.',
+  DEVICE_NOT_FOUND: 'Không tìm thấy thiết bị.',
+  ALREADY_ENTITLED: 'Thiết bị đích đã có license thư viện.',
 };
 export const adminError = error => messages[error?.code] || error?.detail || 'Không thể hoàn tất yêu cầu. Vui lòng thử lại.';
 export const dateTime = value => value ? new Date(value).toLocaleString('vi-VN') : '—';

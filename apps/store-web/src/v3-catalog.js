@@ -41,7 +41,7 @@ export function buildCatalog({ catalog, categories, manifest }) {
     const sm = previews.get(`${m.id}|sm`), lg = previews.get(`${m.id}|lg`);
     const thumb = sm || lg, image = lg || sm;
     return {
-      id: m.id, slug: m.id, name: m.name, priceVnd: m.priceVnd ?? null,
+      id: m.id, slug: m.id, name: m.name,
       category: cat ? (cat.fullPath || cat.name).split(' / ')[0] : 'Khác', subcategory: cat?.name ?? '',
       folderPath: cat?.fullPath ?? '', folderIds: ancestorsOf(m.categoryId, cats),
       thumb: thumb ? previewUrl(thumb.sha256) : null, image: image ? previewUrl(image.sha256) : null,
@@ -52,18 +52,18 @@ export function buildCatalog({ catalog, categories, manifest }) {
   return { products, tree: buildCategoryTree(categories) };
 }
 
-// Quyen: allModels hoac nam trong modelIds. `null`/undefined = chua biet.
-export const owns = (entitlements, modelId) => Boolean(entitlements && (entitlements.allModels || entitlements.modelIds?.includes(modelId)));
+// Quyen (D28.1): mot license ca thu vien cho thiet bi (allModels). `null`/undefined = chua biet.
+export const owns = (entitlements) => Boolean(entitlements?.allModels);
 
 /** Trang thai nut hanh dong cua mot model (thuan; component chi ve theo ket qua).
  * entitlements: undefined = dang tai, null = khong xac minh duoc, object = quyen cua thiet bi nay. "owned" = owns(entitlements, id). */
-export function actionState({ max, entitlements, owned, offline, job, priceLabel }) {
+export function actionState({ max, entitlements, owned, offline, job }) {
   if (!max) return { kind: 'view', label: 'Trong plugin 3ds Max', disabled: true };
   if (job?.status === 'queued') return { kind: 'queued', label: 'Trong hàng đợi', disabled: true };
   if (job?.status === 'running') return { kind: 'running', label: 'Đang tải…', disabled: true };
   if (entitlements === undefined) return { kind: 'wait', label: 'Đang xác minh quyền…', disabled: true };
   if (entitlements === null) return { kind: 'wait', label: offline ? 'Cần Internet để xác minh quyền' : 'Chưa xác minh được quyền', disabled: true };
-  if (!owned) return { kind: 'buy', label: priceLabel ? `Mua · ${priceLabel}` : 'Mua', disabled: false };
+  if (!owned) return { kind: 'locked', label: '🔒 Cần license thư viện', disabled: true };
   if (job?.status === 'failed') return { kind: 'failed', label: 'Lỗi · Thử lại', disabled: false };
   if (job?.status === 'done') return { kind: 'done', label: '✓ Đã import · Lại', disabled: false };
   return { kind: 'download', label: 'Download', disabled: false };

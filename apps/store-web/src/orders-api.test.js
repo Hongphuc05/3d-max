@@ -9,17 +9,17 @@ const json = (v, status = 200) => new Response(JSON.stringify(v), { status, head
 const calls = [];
 const stub = (handler) => { calls.length = 0; globalThis.fetch = async (url, init = {}) => { calls.push({ url: String(url), method: init.method || 'GET', body: init.body }); return handler(); }; };
 
-test('each call hits the right path and method; the id is URL-encoded; create sends only model ids', async () => {
+test('each call hits the right path and method; the id is URL-encoded; create sends an empty body (the server decides the price)', async () => {
   stub(() => json({ ok: 1 }));
-  await createOrder(['a', 'b']); await getOrder('x/../y'); await claimPaid('o1'); await cancelOrder('o1');
+  await createOrder(); await getOrder('x/../y'); await claimPaid('o1'); await cancelOrder('o1');
   assert.deepEqual(calls.map((c) => [c.method, c.url]), [['POST', '/api/v1/orders'], ['GET', '/api/v1/orders/x%2F..%2Fy'], ['POST', '/api/v1/orders/o1/claim-paid'], ['POST', '/api/v1/orders/o1/cancel']]);
-  assert.deepEqual(JSON.parse(calls[0].body), { items: [{ modelId: 'a' }, { modelId: 'b' }] });
+  assert.deepEqual(JSON.parse(calls[0].body), {});
   assert.equal(calls[1].body, undefined);
 });
 
 test('server error codes are kept with the status; a failure without an error body is SERVER_UNAVAILABLE', async () => {
   stub(() => json({ error: { code: 'TOO_MANY_PENDING_ORDERS', message: 'x', requestId: 'r' } }, 429));
-  await assert.rejects(createOrder(['a']), (e) => e.code === 'TOO_MANY_PENDING_ORDERS' && e.status === 429);
+  await assert.rejects(createOrder(), (e) => e.code === 'TOO_MANY_PENDING_ORDERS' && e.status === 429);
   stub(() => new Response('<html>502</html>', { status: 502 }));
   await assert.rejects(getOrder('o1'), (e) => e.code === 'SERVER_UNAVAILABLE' && e.status === 502);
   assert.equal(orderErrorText({ code: 'SERVER_UNAVAILABLE' }), ORDER_ERRORS.SERVER_UNAVAILABLE);

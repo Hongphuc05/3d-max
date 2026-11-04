@@ -1,4 +1,4 @@
-// P5.8: hop thoai mua model. Backend gia lap bang fetch; QR/ngan hang/so tien deu do "may chu" tra ve.
+// P5.8: hop thoai mua license thu vien. Backend gia lap bang fetch; QR/ngan hang/so tien deu do "may chu" tra ve.
 import test, { after, afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import React, { act } from 'react';
@@ -9,7 +9,6 @@ Object.defineProperty(globalThis, 'navigator', { value: dom.window.navigator, co
 const { createRoot } = await import('react-dom/client');
 const { default: OrderDialog } = await import('./OrderDialog.jsx');
 
-const MODEL = { id: '00000000-0000-4000-8000-000000000101', name: 'Sofa One' };
 const json = (v, status = 200) => new Response(JSON.stringify(v), { status, headers: { 'content-type': 'application/json' } });
 const flush = (ms = 20) => new Promise((r) => setTimeout(r, ms));
 const original = globalThis.fetch;
@@ -35,17 +34,17 @@ const text = () => document.body.textContent;
 const button = (label) => [...document.querySelectorAll('button')].find((b) => b.textContent.includes(label));
 async function mount(props = {}) {
   root = createRoot(document.getElementById('root'));
-  await act(async () => { root.render(<OrderDialog model={MODEL} pollMs={30} onClose={() => { closed++; }} onConfirmed={() => { confirmed++; }} {...props} />); await flush(); });
+  await act(async () => { root.render(<OrderDialog pollMs={30} onClose={() => { closed++; }} onConfirmed={() => { confirmed++; }} {...props} />); await flush(); });
   await act(() => flush());
 }
 const unmount = async () => { if (root) { const r = root; root = null; await act(() => r.unmount()); } };
 afterEach(unmount); // a failing assertion must not leave a dialog (and its timers) behind for the next test
 const count = (pred) => calls.filter(pred).length;
 
-test('opening creates ONE order with only the model id, then shows amount, code, bank details, a QR and a countdown', async () => {
+test('opening creates ONE library order with an empty body, then shows amount, code, bank details, a QR and a countdown', async () => {
   await mount();
-  assert.deepEqual(calls.map((c) => [c.method, c.path, c.body]), [['POST', '/api/v1/orders', { items: [{ modelId: MODEL.id }] }]]);
-  for (const part of ['35.000', '3DMK7Q2XA', 'Test Bank', 'TEST ACCOUNT', '0123456789012', 'Sofa One', 'Đơn hết hạn sau']) assert.ok(text().includes(part), part);
+  assert.deepEqual(calls.map((c) => [c.method, c.path, c.body]), [['POST', '/api/v1/orders', {}]]);
+  for (const part of ['35.000', '3DMK7Q2XA', 'Test Bank', 'TEST ACCOUNT', '0123456789012', 'toàn bộ thư viện', 'Đơn hết hạn sau']) assert.ok(text().includes(part), part);
   assert.ok(document.querySelector('svg[aria-label="Mã VietQR thanh toán"]'), 'QR rendered');
   assert.ok(button('Tôi đã chuyển khoản') && !button('Tôi đã chuyển khoản').disabled);
   await unmount();
@@ -79,7 +78,7 @@ test('rejected, expired and cancelled outcomes are explained and never call onCo
 });
 
 test('create errors are shown in Vietnamese; ALREADY_ENTITLED also refreshes the library', async () => {
-  for (const [code, status, re] of [['TOO_MANY_PENDING_ORDERS', 429, /quá nhiều đơn/], ['PAYMENT_NOT_CONFIGURED', 503, /chưa được cấu hình/], ['MODEL_NOT_AVAILABLE', 409, /không bán được/], ['ALREADY_ENTITLED', 409, /đã sở hữu/]]) {
+  for (const [code, status, re] of [['TOO_MANY_PENDING_ORDERS', 429, /quá nhiều đơn/], ['PAYMENT_NOT_CONFIGURED', 503, /chưa được cấu hình/], ['ALREADY_ENTITLED', 409, /đã có license thư viện/]]) {
     server.create = () => json({ error: { code, message: 'x', requestId: 'r' } }, status);
     confirmed = 0; await mount();
     assert.match(document.querySelector('[role=alert]').textContent, re, code);

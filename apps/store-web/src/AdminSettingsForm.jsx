@@ -1,11 +1,11 @@
-// P3.7 — Cai dat (plan §2.7, D25): thong tin ngan hang nhan tien, gia mac dinh cho model moi, thoi han don, so don cho toi da.
+// P3.7 — Cai dat (plan §2.7, D25): thong tin ngan hang nhan tien, gia license thu vien (mot gia duy nhat), thoi han don, so don cho toi da.
 // Kiem tra dinh dang o day giong may chu (may chu van la noi quyet dinh cuoi). Khong the luu khi chua tai duoc cai dat hien tai.
 import { useState } from 'react';
 import * as api from './api.js';
 import { adminError, dateTime, inputClass, panel, primary, ResourceState, useAdminResource } from './AdminShared.jsx';
 
 const TEXT = ['bankName', 'bankBin', 'accountNo', 'accountName'];
-const NUMBERS = ['defaultModelPriceVnd', 'orderTtlMinutes', 'maxPendingOrdersPerDevice'];
+const NUMBERS = ['libraryPriceVnd', 'orderTtlMinutes', 'maxPendingOrdersPerDevice'];
 const toForm = (s) => Object.fromEntries([...TEXT.map((k) => [k, s[k] ?? '']), ...NUMBERS.map((k) => [k, String(s[k])])]);
 const sameForm = (a, b) => [...TEXT, ...NUMBERS].every((k) => String(a[k]).trim() === String(b[k]).trim());
 
@@ -18,7 +18,7 @@ function validate(form) {
   }
   if (body.bankBin !== null && !/^\d{6}$/.test(body.bankBin)) return { error: 'Mã BIN gồm đúng 6 chữ số.' };
   if (body.accountNo !== null && !/^\d{6,19}$/.test(body.accountNo)) return { error: 'Số tài khoản gồm 6–19 chữ số.' };
-  const rules = { defaultModelPriceVnd: [0, 100_000_000, 'Giá mặc định phải là số nguyên từ 0 đến 100.000.000.'],
+  const rules = { libraryPriceVnd: [1, 100_000_000, 'Giá license thư viện phải là số nguyên từ 1 đến 100.000.000.'],
     orderTtlMinutes: [1, 43200, 'Thời hạn đơn từ 1 đến 43.200 phút.'], maxPendingOrdersPerDevice: [1, 20, 'Số đơn chờ từ 1 đến 20.'] };
   for (const key of NUMBERS) {
     const [min, max, message] = rules[key];
@@ -31,7 +31,7 @@ function validate(form) {
 }
 
 const labels = { bankName: 'Tên ngân hàng', bankBin: 'Mã BIN ngân hàng (6 số)', accountNo: 'Số tài khoản', accountName: 'Tên chủ tài khoản',
-  defaultModelPriceVnd: 'Giá mặc định cho model mới (₫)', orderTtlMinutes: 'Thời hạn đơn (phút)', maxPendingOrdersPerDevice: 'Số đơn chờ tối đa mỗi thiết bị' };
+  libraryPriceVnd: 'Giá license thư viện (₫)', orderTtlMinutes: 'Thời hạn đơn (phút)', maxPendingOrdersPerDevice: 'Số đơn chờ tối đa mỗi thiết bị' };
 
 function Form({ initial }) {
   const [base, setBase] = useState({ form: toForm(initial), updatedAt: initial.updatedAt });

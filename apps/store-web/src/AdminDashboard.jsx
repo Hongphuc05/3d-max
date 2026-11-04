@@ -3,11 +3,13 @@ import { useAuth } from './auth.jsx';
 import AdminAccount from './AdminAccount.jsx';
 import AdminDrive from './AdminDrive.jsx';
 import AdminSync from './AdminSync.jsx';
+import AdminDevices from './AdminDevices.jsx';
+import AdminOrders from './AdminOrders.jsx';
 import AdminReview from './AdminReview.jsx';
 import AdminSettings from './AdminSettings.jsx';
 import { secondary } from './AdminShared.jsx';
 
-const sections = [['drive', 'Kết nối Drive'], ['sync', 'Quét đồng bộ'], ['review', 'Cần duyệt'], ['settings', 'Cài đặt'], ['account', 'Thông tin đăng nhập']];
+const sections = [['drive', 'Kết nối Drive'], ['sync', 'Quét đồng bộ'], ['review', 'Cần duyệt'], ['orders', 'Đơn hàng'], ['devices', 'Thiết bị & license'], ['settings', 'Cài đặt'], ['account', 'Thông tin đăng nhập']];
 export default function AdminDashboard() {
   const { user, logout } = useAuth();
   const [section, setSection] = useState(user.mustChangeCredentials ? 'account' : 'drive');
@@ -26,6 +28,8 @@ export default function AdminDashboard() {
         {active === 'drive' && <AdminDrive />}
         {active === 'sync' && <AdminSync />}
         {active === 'review' && <AdminReview />}
+        {active === 'orders' && <AdminOrders />}
+        {active === 'devices' && <AdminDevices />}
         {active === 'settings' && <AdminSettings />}
         {active === 'account' && <AdminAccount />}
       </div></main>

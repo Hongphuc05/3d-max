@@ -1,4 +1,4 @@
-// P5.8: hop thoai mua model: tao don -> QR VietQR + thong tin chuyen khoan + dem nguoc -> "Toi da chuyen khoan" -> cho chu xac nhan (poll 4 giay) -> ket qua.
+// P5.8: hop thoai mua license thu vien (D28.1): tao don -> QR VietQR + thong tin chuyen khoan + dem nguoc -> "Toi da chuyen khoan" -> cho chu xac nhan (poll 4 giay) -> ket qua.
 // Gia/so tien/ngan hang deu do may chu tra ve; dialog khong tu tinh gi. Dong khi chua bao chuyen khoan thi huy don de nha cho don cho.
 import { useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -9,13 +9,13 @@ const secondary = 'rounded-md border border-line px-3 py-2 text-sm hover:bg-rais
 const primary = 'rounded-md bg-accent px-4 py-2 text-sm font-bold text-accent-ink disabled:opacity-50';
 
 const FINAL = {
-  CONFIRMED: { tone: 'text-accent', text: 'Đã xác nhận thanh toán! Model đã được mở khóa cho thiết bị này.' },
+  CONFIRMED: { tone: 'text-accent', text: 'Đã xác nhận thanh toán! License thư viện đã được cấp cho thiết bị này, toàn bộ model đã mở khóa.' },
   REJECTED: { tone: 'text-danger', text: 'Chủ cửa hàng chưa nhận được tiền hoặc đã từ chối đơn này. Liên hệ nhà cung cấp nếu bạn đã chuyển khoản.' },
   EXPIRED: { tone: 'text-warn', text: 'Đơn đã hết hạn. Nếu bạn đã chuyển khoản, hãy liên hệ nhà cung cấp kèm mã đơn.' },
   CANCELLED: { tone: 'text-mute', text: 'Đơn đã hủy.' },
 };
 
-export default function OrderDialog({ model, onClose, onConfirmed, pollMs = 4000 }) {
+export default function OrderDialog({ onClose, onConfirmed, pollMs = 4000 }) {
   const [phase, setPhase] = useState('creating'); // creating | ready | claiming | waiting | final | error
   const [order, setOrder] = useState(null);
   const [final, setFinal] = useState(null);
@@ -27,10 +27,10 @@ export default function OrderDialog({ model, onClose, onConfirmed, pollMs = 4000
 
   useEffect(() => {
     liveRef.current = true;
-    createOrder([model.id]).then((created) => { if (!liveRef.current) return; orderRef.current = created; setOrder(created); go('ready'); },
+    createOrder().then((created) => { if (!liveRef.current) return; orderRef.current = created; setOrder(created); go('ready'); },
       (e) => { if (!liveRef.current) return; setError(orderErrorText(e)); go('error'); if (e.code === 'ALREADY_ENTITLED') onConfirmed?.(); });
     return () => { liveRef.current = false; };
-  }, [model.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (phase !== 'ready' && phase !== 'waiting') return;
@@ -79,10 +79,10 @@ export default function OrderDialog({ model, onClose, onConfirmed, pollMs = 4000
       <section role="dialog" aria-modal="true" aria-labelledby="order-title" onClick={(e) => e.stopPropagation()}
         className="max-h-[92vh] w-full max-w-md space-y-3 overflow-auto rounded-lg border border-line bg-panel p-5">
         <div className="flex items-start justify-between gap-3">
-          <h2 id="order-title" className="text-lg font-bold">Mua model</h2>
+          <h2 id="order-title" className="text-lg font-bold">Mua thư viện</h2>
           <button className={secondary} onClick={close}>Đóng</button>
         </div>
-        <p className="truncate text-sm" title={model.name}>{model.name}</p>
+        <p className="text-sm text-mute">License toàn bộ thư viện 3DS Mood, vĩnh viễn, gồm cả model thêm sau. Dùng cho 1 thiết bị.</p>
         {phase === 'creating' && <p role="status" className="text-sm text-mute">Đang tạo đơn…</p>}
         {phase === 'error' && <p role="alert" className="text-sm text-danger">{error}</p>}
         {order && <>
@@ -108,7 +108,7 @@ export default function OrderDialog({ model, onClose, onConfirmed, pollMs = 4000
           <button className={`${primary} flex-1`} onClick={claim} disabled={seconds === 0}>Tôi đã chuyển khoản</button>
         </div>}
         {phase === 'claiming' && <p role="status" className="text-sm text-mute">Đang gửi xác nhận…</p>}
-        {phase === 'waiting' && <p role="status" className="text-sm">Đã báo cho chủ cửa hàng. Đang chờ xác nhận tiền về… (tự kiểm tra mỗi {Math.round(pollMs / 1000)} giây; bạn có thể đóng, model sẽ mở khóa khi được xác nhận)</p>}
+        {phase === 'waiting' && <p role="status" className="text-sm">Đã báo cho chủ cửa hàng. Đang chờ xác nhận tiền về… (tự kiểm tra mỗi {Math.round(pollMs / 1000)} giây; bạn có thể đóng, thư viện sẽ mở khóa khi được xác nhận)</p>}
         {phase === 'final' && final && <p role="status" className={`text-sm font-bold ${FINAL[final].tone}`}>{FINAL[final].text}</p>}
         {error && phase !== 'error' && <p role="alert" className="text-sm text-danger">{error}</p>}
         <p className="text-xs text-mute">Thanh toán do máy chủ xác minh và cấp quyền; giao diện này không tự cấp quyền.</p>

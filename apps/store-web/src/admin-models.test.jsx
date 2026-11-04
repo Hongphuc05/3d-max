@@ -15,7 +15,7 @@ let root, fixture;
 
 const response = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
 const v3Error = (status, code, message) => response({ error: { code, message, requestId: 'req-1' } }, status);
-const m = (id, over = {}) => ({ id, name: `Model ${id}`, categoryPath: 'Living / Sofa', priceVnd: 15000, status: 'PUBLISHED', nameOverridden: false, priceOverridden: false, updatedAt: '2026-11-01T08:00:00Z', ...over });
+const m = (id, over = {}) => ({ id, name: `Model ${id}`, categoryPath: 'Living / Sofa', status: 'PUBLISHED', nameOverridden: false, updatedAt: '2026-11-01T08:00:00Z', ...over });
 
 async function mount({ items = [m('a'), m('b')], total = items.length } = {}) {
   fixture = { items, total, requests: [], patchError: null, listError: null };
@@ -34,7 +34,7 @@ async function mount({ items = [m('a'), m('b')], total = items.length } = {}) {
       if (fixture.gate) await fixture.gate;
       const current = fixture.items.find((x) => x.id === match[1]);
       const updated = { ...current, ...(body.name !== undefined ? { name: body.name, nameOverridden: true } : {}),
-        ...(body.priceVnd !== undefined ? { priceVnd: body.priceVnd, priceOverridden: true } : {}), ...(body.status !== undefined ? { status: body.status } : {}) };
+        ...(body.status !== undefined ? { status: body.status } : {}) };
       return response(updated);
     }
     throw new Error(`Unhandled models fixture ${method} ${path}`);
@@ -61,13 +61,13 @@ async function submitSearch() { await act(async () => container.querySelector('f
 afterEach(async () => { if (root) await act(async () => root.unmount()); root = null; });
 after(() => { globalThis.fetch = originalFetch; dom.window.close(); });
 
-test('lists models: name, category, formatted price, status label; badges only for hand-edited fields; never shows ids', async () => {
-  await mount({ items: [m('a', { name: 'Sofa A', priceVnd: 15000 }), m('b', { name: 'Sofa B', priceVnd: 99000, status: 'HIDDEN', nameOverridden: true, priceOverridden: true })] });
+test('lists models: name, category, status label; badge only for hand-edited names; never shows ids', async () => {
+  await mount({ items: [m('a', { name: 'Sofa A' }), m('b', { name: 'Sofa B', status: 'HIDDEN', nameOverridden: true })] });
   assert.equal(lists()[0].page, '1'); assert.equal(lists()[0].limit, '20');
   const a = row('a'), b = row('b');
-  assert.match(a.textContent, /Sofa A/); assert.match(a.textContent, /Living \/ Sofa/); assert.match(a.textContent, /15\.000/); assert.match(a.textContent, /Đang bán/);
-  assert.equal(/Tên đã sửa|Giá đã sửa/.test(a.textContent), false);
-  assert.match(b.textContent, /Đã ẩn/); assert.match(b.textContent, /Tên đã sửa/); assert.match(b.textContent, /Giá đã sửa/);
+  assert.match(a.textContent, /Sofa A/); assert.match(a.textContent, /Living \/ Sofa/);  assert.equal(/\d\.\d{3}/.test(a.textContent), false, 'no per-model price column any more'); assert.match(a.textContent, /Đang bán/);
+  assert.equal(/Tên đã sửa/.test(a.textContent), false);
+  assert.match(b.textContent, /Đã ẩn/); assert.match(b.textContent, /Tên đã sửa/);
   assert.match(container.textContent, /2 kết quả/);
 });
 
@@ -97,16 +97,16 @@ test('pagination uses the server total', async () => {
   assert.equal(mustButton('Sau').disabled, true);
 });
 
-test('edit price only: PATCH carries just priceVnd, the row updates in place (no list reload) and gets the "Giá đã sửa" badge', async () => {
+test('edit name only: PATCH carries just name, the row updates in place (no list reload) and gets the "Tên đã sửa" badge; there is no price field', async () => {
   await mount();
   await click(mustButton('Sửa', row('a')));
-  await type('editPrice', '99000', row('a'));
+  assert.equal(row('a').querySelector('[name="editPrice"]'), null);
+  await type('editName', 'Sofa Z', row('a'));
   const before = lists().length;
   await click(mustButton('Lưu', row('a')));
-  assert.deepEqual(patches()[0].body, { priceVnd: 99000 });
+  assert.deepEqual(patches()[0].body, { name: 'Sofa Z' });
   assert.equal(patches()[0].path, '/api/admin/models/a');
-  assert.match(row('a').textContent, /99\.000/); assert.match(row('a').textContent, /Giá đã sửa/);
-  assert.equal(/Tên đã sửa/.test(row('a').textContent), false);
+  assert.match(row('a').textContent, /Sofa Z/); assert.match(row('a').textContent, /Tên đã sửa/);
   assert.equal(lists().length, before, 'updated in place without reloading the list');
   assert.equal(row('a').querySelector('input'), null, 'edit mode closed');
 });
@@ -135,10 +135,9 @@ test('saving without any change sends nothing and just closes the editor; Cancel
   assert.equal(row('a').querySelector('[name="editName"]').value, 'Model a', 'a reopened editor starts from the saved value');
 });
 
-test('client-side checks: empty / too long name, negative or fractional or empty price are refused without a request', async () => {
+test('client-side checks: empty / too long name are refused without a request', async () => {
   await mount();
-  const cases = [['editName', '   ', /Tên không được để trống/], ['editName', 'x'.repeat(301), /Tên tối đa 300 ký tự/],
-    ['editPrice', '-5', /số nguyên từ 0/], ['editPrice', '1.5', /số nguyên từ 0/], ['editPrice', '', /số nguyên từ 0/], ['editPrice', '100000001', /số nguyên từ 0/]];
+  const cases = [['editName', '   ', /Tên không được để trống/], ['editName', 'x'.repeat(301), /Tên tối đa 300 ký tự/]];
   for (const [name, value, message] of cases) {
     await click(mustButton('Sửa', row('a')));
     await type(name, value, row('a'));
@@ -152,11 +151,11 @@ test('client-side checks: empty / too long name, negative or fractional or empty
 test('a server refusal stays in the row (editor stays open, values kept) and does not touch other rows', async () => {
   await mount();
   await click(mustButton('Sửa', row('a')));
-  await type('editPrice', '123', row('a'));
+  await type('editName', 'Draft name', row('a'));
   fixture.patchError = v3Error(422, 'MODEL_NOT_FOUND', 'Không tìm thấy model này.');
   await click(mustButton('Lưu', row('a')));
   assert.match(row('a').querySelector('[role="alert"]').textContent, /Không tìm thấy model/);
-  assert.equal(row('a').querySelector('[name="editPrice"]').value, '123');
+  assert.equal(row('a').querySelector('[name="editName"]').value, 'Draft name');
   assert.equal(row('b').querySelector('[role="alert"]'), null);
 });
 
@@ -174,14 +173,14 @@ test('only one row is editable at a time; opening another closes the first witho
 test('save cannot be double-submitted while pending', async () => {
   await mount();
   await click(mustButton('Sửa', row('a')));
-  await type('editPrice', '777', row('a'));
+  await type('editName', 'Name 777', row('a'));
   let release; fixture.gate = new Promise((r) => { release = r; });
   await click(mustButton('Lưu', row('a')));
   assert.equal(mustButton('Lưu', row('a')).disabled, true);
   await click(mustButton('Lưu', row('a')));
   assert.equal(patches().length, 1);
   await act(async () => { release(); await new Promise((r) => setImmediate(r)); });
-  assert.match(row('a').textContent, /777/);
+  assert.match(row('a').textContent, /Name 777/);
 });
 
 test('statuses that cannot be set by hand (DRAFT / NEEDS_REVIEW) stay visible in the editor but are not selectable targets', async () => {
@@ -220,7 +219,7 @@ test('a failed load shows an alert with a retry; a slow OLD answer cannot overwr
 test('an error belongs to the editor: after Cancel (or reopening) the old error is gone', async () => {
   await mount();
   await click(mustButton('Sửa', row('a')));
-  await type('editPrice', '-1', row('a'));
+  await type('editName', '   ', row('a'));
   await click(mustButton('Lưu', row('a')));
   assert.ok(row('a').querySelector('[role="alert"]'));
   await click(mustButton('Hủy', row('a')));
