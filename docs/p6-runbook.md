@@ -36,14 +36,13 @@ Tên và ý nghĩa từng biến: `apps/store-api/.env.example`. Bắt buộc ch
 
 | Nhóm | Biến |
 |---|---|
-| Lõi | `DATABASE_URL`, `JWT_SECRET`, `LICENSE_ADMIN_USER_IDS`, `CORS_ORIGINS`, `NODE_ENV=production` (unit đã đặt), `TRUST_PROXY=127.0.0.1` (unit đã đặt) |
-| Drive | `DRIVE_API_KEY`, `DRIVE_TOKEN_KEY` |
-| MXL1 cũ | `LICENSE_PUBLIC_KEY_B64` (và khóa riêng nếu ký MXL1 trên server — Q P0) |
+| Lõi | `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGINS`, `NODE_ENV=production` (unit đã đặt), `TRUST_PROXY=127.0.0.1` (unit đã đặt) |
+| Drive | `DRIVE_API_KEY` |
 | Dữ liệu | `PREVIEW_DIR`, `MIN_FREE_DISK_BYTES`, `MODEL_CACHE_*` |
 | Telegram | `TELEGRAM_*` (để trống hết = tắt) |
 | Giám sát | `MONITOR_*` (tùy chọn; mặc định: đĩa trống < 20%, RAM > 800 MB, > 20 lỗi Drive/giờ, > 5 GiB/giờ, đơn chờ chủ > 60 phút) |
 
-Thông tin ngân hàng **không** nằm trong env: nhập ở trang admin → Cài đặt (`app_settings`, xem `STATUS.md` dòng P5). Chưa nhập thì tạo đơn trả `PAYMENT_NOT_CONFIGURED`.
+Thông tin ngân hàng **không** nằm trong env: nhập ở trang admin → Cài đặt (`app_settings`). Chưa nhập thì tạo đơn trả `PAYMENT_NOT_CONFIGURED`.
 
 Production **không tự migrate khi khởi động** (`RUN_MIGRATIONS` mặc định false khi `NODE_ENV=production`). Luôn chạy tay ở §4.
 
@@ -72,9 +71,10 @@ Kiểm Nginx **trước khi cài** (không cần VPS): `docker run --rm -v "$PWD
    sudo systemctl restart store-api && sudo systemctl restart store-worker                           # (3) API rồi worker
    (cd ../store-web && npm ci && npm run build) && sudo rsync -a --delete ../store-web/dist/ /var/www/3dsmood/   # (4) admin web
    curl -fsS https://<domain>/api/health                                                               # (5) kiểm
+   # Lần đầu: tạo admin  ->  ADMIN_PASSWORD=<mật khẩu> npm run create-admin -- <tên-đăng-nhập>   (cùng env như bước migrate)
    ```
-3. Không xóa cột/bảng cũ trong cùng đợt. Dọn code cũ ở đợt riêng (P7).
-4. **Bộ cài cho khách mới:** chạy `installer\build-installer.ps1 -ApiBaseUrl https://<domain>` để kéo seed preview từ VPS (P4.3 bước 10). Khách cũ tự đồng bộ ảnh, không cần cài lại.
+3. Migration 023 xóa vĩnh viễn các bảng của hướng đã bỏ (license cũ, payOS, R2, catalog cũ); rollback của nó từ chối. Sao lưu (`deploy/backup.sh`) trước khi chạy.
+4. **Bộ cài cho khách mới:** chạy `installer\build-installer.ps1 -ApiBaseUrl https://<domain>` (bộ cài không đóng sẵn catalog/ảnh: lần chạy đầu plugin tự tải từ VPS, D28.3). Khách cũ tự đồng bộ, không cần cài lại.
 
 ## 5. Rollback
 
@@ -125,7 +125,7 @@ Chưa có: giám sát từ bên ngoài (khi cả VPS sập thì không ai báo) 
 | 4 | Scan lỗi → catalog giữ nguyên (B6) | Gây lỗi giữa job | | |
 | 5 | Mục mơ hồ vào Needs Review; xác nhận → model xuất hiện (C4) | Trang Needs Review | | |
 | 6 | Admin thêm model → plugin đang mở tự hiện trong ≤ 5 phút (D2) | Thêm/sửa tên model, đo thời gian | | |
-| 7 | Cài xong, mở lần đầu **offline** vẫn thấy đủ ảnh (D2) | Cài bộ cài seed, rút mạng, mở panel | | |
+| 7 | Cài xong, mở lần đầu **có mạng** tải đủ catalog + ảnh có tiến độ; ngắt giữa chừng chạy tiếp được (D28.3) | Cài, mở panel, rút mạng giữa chừng, bật lại | | |
 | 8 | Mở plugin lần 2 offline vẫn thấy catalog (D1) | Rút mạng, mở panel | | |
 | 9 | Token thiết bị không lọt ra JS (D3) | Kiểm bridge/DevTools: không có `Device …` | | |
 | 10 | Máy khác không dùng được token; chữ ký sai/replay/hết hạn bị từ chối (A5/A6) | Test tự động + thử tay | | |

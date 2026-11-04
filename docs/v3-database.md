@@ -1,5 +1,7 @@
 # 3DS Mood v3 — Database ERD + Migration Plan
 
+> **D28 (2026-11-04) thay một phần tài liệu này:** license cả thư viện/1 máy (thay D18), bộ cài không đóng sẵn catalog/ảnh (thay D24/seed), OAuth Drive, R2, payOS, MXL1, đăng ký khách đã được gỡ khỏi code (xem `decisions.md` D26–D28). Phần mô tả các thứ đó chỉ còn là lịch sử thiết kế.
+
 > Đi kèm [`v3-architecture.md`](v3-architecture.md). **Đề xuất, chưa chạy.** Nối tiếp migration hiện có `001–013`
 > (nhánh `nam-lisence`). Mọi kiểu dữ liệu đã đối chiếu với schema hiện tại: `users.id uuid`, `sessions.id bytea`,
 > `gen_random_uuid()` đang dùng sẵn.

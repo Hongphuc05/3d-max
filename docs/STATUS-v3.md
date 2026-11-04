@@ -1,8 +1,8 @@
 # STATUS v3 — đã làm tới đâu từ lúc bắt đầu kế hoạch v3
 
-> Cập nhật lần cuối: **2026-11-03** · nhánh `v3/p2-sync-worker` · P0–P7 đã có phần trong repo; **phần chưa test / chưa nghiệm thu tóm gọn ở CUỐI file**.
-> Plan: [`v3-implementation-plan.md`](v3-implementation-plan.md) · Nhật ký chi tiết từng bước: [`STATUS.md`](STATUS.md), mục "Nhật ký P2".
-> **File này chỉ ghi trạng thái còn hiệu lực với code hiện tại.** Các kết quả đã bị thay thế (route/tên trường cũ, số test cũ, lần chạy hỏng giữa chừng, nhận định đã rút lại) không có ở đây; muốn xem lịch sử thì đọc `STATUS.md`.
+> Cập nhật lần cuối: **2026-11-04** · nhánh `v3/p2-sync-worker` · P0–P7 đã có phần trong repo; **phần chưa test / chưa nghiệm thu tóm gọn ở CUỐI file**.
+> Plan: [`v3-implementation-plan.md`](v3-implementation-plan.md). **D28.5 (2026-11-04) đã gỡ** `STATUS.md`, `p4-open-issues.md`, `offline-library.md`, `r2-catalog.md`, `license-payos-*` và các tài liệu hướng cũ khác; các tham chiếu tới chúng bên dưới tra bằng `git show d7d24b3:docs/<tên-file>`.
+> **File này chỉ ghi trạng thái còn hiệu lực với code hiện tại.** Các kết quả đã bị thay thế (route/tên trường cũ, số test cũ, lần chạy hỏng giữa chừng, nhận định đã rút lại) không có ở đây; muốn xem lịch sử thì đọc `STATUS.md` cũ (xem trên).
 
 Chú giải: `[x]` xong và đã kiểm tra · `[~]` xong một phần / chưa kiểm tra đủ · `[ ]` chưa làm.
 
@@ -62,7 +62,7 @@ Quét bằng **API key** (D26), không OAuth. Đã chạy trên Drive thật, DB
 - [x] **P4.3 plugin native + P4.4 giao diện — ĐÃ NGHIỆM THU TRÊN 3ds Max 2022 THẬT (xem dòng P4.5 trong STATUS.md).** Luồng chính đạt: catalog + ảnh + seed, đăng ký thiết bị bằng TPM, nút theo quyền, tải qua backend và import vào scene, thu hồi quyền bị chặn, offline, tự cập nhật, không lộ Drive ID (quét chưa trọn vẹn: cache WebView2 đang bị Max khóa, cần quét lại khi đóng Max). **Còn mở:** 3 model là RAR lồng chưa import được (cần quyết định), 43 file chưa kiểm được định dạng, MXL1 và thanh toán chưa thử. Mô tả code bên dưới giữ nguyên: Plugin C# build thật `Release x64` thành công; 12 bộ test native xanh; web 165/165. Gồm: phiên thiết bị (ký thách thức `3DM-DEVICE-V2`), cache catalog nguyên khối, cache preview + seed cài đặt + tải nền 4 luồng, bộ theo dõi cập nhật (poll 5 phút + SSE), tải model qua backend, UI chỉ đọc dữ liệu cục bộ đã kiểm (endpoint thiết bị/tải bị chặn với JS), đọc license MXL1 cũ và gửi lên server (giữ nguyên file), `asset.import {modelId}`, `build-installer.ps1 -ApiBaseUrl` kéo seed (build thất bại nếu thiếu ảnh), giao diện UI-1 trên dữ liệu v3 (nút theo quyền, tab Đã tải, tự làm mới giữ bộ lọc, thiết bị thay tài khoản). **Chưa kiểm chứng (P4.5 — cần Max 2022 thật):** WebView2 + `PackagedAppRuntime` trả `/api/v1` & `/previews` từ cache, mở lại khi mất mạng, merge model vào scene, thiếu quyền báo rõ, grep `%LOCALAPPDATA%\3dMood` không có Drive ID; chạy `build-installer.ps1 -ApiBaseUrl` đầy đủ; Google thật cho đường tải; áp migration 021/022 vào `store_p2`. **Nợ biết trước (đã xử lý ở 02/11):** 3 bộ test native cũ từng hỏng sẵn nay đã xanh; nút Mua chờ P5; chế độ offline cũ (`assetId` + license thủ công) và cookie-session cũ vẫn còn trong mã, dọn ở P7.
 - [ ] **P5 — code + test + đột biến xong (2026-11-02), CHƯA nghiệm thu thật**: đơn hàng, VietQR, bot Telegram (backend), hộp thoại mua trong plugin (web + native). Chi tiết, các chỗ lệch plan và việc chưa kiểm chứng: hai dòng P5 trong `STATUS.md`. Cần chủ dự án: tạo bot (P5.1), nhập thông tin ngân hàng ở admin, quét thử VietQR bằng app ngân hàng thật, chạy nghiệm thu thật.
 - [ ] **P6 — mới làm phần trong repo (2026-11-02):** cấu hình Nginx (đã kiểm hành vi bằng container) và systemd (đã verify cú pháp), giám sát, backup + diễn tập restore (PASS trên DB dev), rollback migration, runbook `docs/p6-runbook.md`. **Chưa có VPS nên chưa deploy, chưa chạy failure test và E2E.** Cần chủ dự án: VPS + domain, và gửi 18 tiêu chí nghiệm thu gốc (không có trong repo).
-- [~] **P7 — làm MỘT PHẦN có chủ đích (2026-11-03):** đã gỡ payOS (API + web) và OfflineLibrary; R2/catalog cũ, đăng ký khách, `apps/license-admin`, bảng DB cũ, file C# cũ được giữ vì còn phụ thuộc hoặc cần quyết định (xem D27 trong `decisions.md` và mục C ở cuối file này). Điều kiện "P6 ổn định ≥ 2 tuần" của plan chưa đạt.
+- [~] **P7 — dọn code cũ xong theo D28.5 (2026-11-04)**, chưa build được C# trên Windows (xem mục C ở cuối file).
 
 ---
 
@@ -110,15 +110,11 @@ Mỗi bước: ghi log vào `STATUS.md` → viết test (PostgreSQL thật) → 
 
 **P7** — Dọn code cũ: chỉ làm một phần (payOS, OfflineLibrary); phần còn lại cố ý giữ — xem mục C ngay bên dưới.
 
-### C. P7 — phần đã làm và phần cố ý KHÔNG làm
-**Đã làm (2026-11-03):** gỡ payOS khỏi API (`src/payments`, `/api/payments/*`, `/api/webhooks/payos`, 2 script, `@payos/node`, biến `PAYOS_*`) và web (`Purchase`, `PaymentDialog`, `payment-*`, hàm thanh toán trong `api.js`/`license-flow.js`, phần Mua trong `LicensePanel`); gỡ `OfflineLibrary`; tắt Playwright (spec cũ chưa từng chạy lại); banner "ĐÃ NGỪNG DÙNG" lên tài liệu payOS; quyết định D27. Kiểm: API 555/555, web 158/158, `vite build` ok, diễn tập deploy 30/30. **Cố ý KHÔNG làm, kèm điều kiện để làm tiếp** (chi tiết D27):
-- **Xóa bảng DB cũ** (`orders`, `payment_events`, …): admin cũ còn đọc `orders` → gỡ màn doanh thu/`legacy-orders` trước, backup, chủ dự án duyệt. *Không có file SQL xóa bảng nào được tạo.*
-- **Gỡ R2 / `catalog-runtime` / `assets.js` / `cloudflare/`:** admin dashboard và tải asset cũ còn dùng; phải gỡ cả cụm.
-- **Gỡ đăng ký khách + `StoreApp`:** hiện là cách duy nhất tạo admin đầu tiên (đăng ký rồi cấp quyền bằng `LICENSE_ADMIN_USER_IDS`) → cần script tạo admin trước.
-- **Gỡ `apps/license-admin`:** chờ **P3.5** (chưa làm); đây là công cụ ký MXL1 duy nhất (tiêu chí #17).
-- **File C# `GoogleDriveDownloader.cs`, `StaticCatalogService.cs`, chế độ đóng gói:** chờ chủ dự án quyết định bỏ chế độ đóng gói.
-- **`licensing/`:** plan không liệt kê; plugin cũ và `devices/` còn dùng.
-**Chưa kiểm chứng sau P7:** chưa mở trang admin và `/license` bằng mắt sau khi gỡ phần Mua; Playwright không chạy; chưa đóng gói bản web mới vào bộ cài và thử trong Max.
+### C. P7 / D28.5 — dọn code cũ (làm ngày 2026-11-04)
+**Đã gỡ:** R2/Cloudflare (`src/r2`, `r2-http.js`, `catalog-runtime.js`, `assets.js`, `catalog.js`, `cloudflare/`), `licensing/` cũ, MXL1 (API + `tools/license-owner` + `apps/license-admin`), OAuth Drive (`drive/oauth.js`, `service-account.js`, `crypto.js`, `probe.js`, `DRIVE_TOKEN_KEY`), đăng ký khách + `StoreApp` + giao diện license trên web, màn admin cũ (tổng quan doanh thu, tài khoản & license, thanh toán, lịch sử), `library/` + `frontend/` (PoC), chế độ thư viện offline trong plugin (`StaticCatalogService`, `OfflineLicenseService`, `GoogleDriveDownloader`), seed ảnh trong installer (`Get-PreviewSeed.ps1`).
+**Giữ lại có chủ đích:** `users` + `sessions` (đăng nhập admin, tạo bằng `npm run create-admin`), `drive_connections` + `oauth_states` (bảng rỗng; `drive_sources` và chuỗi rollback 014/019 còn tham chiếu), `download-stream.js` (`createArchiveSender`, luồng tải đang dùng), tài liệu `v3-implementation-plan.md`.
+**Migration 023** xóa 13 bảng cũ (license, payOS, R2, catalog cũ, import ticket); rollback của nó **từ chối** (khôi phục bằng backup).
+**Chưa kiểm chứng sau D28.5:** build C#/installer trên Windows (máy dev macOS không biên dịch được); trang đăng nhập admin bằng mắt; `ImportPipelineTests.cs` (kiểm tra import end-to-end trong WebView) đã xóa cùng đường tải cũ — cần viết lại cho đường v3 (đường tải v3 có `ModelDownloaderTests.cs`). Playwright đã gỡ hẳn.
 
 ### D. Rủi ro xuyên suốt
 - Test native hiện **không** chạm API/Telegram/Drive thật; lỗi ghép nối chỉ lộ khi chạy end-to-end.
@@ -196,16 +192,22 @@ Thứ tự **[plan]** P6 + kiến trúc §10.2:
 11. Phát hành plugin **2 bước** (kiến trúc §10.2.4): (a) bản có cả hai chế độ, (b) bỏ bundled khi đa số khách đã cập nhật.
 Mọi sai khác với diễn tập Docker (systemd, `MemoryMax`, `ProtectSystem=strict`, `TRUST_PROXY`) được ghi vào `STATUS.md` và sửa file trong `deploy/`.
 
-### Bước 5 — Làm nốt P7 (chỉ sau khi 4 ổn định ≥ 2 tuần **[plan]**)
-| # | Việc | Điều kiện trước | Ghi chú |
-|---|---|---|---|
-| 5.1 | Gỡ `apps/license-admin` (Vercel) | **2.1 xong và nghiệm thu** (tiêu chí #17 đạt trên web mới) | **[plan]** P7 "sau khi P3.5 thay thế" |
-| 5.2 | Gỡ đăng ký/đăng nhập khách (`auth.js`) và `StoreApp` trong `App.jsx` | **2.9** + admin có form đăng nhập riêng | Giữ đăng nhập admin |
-| 5.3 | Gỡ `src/r2/`, `r2-http.js`, `cloudflare/`, `scripts/*r2*`, `@aws-sdk/client-s3`, `catalog-runtime` R2, `assets.js` | Gỡ trước các màn admin cũ (overview/đồng bộ R2, `CatalogSyncButton`) | **[plan]** P7; gỡ cả cụm cùng lúc, chạy lại cả bộ test |
-| 5.4 | **Xóa bảng DB cũ** (`orders`, `payment_events`, `licenses`, …) bằng migration + rollback | Gỡ các màn admin đọc `orders`; **backup trước; chủ dự án duyệt** | **[plan]** P7 "(backup trước, chủ dự án duyệt)"; kiểm bằng `restore-drill.sh` trước |
-| 5.5 | Gỡ `GoogleDriveDownloader.cs`, `StaticCatalogService.cs` (và dọn test native) | Quyết định bỏ chế độ đóng gói (bước 1.3) + đa số khách đã cập nhật | **[plan]** "nếu bỏ chế độ đóng gói" |
-| 5.6 | Gỡ `licensing/` (license Lifetime theo tài khoản) nếu không còn khách dùng | **[đề xuất]** xác nhận không còn khách cũ cần; plan không liệt kê | — |
-| 5.7 | Cập nhật `docs/decisions.md`, `README.md`, `CLAUDE.md` | Sau mỗi mục trên | **[plan]** P7 |
+### Bước 5 — P7
+Đã làm trọn theo D28.5 (xem mục C). Còn lại: chạy build + bộ test native trên Windows, rồi nghiệm thu trên Max.
 
 ### Quy tắc áp dụng cho mọi bước
 Mỗi bước code: viết test trước (PostgreSQL thật) → code → **đột biến** → chạy **cả bộ** `npm test` (api + web) và native liên quan, kiểm mã thoát thật → ghi `STATUS.md` (bảng "Nhật ký P2") + `STATUS-v3.md` → commit **local**. Push chỉ khi chủ dự án yêu cầu. Không commit bí mật hay thông tin ngân hàng thật. Việc "chưa kiểm chứng" phải ghi rõ, không ghi là xong.
+
+## Việc chưa kiểm chứng từ phiên test P4.5 (gộp từ `p4-open-issues.md` cũ, nay đã gỡ)
+Đã kiểm trên Max 2022 thật (01–02/11): đăng ký thiết bị bằng TPM, catalog + ảnh, nút theo quyền, tải + import `19113 wall lamp`, thu hồi quyền thì bị chặn, offline, tự cập nhật tên model. Còn mở:
+1. **Không lộ Drive ID trong cache WebView2:** lần quét chưa trọn vì Max khóa file. Đóng hẳn 3ds Max rồi `Select-String` ID (lấy từ DB, không ghi vào tài liệu) trong `%LOCALAPPDATA%\3dMood` và `%LOCALAPPDATA%\MaxWebViewHost`; đạt = 0 file không đọc được và 0 hit.
+2. **File lớn qua trang xác nhận "virus scan" của Google:** mới thử 2 file nhỏ (133–263 KB). Thử 1 file ≥ 100 MB; lỗi sẽ là `STORAGE_DOWNLOAD_FAILED`. Chưa biết 360 file đã bật "Anyone with the link" hết chưa (cần script gọi `public-link.open()` cho từng `drive_file_id`).
+3. **RAR lồng:** 3/360 model (`80891x Muro Lightstar`, `01H75FPCJ2EPCBJV3TKJEJRG4XO7NHE562`, `173 Cabinet Furniture 04 Minimal Wardrobe Kit P02 Island`) báo `ASSET_NO_IMPORTABLE_FILE` vì `ArchivePackage.Extract` chỉ giải nén một lớp. Chờ quyết định: giải nén lồng một lớp có giới hạn (độ sâu, dung lượng, zip-slip) hoặc đóng gói lại trên Drive. 43/360 file chưa biết định dạng bên trong (bsdtar không liệt kê được; SharpCompress có thể đọc được) — kiểm bằng `ArchivePackage.Extract`.
+4. **Độ trễ lần đầu tải một model:** VPS tải đủ + kiểm size/md5/sha256 rồi mới phát; plugin chỉ thấy "Đang tải…" không có phần trăm, tối đa theo timeout 30 phút. Chưa đo với file lớn.
+5. **Quyền bị thu hồi giữa lúc đã có phiên tải** (trước khi bắt đầu tải): chỉ có test tự động.
+6. **Đa tiến trình:** `maxConcurrent` và giới hạn phiên/giờ nằm trong tiến trình API; cache đầy (`MODEL_CACHE_MAX_BYTES` nhỏ) mới có test tự động.
+7. **Tự cập nhật (bước 11):** chưa đo thời gian từ lúc lưu đến lúc đổi trong Max thật, chưa kiểm ô tìm/model đang chọn có giữ nguyên.
+8. **Web:** chưa chạy `npm run dev` + `?mockMax=1` bằng mắt; `devMockHost.js` chưa mô phỏng `library.updated`, `library.offline`, `library.previewProgress`.
+9. **Build installer với URL HTTPS thật:** mới chạy `-ApiBaseUrl http://127.0.0.1:4000 -TestBuild`; chưa ký/phát hành.
+10. **Bí mật lộ trong log phiên:** `DRIVE_API_KEY` từng in ra màn hình ở phiên P4.5 — tạo lại khóa trước khi deploy.
+Lỗi môi trường hay gặp: `AUTH_CONFIGURATION_REQUIRED` = thiếu `JWT_SECRET`; `/admin` không vào được = chưa có tài khoản admin (`npm run create-admin`); `installer\stage` bị `Access denied` = `takeown`/`icacls` rồi xóa; script test C# tìm `csc.exe` qua `plugin-csharp/tests/find-csc.ps1`.

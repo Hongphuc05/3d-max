@@ -1,5 +1,7 @@
 # 3DS Mood v3 — Kiến trúc thống nhất (Phase 0: audit + thiết kế)
 
+> **D28 (2026-11-04) thay một phần tài liệu này:** license cả thư viện/1 máy (thay D18), bộ cài không đóng sẵn catalog/ảnh (thay D24/seed), OAuth Drive, R2, payOS, MXL1, đăng ký khách đã được gỡ khỏi code (xem `decisions.md` D26–D28). Phần mô tả các thứ đó chỉ còn là lịch sử thiết kế.
+
 > **2026-10-30:** D26 thay phần Drive private/OAuth và stream trực tiếp từ Drive. Xem mục "Bàn giao" trong `v3-implementation-plan.md`.
 
 > Viết 2026-10-29 · nhánh `phuc_arch_v3` (dựng từ `origin/nam-lisence` @ `ba41518`) · **Chưa có dòng code nào được sửa, chưa chạy migration.**
