@@ -54,3 +54,7 @@ export const updateAdminAccount = (body) => request('PATCH', '/admin/account', {
 
 export const mb = (n) => n == null ? 'Chưa rõ dung lượng' : `${n} MB`;
 export const vnd = (n) => new Intl.NumberFormat('vi-VN').format(n) + ' ₫';
+// Tong quan admin (apps/store-api/src/admin-overview).
+export const adminOverview = (signal) => get('/admin/overview', null, signal);
+export const adminHealth = (signal) => get('/admin/health', null, signal);
+export const adminTelegramTest = () => request('POST', '/admin/health/telegram-test', { body: {} });

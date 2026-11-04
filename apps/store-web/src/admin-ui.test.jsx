@@ -24,6 +24,8 @@ async function mount({ firstLogin = false, regular = false, meGate = null } = {}
     if (path === '/api/auth/login') { fixture.user = { ...admin }; return response({ user: fixture.user }); }
     if (path === '/api/auth/logout') return response({ ok: true });
     if (path === '/api/admin/account') { if (fixture.accountGate) await fixture.accountGate; fixture.user = { ...fixture.user, username: body.username, mustChangeCredentials: false }; return response({ user: fixture.user }); }
+    if (path === '/api/admin/overview') return response({ revenue: { today: 0, month: 0, total: 0, daily: [] }, orders: { awaitingConfirm: 0, pending: 0 }, licenses: { activeDevices: 0, newDevices7d: 0 }, catalog: { models: 0, lastSync: null } });
+    if (path === '/api/admin/health') return response({ telegram: { configured: false, botOk: false }, disk: { freeBytes: null, totalBytes: null }, modelCache: { bytes: 0, limitBytes: 1 }, backup: { lastAt: null }, db: { ok: true } });
     if (path.startsWith('/api/admin/')) return response({ configured: true, missingConfig: [], sources: [], items: [] });
     throw new Error(`Unhandled admin fixture ${path}`);
   };
@@ -45,10 +47,10 @@ async function submit(form) { await act(async () => form.dispatchEvent(new windo
 afterEach(async () => { if (root) await act(async () => root.unmount()); root = null; });
 after(() => { globalThis.fetch = originalFetch; dom.window.close(); });
 
-test('admin enters management interface (Drive first) and nothing of the old storefront is mounted', async () => {
+test('admin enters management interface (Tổng quan first) and nothing of the old storefront is mounted', async () => {
   await mount();
   assert.match(container.textContent, /Quản trị 3DsMood/);
-  assert.ok(fixture.requests.some(call => call.path === '/api/admin/drive/status'));
+  assert.ok(fixture.requests.some(call => call.path === '/api/admin/overview'));
   assert.equal(fixture.requests.some(call => call.path === '/api/products' || call.path.startsWith('/api/licenses')), false);
   assert.equal(container.textContent.includes('My License'), false);
 });

@@ -23,6 +23,8 @@ async function mount(me) {
     if (url === '/api/auth/me') return me();
     if (url === '/api/auth/login') return response({ user: customer });
     if (url === '/api/auth/logout') return response({ ok: true });
+    if (String(url) === '/api/admin/overview') return response({ revenue: { today: 0, month: 0, total: 0, daily: [] }, orders: { awaitingConfirm: 0, pending: 0 }, licenses: { activeDevices: 0, newDevices7d: 0 }, catalog: { models: 0, lastSync: null } });
+    if (String(url) === '/api/admin/health') return response({ telegram: { configured: false, botOk: false }, disk: { freeBytes: null, totalBytes: null }, modelCache: { bytes: 0, limitBytes: 1 }, backup: { lastAt: null }, db: { ok: true } });
     if (String(url).startsWith('/api/admin/')) return response({ sources: [], items: [], configured: true, missingConfig: [] });
     throw new Error(`Unexpected request ${url}`);
   };
