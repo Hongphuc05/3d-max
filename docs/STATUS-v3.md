@@ -214,3 +214,8 @@ Lỗi môi trường hay gặp: `AUTH_CONFIGURATION_REQUIRED` = thiếu `JWT_SEC
 
 ## D29 (2026-11-05): ảnh tải lên thay cho ảnh Drive
 Đã làm: migration 025, API tải/xóa ảnh, ghép theo stem, UI admin (tải theo danh mục / cả thư mục, lọc Đủ / Thiếu zip / Thiếu ảnh / Lệch danh mục). Chưa kiểm: tải thật ~320 ảnh qua nginx trên VPS; dọn tay ~46 file .webp cũ nguồn Drive trong `previews-v3`.
+
+## Gói phát hành `3dsmood-library.zip` (05/11)
+Đã viết: `installer/release/make-release-zip.ps1` (zip = exe + `HUONG-DAN-CAI-DAT.html` + `THONG-TIN-PHIEN-BAN.txt` kèm SHA256 + `Cai-thu-cong\ENU\` dựng từ `installer\stage`), hướng dẫn HTML có mục SmartScreen/cài thủ công/gỡ, README-template. Tham số bắt buộc `-Contact`.
+**Đã kiểm trên Windows (chủ dự án, 05/11):** `build-installer.ps1 -ApiBaseUrl https://3dsmood.io.vn` thành công (exe 9,5 MB, test ZIP/RAR/7z PASS); `make-release-zip.ps1` ra zip 18,5 MB; cài vào Max 2022 ENU sạch: "Cài đặt xong — 103 file" (101 trong `scripts\Platform` + agent + macro); `plugin-config.json` = `https://3dsmood.io.vn/`; nút Platform xuất hiện trên toolbar; chủ dự án báo mở panel ổn (chưa có ảnh/log kèm).
+**Chưa kiểm chứng:** ảnh hướng dẫn (`installer/release/images/`) chưa có; zip đã thử đóng với `-Contact` là chuỗi mẫu, cần đóng lại với contact thật; cài thủ công (`Cai-thu-cong`) chưa thử; SmartScreen chưa chụp (file build tại máy không có dấu tải từ Internet); tải/import model, mua license trong Max thật chưa thử.
