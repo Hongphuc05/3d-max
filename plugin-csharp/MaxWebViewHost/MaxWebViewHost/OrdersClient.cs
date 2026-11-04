@@ -1,19 +1,17 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Web.Script.Serialization;
 
 namespace MaxWebViewHost
 {
-    /// <summary>Order calls of the web UI (P5). The UI has no device token: the host adds it, forwards only {items:[{modelId}]} on create
-    /// (price and anything else the page sends is dropped; the server prices from its DB) and renews the token once on 401.</summary>
+    /// <summary>Order calls of the web UI (P5). The UI has no device token: the host adds it, always sends {} on create
+    /// (D28: one library order; whatever the page sends is dropped, the server prices from its DB) and renews the token once on 401.</summary>
     internal sealed class OrdersClient
     {
-        private const int MaxItems = 20, ResponseLimit = 64 * 1024;
+        private const int ResponseLimit = 64 * 1024;
         private static readonly Regex Uuid = new Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", RegexOptions.CultureInvariant);
         private readonly BackendApi api;
         private readonly IDeviceTokenSource tokens;
@@ -31,7 +29,7 @@ namespace MaxWebViewHost
         {
             ct.ThrowIfCancellationRequested();
             HttpMethod method; string path; object json = null;
-            if (route == V3Route.OrderCreate) { method = HttpMethod.Post; path = "/api/v1/orders"; json = CreateBody(body); }
+            if (route == V3Route.OrderCreate) { method = HttpMethod.Post; path = "/api/v1/orders"; json = new Dictionary<string, object>(); }
             else if (route == V3Route.OrderGet || route == V3Route.OrderClaim || route == V3Route.OrderCancel)
             {
                 var id = arg == null ? null : arg.ToLowerInvariant();
@@ -48,24 +46,5 @@ namespace MaxWebViewHost
             }
         }
 
-        private static object CreateBody(byte[] body)
-        {
-            if (body == null || body.Length == 0 || body.Length > 4096) throw Invalid();
-            Dictionary<string, object> parsed;
-            try { parsed = new JavaScriptSerializer { MaxJsonLength = 4096, RecursionLimit = 8 }.Deserialize<Dictionary<string, object>>(System.Text.Encoding.UTF8.GetString(body)); }
-            catch (Exception e) when (e is ArgumentException || e is InvalidOperationException) { throw Invalid(); }
-            var items = parsed != null && parsed.ContainsKey("items") ? parsed["items"] as IList : null;
-            if (items == null || items.Count < 1 || items.Count > MaxItems) throw Invalid();
-            var seen = new HashSet<string>(); var clean = new List<object>();
-            foreach (var item in items)
-            {
-                var dict = item as Dictionary<string, object>;
-                var id = dict != null && dict.ContainsKey("modelId") ? dict["modelId"] as string : null;
-                id = id == null ? null : id.ToLowerInvariant();
-                if (id == null || !Uuid.IsMatch(id) || !seen.Add(id)) throw Invalid();
-                clean.Add(new Dictionary<string, object> { { "modelId", id } });
-            }
-            return new Dictionary<string, object> { { "items", clean } };
-        }
     }
 }

@@ -49,30 +49,14 @@ class OrdersClientTests
 
     static async Task Run()
     {
-        // 1. Create: only {items:[{modelId}]} goes upstream; client prices are dropped; the token is a header, never in the URL or body.
+        // 1. Create (D28 library order): the host always sends {}; whatever the page sends is dropped; the token is a header, never in the URL or body.
         {
             var fake = new Fake { Reply = (r, b) => Reply(HttpStatusCode.Created, "{\"orderId\":\"" + Order + "\"}") }; var tokens = new Tokens();
             var res = await Make(fake, tokens).HandleAsync(V3Route.OrderCreate, null, Bytes("{\"amountVnd\":1,\"items\":[{\"modelId\":\"" + Id.ToUpperInvariant() + "\",\"priceVnd\":1,\"scope\":\"ALL_MODELS\"}],\"coupon\":\"X\"}"), CancellationToken.None);
             Check(res.Status == 201 && Encoding.UTF8.GetString(res.Body).Contains(Order), "the server's 201 and body are passed through");
             Check(fake.Calls.Single() == "POST /api/v1/orders [Device " + tokens.Current + "]", "one POST to /api/v1/orders with the device token header");
-            Check(fake.Bodies.Single() == "{\"items\":[{\"modelId\":\"" + Id + "\"}]}", "only normalised model ids are forwarded (prices, scope and unknown fields are dropped)");
+            Check(fake.Bodies.Single() == "{}", "the page body is never forwarded (prices, items, unknown fields are dropped)");
             Check(!fake.Calls.Single().Replace("[Device " + tokens.Current + "]", "").Contains(tokens.Current) && !fake.Bodies.Single().Contains(tokens.Current), "the token is not in the URL or the body");
-        }
-        // 2. Invalid create bodies never reach the network.
-        {
-            var many = string.Join(",", Enumerable.Range(0, 21).Select(i => "{\"modelId\":\"00000000-0000-4000-8000-" + i.ToString("D12") + "\"}"));
-            var bad = new Dictionary<string, string>
-            {
-                { "not json", "nope" }, { "array", "[]" }, { "no items", "{}" }, { "empty items", "{\"items\":[]}" }, { "items not array", "{\"items\":5}" },
-                { "bad uuid", "{\"items\":[{\"modelId\":\"abc\"}]}" }, { "path traversal", "{\"items\":[{\"modelId\":\"../x\"}]}" }, { "no modelId", "{\"items\":[{}]}" },
-                { "duplicate", "{\"items\":[{\"modelId\":\"" + Id + "\"},{\"modelId\":\"" + Id + "\"}]}" }, { "too many", "{\"items\":[" + many + "]}" },
-                { "item not object", "{\"items\":[\"x\"]}" }, { "empty body", "" },
-            };
-            foreach (var entry in bad)
-            {
-                var fake = new Fake { Reply = (r, b) => Reply(HttpStatusCode.Created, "{}") };
-                Check(await CodeOf(() => Make(fake, new Tokens()).HandleAsync(V3Route.OrderCreate, null, Bytes(entry.Value), CancellationToken.None)) == "INVALID_PARAMS:400" && fake.Calls.Count == 0, "create body '" + entry.Key + "' is refused locally");
-            }
         }
         // 3. Get / claim / cancel use the order id from the route; bad ids and wrong routes are refused before any request.
         {
