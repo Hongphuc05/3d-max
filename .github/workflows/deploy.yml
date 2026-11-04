@@ -1,0 +1,60 @@
+# Test roi deploy len VPS moi khi push nhanh v3/p2-sync-worker (main giu code cu, khong deploy).
+# Secrets: VPS_HOST, VPS_SSH_KEY (key rieng cua user `ci`), VPS_KNOWN_HOSTS. Cai dat VPS mot lan: deploy/vps-bootstrap.sh.
+name: deploy
+on:
+  push:
+    branches: [v3/p2-sync-worker]
+  workflow_dispatch:
+concurrency: { group: deploy-vps, cancel-in-progress: false }
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_USER: store, POSTGRES_PASSWORD: store, POSTGRES_DB: store_test }
+        ports: ['5432:5432']
+        options: --health-cmd "pg_isready -U store" --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      DATABASE_URL: postgres://store:store@localhost:5432/store_test
+      TEST_DATABASE_URL: postgres://store:store@localhost:5432/store_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 26, cache: npm, cache-dependency-path: 'apps/*/package-lock.json' }
+      - name: API tests
+        working-directory: apps/store-api
+        run: npm ci && npm test
+      - name: Web tests + build
+        working-directory: apps/store-web
+        run: npm ci && npm test && npx vite build
+      - uses: actions/upload-artifact@v4
+        with: { name: web-dist, path: apps/store-web/dist, retention-days: 7 }
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-24.04
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: web-dist, path: web-dist }
+      - name: SSH key
+        run: |
+          install -m700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ci && chmod 600 ~/.ssh/id_ci
+          printf '%s\n' "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+      - name: Upload
+        env: { HOST: "${{ secrets.VPS_HOST }}" }
+        run: |
+          SSH="ssh -i ~/.ssh/id_ci -o StrictHostKeyChecking=yes"
+          rsync -az --delete -e "$SSH" --exclude node_modules --exclude '.env*' apps/store-api/ ci@$HOST:/opt/3dsmood/apps/store-api/
+          rsync -az --delete -e "$SSH" deploy/ ci@$HOST:/opt/3dsmood/deploy/
+          rsync -az --delete -e "$SSH" web-dist/ ci@$HOST:/var/www/3dsmood/
+      - name: Install deps, migrate, restart
+        env: { HOST: "${{ secrets.VPS_HOST }}" }
+        run: ssh -i ~/.ssh/id_ci ci@$HOST 'cd /opt/3dsmood/apps/store-api && npm ci --omit=dev --no-audit --no-fund && sudo /usr/local/bin/3dsmood-release'
+      - name: Smoke test
+        run: |
+          for i in 1 2 3 4 5 6; do curl -fsS https://3dsmood.io.vn/api/health && exit 0; sleep 5; done; exit 1
