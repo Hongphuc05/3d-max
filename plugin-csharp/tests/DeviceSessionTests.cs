@@ -65,7 +65,7 @@ class DeviceSessionTests
     // A server that follows the v3 contract: remembers the challenge, verifies the signature with the registered key.
     sealed class Server
     {
-        public int Verifies, Challenges; public string LastLegacy; public string LastChallengeBody; public string LastVerifyBody;
+        public int Verifies, Challenges; public string LastChallengeBody; public string LastVerifyBody;
         public int TokenSeconds = 900; public char NextToken = 'a'; public bool AllModels; public string[] Models = new string[0];
         string challengeId, message; RSA pub;
         public HttpResponseMessage Handle(HttpRequestMessage r, string body)
@@ -85,7 +85,6 @@ class DeviceSessionTests
             {
                 Verifies++; LastVerifyBody = body;
                 var req = Json.Deserialize<Dictionary<string, object>>(body);
-                LastLegacy = req.ContainsKey("legacyLicense") ? (string)req["legacyLicense"] : null;
                 if ((string)req["challengeId"] != challengeId) return Err(403, "CHALLENGE_INVALID");
                 if (!pub.VerifyData(Encoding.UTF8.GetBytes(message), Convert.FromBase64String((string)req["signature"]), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1))
                     return Err(403, "SIGNATURE_INVALID");
@@ -114,7 +113,7 @@ class DeviceSessionTests
         {
             var server = new Server { Models = new[] { "11111111-1111-4111-8111-111111111111" } }; var fake = new Fake { Reply = server.Handle };
             var signer = new Signer(); var now = DateTime.UtcNow;
-            using (var svc = new DeviceSessionService(Api, signer, Machine, () => null, new HttpClient(fake), () => now))
+            using (var svc = new DeviceSessionService(Api, signer, Machine, new HttpClient(fake), () => now))
             {
                 var token = await svc.GetTokenAsync(CancellationToken.None);
                 Check(token == Token('a'), "token returned from verify");
@@ -123,7 +122,7 @@ class DeviceSessionTests
                     "challenge body has exactly the five contract fields");
                 var key = (Dictionary<string, object>)ch["publicKey"];
                 Check(key.Count == 3 && (string)key["kty"] == "RSA" && (string)key["e"] == "AQAB", "public key is sent as a three-field JWK");
-                Check(!server.LastVerifyBody.Contains("legacyLicense"), "no legacyLicense field when there is none");
+                Check(!server.LastVerifyBody.Contains("legacyLicense"), "verify carries no legacy licence field");
                 await svc.GetTokenAsync(CancellationToken.None);
                 Check(fake.Calls.Count == 2, "second call reuses the cached token (no HTTP)");
                 Check(svc.Current.Entitlements.AllModels == false && svc.Current.Entitlements.ModelIds.SequenceEqual(server.Models), "entitlements from verify are exposed");
@@ -133,7 +132,7 @@ class DeviceSessionTests
         // 2. Refresh before expiry (60 s margin); a token with plenty of time is kept.
         {
             var server = new Server(); var fake = new Fake { Reply = server.Handle }; var now = DateTime.UtcNow;
-            using (var svc = new DeviceSessionService(Api, new Signer(), Machine, () => null, new HttpClient(fake), () => now))
+            using (var svc = new DeviceSessionService(Api, new Signer(), Machine, new HttpClient(fake), () => now))
             {
                 var a = await svc.GetTokenAsync(CancellationToken.None);
                 now = now.AddSeconds(900 - 61);
@@ -146,19 +145,18 @@ class DeviceSessionTests
         // 3. Parallel callers share one authentication.
         {
             var server = new Server(); var fake = new Fake { Reply = server.Handle };
-            using (var svc = new DeviceSessionService(Api, new Signer(), Machine, () => null, new HttpClient(fake), () => DateTime.UtcNow))
+            using (var svc = new DeviceSessionService(Api, new Signer(), Machine, new HttpClient(fake), () => DateTime.UtcNow))
             {
                 var tokens = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => svc.GetTokenAsync(CancellationToken.None)));
                 Check(tokens.Distinct().Count() == 1 && server.Challenges == 1 && server.Verifies == 1, "eight parallel callers cause one challenge and one verify");
             }
         }
-        // 4. Legacy license is forwarded; Invalidate forces a fresh session; entitlements refresh uses the bearer.
+        // 4. Invalidate forces a fresh session; entitlements refresh uses the bearer.
         {
             var server = new Server { AllModels = true }; var fake = new Fake { Reply = server.Handle };
-            using (var svc = new DeviceSessionService(Api, new Signer(), Machine, () => "MXL1.abc.def", new HttpClient(fake), () => DateTime.UtcNow))
+            using (var svc = new DeviceSessionService(Api, new Signer(), Machine, new HttpClient(fake), () => DateTime.UtcNow))
             {
                 await svc.GetTokenAsync(CancellationToken.None);
-                Check(server.LastLegacy == "MXL1.abc.def", "the stored MXL1 licence is sent with verify");
                 Check(svc.Current.Entitlements.AllModels, "ALL_MODELS granted by the server is visible");
                 svc.Invalidate();
                 Check(await svc.GetTokenAsync(CancellationToken.None) == Token('b'), "Invalidate() makes the next call authenticate again");
@@ -171,7 +169,7 @@ class DeviceSessionTests
         {
             var server = new Server(); var fake = new Fake(); int meCalls = 0;
             fake.Reply = (r, b) => { if (r.RequestUri.AbsolutePath == "/api/v1/me/entitlements" && ++meCalls == 1) return Err(401, "UNAUTHENTICATED"); return server.Handle(r, b); };
-            using (var svc = new DeviceSessionService(Api, new Signer(), Machine, () => null, new HttpClient(fake), () => DateTime.UtcNow))
+            using (var svc = new DeviceSessionService(Api, new Signer(), Machine, new HttpClient(fake), () => DateTime.UtcNow))
             {
                 var ent = await svc.RefreshEntitlementsAsync(CancellationToken.None);
                 Check(ent != null && server.Verifies == 2 && meCalls == 2, "a 401 on /me/entitlements triggers exactly one re-authentication and retry");
@@ -182,7 +180,7 @@ class DeviceSessionTests
             foreach (var pair in new[] { new[] { "DEVICE_BLOCKED", "403" }, new[] { "DEVICE_KEY_MISMATCH", "403" }, new[] { "RATE_LIMITED", "429" } })
             {
                 var fake = new Fake { Reply = (r, b) => Err(int.Parse(pair[1]), pair[0]) };
-                using (var svc = new DeviceSessionService(Api, new Signer(), Machine, () => null, new HttpClient(fake), () => DateTime.UtcNow))
+                using (var svc = new DeviceSessionService(Api, new Signer(), Machine, new HttpClient(fake), () => DateTime.UtcNow))
                     Check(await CodeOf(() => svc.GetTokenAsync(CancellationToken.None)) == pair[0], "server error " + pair[0] + " is surfaced with its code");
             }
             var bad = new Dictionary<string, Func<HttpRequestMessage, string, HttpResponseMessage>>
@@ -195,7 +193,7 @@ class DeviceSessionTests
             foreach (var entry in bad)
             {
                 var fake = new Fake { Reply = entry.Value };
-                using (var svc = new DeviceSessionService(Api, new Signer(), Machine, () => null, new HttpClient(fake), () => DateTime.UtcNow))
+                using (var svc = new DeviceSessionService(Api, new Signer(), Machine, new HttpClient(fake), () => DateTime.UtcNow))
                     Check(await CodeOf(() => svc.GetTokenAsync(CancellationToken.None)) == "SERVER_UNAVAILABLE", "'" + entry.Key + "' is reported as SERVER_UNAVAILABLE");
             }
             var malformed = new Dictionary<string, Func<HttpResponseMessage>>
@@ -210,23 +208,23 @@ class DeviceSessionTests
             foreach (var entry in malformed)
             {
                 var server = new Server(); var fake = new Fake { Reply = (r, b) => r.RequestUri.AbsolutePath.EndsWith("verify") ? entry.Value() : server.Handle(r, b) };
-                using (var svc = new DeviceSessionService(Api, new Signer(), Machine, () => null, new HttpClient(fake), () => DateTime.UtcNow))
+                using (var svc = new DeviceSessionService(Api, new Signer(), Machine, new HttpClient(fake), () => DateTime.UtcNow))
                     Check(await CodeOf(() => svc.GetTokenAsync(CancellationToken.None)) == "SERVER_UNAVAILABLE" && svc.Current == null, "malformed verify '" + entry.Key + "' is refused and nothing is cached");
             }
         }
         // 7. Identity problems and network loss.
         {
             var signer = new Signer { Fail = new DeviceIdentityException("DEVICE_IDENTITY_LOST", "mất") };
-            using (var svc = new DeviceSessionService(Api, signer, Machine, () => null, new HttpClient(new Fake { Reply = new Server().Handle }), () => DateTime.UtcNow))
+            using (var svc = new DeviceSessionService(Api, signer, Machine, new HttpClient(new Fake { Reply = new Server().Handle }), () => DateTime.UtcNow))
                 Check(await CodeOf(() => svc.GetTokenAsync(CancellationToken.None)) == "DEVICE_IDENTITY_LOST", "a lost device identity is reported with its own code");
             var offline = new Fake { Reply = (r, b) => { throw new HttpRequestException("no route"); } };
-            using (var svc = new DeviceSessionService(Api, new Signer(), Machine, () => null, new HttpClient(offline), () => DateTime.UtcNow))
+            using (var svc = new DeviceSessionService(Api, new Signer(), Machine, new HttpClient(offline), () => DateTime.UtcNow))
                 Check(await CodeOf(() => svc.GetTokenAsync(CancellationToken.None)) == "SERVER_UNAVAILABLE", "network failure is SERVER_UNAVAILABLE");
             var wrong = new Fake { Reply = (r, b) => Err(403, "CHALLENGE_INVALID") };
-            using (var svc = new DeviceSessionService(Api, new Signer(), Machine, () => null, new HttpClient(wrong), () => DateTime.UtcNow))
+            using (var svc = new DeviceSessionService(Api, new Signer(), Machine, new HttpClient(wrong), () => DateTime.UtcNow))
                 Check(await CodeOf(() => svc.GetTokenAsync(CancellationToken.None)) == "CHALLENGE_INVALID", "CHALLENGE_INVALID is surfaced");
             using (var cts = new CancellationTokenSource())
-            using (var svc = new DeviceSessionService(Api, new Signer(), Machine, () => null, new HttpClient(new Fake { Reply = new Server().Handle }), () => DateTime.UtcNow))
+            using (var svc = new DeviceSessionService(Api, new Signer(), Machine, new HttpClient(new Fake { Reply = new Server().Handle }), () => DateTime.UtcNow))
             {
                 cts.Cancel();
                 try { await svc.GetTokenAsync(cts.Token); throw new Exception("cancelled call succeeded"); } catch (OperationCanceledException) { Check(true, "cancellation is honoured"); }
@@ -235,7 +233,7 @@ class DeviceSessionTests
         // 8. A failed attempt is not cached: the next call tries again (no negative caching).
         {
             var server = new Server(); int n = 0; var fake = new Fake { Reply = (r, b) => ++n <= 1 ? Err(503, "INTERNAL") : server.Handle(r, b) };
-            using (var svc = new DeviceSessionService(Api, new Signer(), Machine, () => null, new HttpClient(fake), () => DateTime.UtcNow))
+            using (var svc = new DeviceSessionService(Api, new Signer(), Machine, new HttpClient(fake), () => DateTime.UtcNow))
             {
                 await CodeOf(() => svc.GetTokenAsync(CancellationToken.None));
                 Check(await svc.GetTokenAsync(CancellationToken.None) == Token('a'), "after a failure the next call authenticates normally");
@@ -243,7 +241,7 @@ class DeviceSessionTests
         }
         // 9. Wrong machine code format is refused at construction.
         {
-            try { new DeviceSessionService(Api, new Signer(), "MAX-abc", () => null, new HttpClient(new Fake()), () => DateTime.UtcNow); throw new Exception("bad machine code accepted"); }
+            try { new DeviceSessionService(Api, new Signer(), "MAX-abc", new HttpClient(new Fake()), () => DateTime.UtcNow); throw new Exception("bad machine code accepted"); }
             catch (InvalidDataException) { Check(true, "an invalid machine code is refused"); }
         }
         // 10. BackendApi only ever talks to the configured host and only sends well-formed device tokens.
@@ -274,10 +272,10 @@ class DeviceSessionTests
             try { await BackendApi.ReadBoundedAsync(new MemoryStream(new byte[100]), 10, CancellationToken.None); throw new Exception("limit ignored"); }
             catch (InvalidDataException) { Check(true, "a body over the limit is refused"); }
             var big = new Fake { Reply = (r, b) => new HttpResponseMessage(HttpStatusCode.Forbidden) { Content = new StringContent("{\"error\":{\"code\":\"DEVICE_BLOCKED\",\"message\":\"" + new string('x', 40000) + "\"}}") } };
-            using (var svc = new DeviceSessionService(Api, new Signer(), Machine, () => null, new HttpClient(big), () => DateTime.UtcNow))
+            using (var svc = new DeviceSessionService(Api, new Signer(), Machine, new HttpClient(big), () => DateTime.UtcNow))
                 Check(await CodeOf(() => svc.GetTokenAsync(CancellationToken.None)) == "SERVER_UNAVAILABLE", "an error body larger than 16 KB is not parsed");
             var redirectWithBody = new Fake { Reply = (r, b) => { var x = new HttpResponseMessage(HttpStatusCode.Found) { Content = new StringContent("{\"error\":{\"code\":\"DEVICE_BLOCKED\"}}") }; x.Headers.Location = new Uri("https://evil.test/"); return x; } };
-            using (var svc = new DeviceSessionService(Api, new Signer(), Machine, () => null, new HttpClient(redirectWithBody), () => DateTime.UtcNow))
+            using (var svc = new DeviceSessionService(Api, new Signer(), Machine, new HttpClient(redirectWithBody), () => DateTime.UtcNow))
                 Check(await CodeOf(() => svc.GetTokenAsync(CancellationToken.None)) == "SERVER_UNAVAILABLE", "a redirect carrying an error body is still just 'unavailable'");
         }
         Console.WriteLine("Device session tests passed");

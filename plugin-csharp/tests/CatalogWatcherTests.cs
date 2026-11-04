@@ -123,7 +123,7 @@ class CatalogWatcherTests
         {
             Root = root; var api = new BackendApi(new Uri("https://api.example.test/"), new HttpClient(Server));
             Catalog = new CatalogCacheService(Path.Combine(root, "Catalog"), api);
-            Previews = new PreviewCacheService(Path.Combine(root, "Previews"), null, api, a => TimeSpan.Zero);
+            Previews = new PreviewCacheService(Path.Combine(root, "Previews"), api, a => TimeSpan.Zero);
             Watcher = new CatalogUpdateWatcher(Catalog, Previews, api, TimeSpan.FromMinutes(5), Clock.Delay, a => TimeSpan.FromSeconds(10));
             Watcher.Updated += c => { lock (Updates) Updates.Add(c.CatalogVersion); };
             Watcher.OfflineChanged += o => { lock (Offline) Offline.Add(o); };

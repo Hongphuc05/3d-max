@@ -1,9 +1,0 @@
-PASS SSE: comments/retry ignored, CRLF handled, data lines joined, empty events dropped
-PASS SSE: a line over 64 KB is refused
-PASS first check raises Updated(1)
-PASS the previews of the new catalog are downloaded
-PASS unchanged: no event, no further preview traffic
-PASS a new version raises Updated(2)
-PASS after a fully successful preview sync, previews of the old version are pruned
-PASS Current exposes the latest catalog
-PASS nothing is polled before the panel is opened

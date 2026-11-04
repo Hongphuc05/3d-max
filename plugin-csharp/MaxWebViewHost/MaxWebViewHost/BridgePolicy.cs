@@ -16,7 +16,7 @@ namespace MaxWebViewHost
         internal static readonly string[] Methods = {
             "host.ping", "host.getInfo", "scene.getInfo", "scene.getSelection", "scene.createBox",
             "design.create", "asset.import", "device.getIdentity", "device.signChallenge",
-            "library.status", "library.activate", "library.refresh"
+            "library.status", "library.refresh"
         };
 
         internal static bool IsTrusted(string value, Uri[] origins, string diagnosticUri)
@@ -84,12 +84,8 @@ namespace MaxWebViewHost
                     return p.Count == 2 && HasOnly(p, "challengeId", "message")
                         && Text(p, "challengeId", 36) && Text(p, "message", 512);
                 case "asset.import":
-                    // Offline library: {assetId}. v3 online catalog: {modelId} (UUID). Exactly one of them, nothing else.
-                    if (p.Count != 1) return false;
-                    if (p.ContainsKey("modelId")) return Text(p, "modelId", 36) && ModelUuid.IsMatch((string)p["modelId"]);
-                    return HasOnly(p, "assetId") && Text(p, "assetId", 80) && AssetId.IsMatch((string)p["assetId"]);
-                case "library.activate":
-                    return p.Count == 1 && HasOnly(p, "license") && Text(p, "license", 12000);
+                    // v3 online catalog: {modelId} (UUID), nothing else.
+                    return p.Count == 1 && HasOnly(p, "modelId") && Text(p, "modelId", 36) && ModelUuid.IsMatch((string)p["modelId"]);
                 case "scene.createBox":
                     return HasOnly(p, "size") && Number(p, "size", 1, 10000);
                 case "design.create":

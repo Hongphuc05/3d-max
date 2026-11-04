@@ -72,9 +72,7 @@
     <Compile Include="DeviceIdentityService.cs" />
     <Compile Include="PluginConfiguration.cs" />
     <Compile Include="SecureHttpTransport.cs" />
-    <Compile Include="OfflineLicenseService.cs" />
-    <Compile Include="StaticCatalogService.cs" />
-    <Compile Include="GoogleDriveDownloader.cs" />
+    <Compile Include="MachineCode.cs" />
     <Compile Include="PackagedAppRuntime.cs" />
     <Compile Include="SessionCookieStore.cs" />
     <Compile Include="PlatformAgent.cs" />

@@ -22,7 +22,6 @@ namespace MaxWebViewHost
         private readonly HttpClient http = SecureHttpTransport.CreateClient(false, false, TimeSpan.FromSeconds(20));
         private readonly CancellationTokenSource lifetime = new CancellationTokenSource();
         private bool disposed;
-        internal Func<string, CancellationToken, Task<byte[]>> PreviewLoader { get; set; }
         /// <summary>v3 online library. When set, /api/v1 reads and /previews/ are answered locally (no cookie session, no raw proxy).</summary>
         internal V3Library V3 { get; set; }
 
@@ -33,7 +32,7 @@ namespace MaxWebViewHost
         {
             this.configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             this.core = core ?? throw new ArgumentNullException(nameof(core));
-            if (!configuration.IsOfflineLibrary) sessions = new SessionCookieStore(sessionDirectory, configuration.ApiBaseUri);
+            sessions = new SessionCookieStore(sessionDirectory, configuration.ApiBaseUri);
         }
 
         public async Task ConfigureAsync()
@@ -42,12 +41,11 @@ namespace MaxWebViewHost
             // mapped API paths before WebResourceRequested and cannot be used as an API proxy.
             core.AddWebResourceRequestedFilter(AppOrigin + "/*", CoreWebView2WebResourceContext.All);
             core.WebResourceRequested += OnRequest;
-            if (!configuration.IsOfflineLibrary && V3 == null) SynchronizeBrowserCookies(await WithoutCallerContext(() => sessions.Load()));
+            if (V3 == null) SynchronizeBrowserCookies(await WithoutCallerContext(() => sessions.Load()));
         }
 
         public async Task<bool> CheckConnectionAsync(CancellationToken cancellationToken)
         {
-            if (configuration.IsOfflineLibrary) return true;
             using (var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, lifetime.Token))
             {
             deadline.CancelAfter(TimeSpan.FromSeconds(20));
@@ -89,31 +87,6 @@ namespace MaxWebViewHost
             try
             {
                 var request = args.Request;
-                if (configuration.IsOfflineLibrary)
-                {
-                    Uri previewUri, documentUri;
-                    if (request.Method == "GET" && PreviewLoader != null
-                        && Uri.TryCreate(request.Uri, UriKind.Absolute, out previewUri)
-                        && previewUri.GetLeftPart(UriPartial.Authority) == AppOrigin
-                        && previewUri.AbsolutePath.StartsWith("/library-previews/", StringComparison.Ordinal)
-                        && Uri.TryCreate(core.Source, UriKind.Absolute, out documentUri)
-                        && documentUri.GetLeftPart(UriPartial.Authority) == AppOrigin)
-                    {
-                        var key = previewUri.AbsolutePath.Substring("/library-previews/".Length);
-                        // Each network fetch has its own timeout. Keep this request alive
-                        // to serve cached bytes after a timeout or waiting for a free slot.
-                        var bytes = await PreviewLoader(key, lifetime.Token);
-                        if (disposed) return;
-                        var ext = Path.GetExtension(key);
-                        var mime = ext == ".png" ? "image/png" : ext == ".webp" ? "image/webp" : "image/jpeg";
-                        args.Response = core.Environment.CreateWebResourceResponse(new MemoryStream(bytes), 200, "OK",
-                            "Content-Type: " + mime + "\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n");
-                        return;
-                    }
-                    // Customer mode has no remote API or account session.
-                    args.Response = LocalAsset(request.Uri, request.Method);
-                    return;
-                }
                 if (V3 != null)
                 {
                     var answer = await HandleV3Async(request, deadline.Token);

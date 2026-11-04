@@ -20,13 +20,13 @@ namespace MaxWebViewHost
     }
 
     /// <summary>Preview images, content-addressed: Previews\&lt;sha256&gt;.webp. Everything stored has been size- and hash-verified,
-    /// so a file's name is a promise about its content. The installer's seed is copied once (first run), then differences stream in.</summary>
+    /// so a file's name is a promise about its content. The first run downloads every preview (with progress); later runs fetch only differences.</summary>
     internal sealed class PreviewCacheService
     {
         private static readonly Regex Hex64 = new Regex("^[0-9a-f]{64}$", RegexOptions.CultureInvariant);
         private const int Parallel = 4, Attempts = 3;
         private const long MaxPreviewBytes = 8 * 1024 * 1024;
-        private readonly string cacheDirectory, seedDirectory;
+        private readonly string cacheDirectory;
         private readonly BackendApi api;
         private readonly Func<int, TimeSpan> backoff;
         private readonly ConcurrentDictionary<string, Task<byte[]>> inflight = new ConcurrentDictionary<string, Task<byte[]>>();
@@ -35,11 +35,10 @@ namespace MaxWebViewHost
 
         public event Action<int, int> Progress;
 
-        public PreviewCacheService(string cacheDirectory, string seedDirectory, BackendApi api, Func<int, TimeSpan> backoff = null)
+        public PreviewCacheService(string cacheDirectory, BackendApi api, Func<int, TimeSpan> backoff = null)
         {
             if (string.IsNullOrWhiteSpace(cacheDirectory) || api == null) throw new ArgumentNullException();
             this.cacheDirectory = Path.GetFullPath(cacheDirectory);
-            this.seedDirectory = string.IsNullOrWhiteSpace(seedDirectory) ? null : Path.GetFullPath(seedDirectory);
             this.api = api;
             this.backoff = backoff ?? (attempt => TimeSpan.FromSeconds(Math.Min(30, 2 << attempt)));
         }
@@ -50,43 +49,6 @@ namespace MaxWebViewHost
         public void Prioritize(IEnumerable<string> modelIds) { priority = new HashSet<string>(modelIds ?? new string[0], StringComparer.OrdinalIgnoreCase); }
         public void Pause() { paused = true; }
         public void Resume() { paused = false; }
-
-        /// <summary>Copies the installer's seed on the first run only. Each file is verified against its own sha256; bad or missing files are skipped.</summary>
-        public int SeedFromInstall()
-        {
-            try
-            {
-                var marker = Path.Combine(cacheDirectory, "seed.done");
-                if (seedDirectory == null || File.Exists(marker)) return 0;
-                var manifestPath = Path.Combine(seedDirectory, "seed-manifest.json");
-                if (!File.Exists(manifestPath) || new FileInfo(manifestPath).Length > 4 * 1024 * 1024) return 0;
-                var manifest = new JavaScriptSerializer { MaxJsonLength = 4 * 1024 * 1024, RecursionLimit = 8 }.Deserialize<SeedManifest>(File.ReadAllText(manifestPath));
-                if (manifest == null || manifest.version != 1 || manifest.files == null || manifest.files.Length > 100000) return 0;
-                Directory.CreateDirectory(cacheDirectory);
-                var copied = 0;
-                foreach (var file in manifest.files)
-                {
-                    if (file == null || !IsHash(file.sha256)) continue;
-                    var source = Path.Combine(seedDirectory, file.sha256 + ".webp");
-                    try
-                    {
-                        if (File.Exists(PathOf(file.sha256))) continue;
-                        if (!File.Exists(source) || new FileInfo(source).Length > MaxPreviewBytes) continue;
-                        var bytes = File.ReadAllBytes(source);
-                        if (Sha(bytes) != file.sha256) continue;
-                        Publish(file.sha256, bytes);
-                        copied++;
-                    }
-                    catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { }
-                }
-                File.WriteAllText(marker, "1");
-                return copied;
-            }
-            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException || e is ArgumentException || e is InvalidOperationException) { return 0; }
-        }
-
-        private sealed class SeedFile { public string sha256 { get; set; } }
-        private sealed class SeedManifest { public int version { get; set; } public SeedFile[] files { get; set; } }
 
         public byte[] TryRead(string sha)
         {

@@ -1,4 +1,4 @@
-// P4.3 step 3: PreviewCacheService — first-run seed, 4-way verified background download, pause/resume, prune.
+// P4.3 step 3: PreviewCacheService — first-run download, 4-way verified background download, pause/resume, prune.
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -48,26 +48,14 @@ class PreviewCacheTests
 
     sealed class Rig
     {
-        public Fake Fake = new Fake(); public string Root, Cache, Seed; public PreviewCacheService Service; public List<PreviewEntry> Entries = new List<PreviewEntry>(); public List<byte[]> Data = new List<byte[]>();
+        public Fake Fake = new Fake(); public string Root, Cache; public PreviewCacheService Service; public List<PreviewEntry> Entries = new List<PreviewEntry>(); public List<byte[]> Data = new List<byte[]>();
         public Rig(string root, int count, bool serve = true)
         {
-            Root = root; Cache = Path.Combine(root, "Previews"); Seed = Path.Combine(root, "seed");
+            Root = root; Cache = Path.Combine(root, "Previews");
             for (var i = 1; i <= count; i++) { var d = Image(i); Data.Add(d); Entries.Add(Entry(i, i % 2 == 0 ? "lg" : "sm", d)); if (serve) Fake.Files[Sha(d)] = d; }
             Service = Make();
         }
-        public PreviewCacheService Make() { return new PreviewCacheService(Cache, Seed, new BackendApi(Api, new HttpClient(Fake)), attempt => TimeSpan.Zero); }
-        public void WriteSeed(IEnumerable<int> indexes, Action<string, byte[]> tweak = null)
-        {
-            Directory.CreateDirectory(Seed);
-            var files = new List<Dictionary<string, object>>();
-            foreach (var i in indexes)
-            {
-                var d = Data[i]; var sha = Entries[i].Sha256;
-                files.Add(new Dictionary<string, object> { { "sha256", sha }, { "size", d.Length } });
-                if (tweak != null) tweak(Path.Combine(Seed, sha + ".webp"), d); else File.WriteAllBytes(Path.Combine(Seed, sha + ".webp"), d);
-            }
-            File.WriteAllText(Path.Combine(Seed, "seed-manifest.json"), new JavaScriptSerializer().Serialize(new Dictionary<string, object> { { "version", 1 }, { "files", files } }));
-        }
+        public PreviewCacheService Make() { return new PreviewCacheService(Cache, new BackendApi(Api, new HttpClient(Fake)), attempt => TimeSpan.Zero); }
         public bool Has(int i) { return File.Exists(Path.Combine(Cache, Entries[i].Sha256 + ".webp")); }
     }
 
@@ -79,33 +67,15 @@ class PreviewCacheTests
         var root = Path.Combine(Path.GetTempPath(), "preview-cache-tests-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
         try
         {
-            // 1. Seed: verified files are copied on the first run; corrupt/missing ones are skipped; copying happens once.
+            // 1. First run: the cache is empty and one sync downloads every preview, each verified.
             {
                 var rig = new Rig(Path.Combine(root, "t1"), 6);
-                rig.WriteSeed(new[] { 0, 1, 2, 3, 4 }, (path, d) => { var i = Array.IndexOf(rig.Data.ToArray(), d); if (i == 2) File.WriteAllBytes(path, Image(999)); else if (i == 3) { } else File.WriteAllBytes(path, d); });
-                var seeded = rig.Service.SeedFromInstall();
-                Check(seeded == 3 && rig.Has(0) && rig.Has(1) && !rig.Has(2) && !rig.Has(3) && rig.Has(4) && !rig.Has(5), "seed: 3 good files copied; a corrupt and a missing seed file are skipped");
-                File.Delete(Path.Combine(rig.Cache, rig.Entries[0].Sha256 + ".webp"));
-                Check(rig.Make().SeedFromInstall() == 0 && !rig.Has(0), "seed is copied only on the first run (marker); a deleted cache file is fetched, not re-seeded");
-                Check(Parts(rig.Cache).Length == 0, "no .part files after seeding");
                 var summary = await rig.Service.SyncAsync(rig.Entries, CancellationToken.None);
-                Check(summary.Total == 6 && summary.Done == 6 && summary.Failed == 0 && Enumerable.Range(0, 6).All(rig.Has), "sync downloads exactly what is missing");
-                Check(rig.Fake.Requests.Count == 4, "only the 4 missing files were requested (2 skipped seed + deleted one + never-seeded one)");
-            }
-            // 2. Seed with a bad manifest or hostile names never copies anything outside the cache.
-            {
-                var rig = new Rig(Path.Combine(root, "t2"), 2);
-                Directory.CreateDirectory(rig.Seed);
-                File.WriteAllText(Path.Combine(rig.Seed, "seed-manifest.json"), "{ not json");
-                Check(rig.Service.SeedFromInstall() == 0, "garbage seed manifest: nothing copied, no exception");
-                var rig2 = new Rig(Path.Combine(root, "t2b"), 2);
-                Directory.CreateDirectory(rig2.Seed);
-                File.WriteAllBytes(Path.Combine(rig2.Root, "evil.webp"), rig2.Data[0]);
-                File.WriteAllText(Path.Combine(rig2.Seed, "seed-manifest.json"), new JavaScriptSerializer().Serialize(new Dictionary<string, object> { { "version", 1 }, { "files", new[] {
-                    new Dictionary<string, object> { { "sha256", "../evil" }, { "size", 5 } }, new Dictionary<string, object> { { "sha256", rig2.Entries[0].Sha256 + "/../x" }, { "size", 5 } } } } }));
-                Check(rig2.Service.SeedFromInstall() == 0 && !Directory.Exists(rig2.Cache) || Directory.GetFiles(rig2.Cache).All(f => Path.GetFileName(f) == "seed.done"), "seed entries with path tricks are ignored");
-                var noSeed = new Rig(Path.Combine(root, "t2c"), 1);
-                Check(noSeed.Service.SeedFromInstall() == 0, "no seed directory: nothing to do");
+                Check(summary.Total == 6 && summary.Done == 6 && summary.Failed == 0 && Enumerable.Range(0, 6).All(rig.Has), "first sync downloads every preview");
+                Check(rig.Fake.Requests.Count == 6 && Parts(rig.Cache).Length == 0, "one request per preview and no .part files left");
+                File.Delete(Path.Combine(rig.Cache, rig.Entries[0].Sha256 + ".webp"));
+                var again = await rig.Make().SyncAsync(rig.Entries, CancellationToken.None);
+                Check(again.Done == 6 && rig.Has(0) && rig.Fake.Requests.Count == 7, "a second sync fetches only the deleted file");
             }
             // 3. Download: at most 4 in parallel, every file verified, order follows priority then sm-before-lg.
             {

@@ -35,17 +35,15 @@ namespace MaxWebViewHost
         private readonly HttpClient http;
         private readonly IDeviceSigner signer;
         private readonly string machineCode;
-        private readonly Func<string> legacyLicense;
         private readonly Func<DateTime> utcNow;
         private readonly SemaphoreSlim gate = new SemaphoreSlim(1, 1);
         private volatile DeviceSession current;
 
-        public DeviceSessionService(Uri apiBase, IDeviceSigner signer, string machineCode, Func<string> legacyLicense, HttpClient http, Func<DateTime> utcNow)
+        public DeviceSessionService(Uri apiBase, IDeviceSigner signer, string machineCode, HttpClient http, Func<DateTime> utcNow)
         {
             if (apiBase == null || signer == null || http == null) throw new ArgumentNullException();
             if (!Regex.IsMatch(machineCode ?? "", "\\AMAX-[A-F0-9]{64}\\z")) throw new InvalidDataException("Mã máy không hợp lệ.");
             this.signer = signer; this.machineCode = machineCode; this.http = http;
-            this.legacyLicense = legacyLicense ?? (() => null);
             this.utcNow = utcNow ?? (() => DateTime.UtcNow);
             api = new BackendApi(apiBase, http);
         }
@@ -109,8 +107,6 @@ namespace MaxWebViewHost
             try { signature = await OffThread(() => signer.SignChallenge(challengeId, message)).ConfigureAwait(false); }
             catch (DeviceIdentityException e) { throw new ApiException(e.Code, 0, e.Message); }
             var verify = new Dictionary<string, object> { { "challengeId", challengeId }, { "signature", signature } };
-            var license = legacyLicense();
-            if (!string.IsNullOrWhiteSpace(license)) verify["legacyLicense"] = license.Trim();
             var result = (await api.SendAsync(HttpMethod.Post, "/api/v1/device/verify", verify, null, null, 1024 * 1024, ct).ConfigureAwait(false)).Object();
 
             var token = Text(result, "deviceToken");

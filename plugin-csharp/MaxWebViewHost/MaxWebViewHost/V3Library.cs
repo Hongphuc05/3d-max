@@ -34,8 +34,7 @@ namespace MaxWebViewHost
         private V3Library() { }
 
         /// <param name="dataRoot">%LOCALAPPDATA%\3dMood — Catalog\ and Previews\ live below it.</param>
-        /// <param name="legacyLicensePath">license.txt of the old offline plugin; its MXL1 token is offered to the server once per session.</param>
-        public static V3Library Create(PluginConfiguration configuration, IDeviceSigner signer, string machineCode, string dataRoot, string legacyLicensePath)
+        public static V3Library Create(PluginConfiguration configuration, IDeviceSigner signer, string machineCode, string dataRoot)
         {
             if (configuration == null || configuration.ApiBaseUri == null || signer == null) throw new ArgumentNullException();
             var library = new V3Library { MachineCode = machineCode };
@@ -43,10 +42,10 @@ namespace MaxWebViewHost
             var bulkClient = SecureHttpTransport.CreateClient(false, false, TimeSpan.FromMinutes(30)); // the server fills its copy before the first byte
             var downloadApi = new BackendApi(configuration.ApiBaseUri, bulkClient);
             var api = new BackendApi(configuration.ApiBaseUri, apiClient);
-            library.Session = new DeviceSessionService(configuration.ApiBaseUri, signer, machineCode, () => ReadLegacyLicense(legacyLicensePath),
+            library.Session = new DeviceSessionService(configuration.ApiBaseUri, signer, machineCode,
                 SecureHttpTransport.CreateClient(false, false, TimeSpan.FromSeconds(20)), () => DateTime.UtcNow);
             library.Catalog = new CatalogCacheService(Path.Combine(dataRoot, "Catalog"), api);
-            library.Previews = new PreviewCacheService(Path.Combine(dataRoot, "Previews"), configuration.SeedDirectory, api);
+            library.Previews = new PreviewCacheService(Path.Combine(dataRoot, "Previews"), api);
             library.Watcher = new CatalogUpdateWatcher(library.Catalog, library.Previews, api, TimeSpan.FromMinutes(5));
             library.Downloader = new BackendModelDownloader(downloadApi, library.Session);
             library.Orders = new OrdersClient(api, library.Session);
@@ -69,12 +68,6 @@ namespace MaxWebViewHost
             var handler = HostEvent;
             if (handler == null) return;
             try { handler(type, payload); } catch (Exception e) { System.Diagnostics.Debug.WriteLine("[v3] event handler failed: " + e.GetType().Name); }
-        }
-
-        /// <summary>First run: copy the installer's seed before the UI asks for images, so the grid is never empty on a slow network.</summary>
-        public void Start()
-        {
-            try { Previews.SeedFromInstall(); } catch (Exception e) { System.Diagnostics.Debug.WriteLine("[v3] seed failed: " + e.GetType().Name); }
         }
 
         public void SetPanelOpen(bool open) { Watcher.SetActive(open); }
@@ -123,18 +116,6 @@ namespace MaxWebViewHost
                 { "allModels", session != null && session.Entitlements.AllModels },
                 { "modelIds", session == null ? new string[0] : session.Entitlements.ModelIds },
             };
-        }
-
-        // Old offline plugin stored the owner-signed token here; it is read, never modified, and only offered to the server.
-        internal static string ReadLegacyLicense(string path)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(path) || !File.Exists(path) || new FileInfo(path).Length > 16384) return null;
-                var token = File.ReadAllText(path, Encoding.UTF8).Trim();
-                return token.StartsWith("MXL1.", StringComparison.Ordinal) && token.Length <= 8192 && !token.Any(char.IsControl) ? token : null;
-            }
-            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { return null; }
         }
 
         public void Dispose()
