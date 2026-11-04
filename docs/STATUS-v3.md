@@ -6,7 +6,7 @@
 
 Chú giải: `[x]` xong và đã kiểm tra · `[~]` xong một phần / chưa kiểm tra đủ · `[ ]` chưa làm.
 
-**Tổng quan:** `npm test` trong `apps/store-api` → **555/555 pass**, `apps/store-web` → **158/158 pass**, diễn tập deploy Docker **30/30** (PostgreSQL 16 thật, mỗi file test dùng database cô lập). Số test giảm so với 583/182 vì đã xóa test của tính năng payOS/OfflineLibrary bị gỡ ở P7.
+**Tổng quan (2026-11-04, sau D28.5):** `npm test` trong `apps/store-api` → **426/426 pass**, `apps/store-web` → **128/128 pass** + `vite build` ok. Diễn tập deploy Docker 30/30 là số của 2026-11-03, **chưa chạy lại** sau D28.5 (đã sửa `rehearse.sh` bỏ biến/endpoint cũ). Số test giảm vì đã xóa test của phần code bị gỡ. Đã sửa luôn race đăng ký thiết bị song song (`ON CONFLICT` không đích) làm test chập chờn.
 
 ---
 

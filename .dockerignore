@@ -11,7 +11,6 @@ frontend
 cloudflare
 docs
 apps/store-web
-apps/license-admin
 **/node_modules
 **/dist
 **/*.log

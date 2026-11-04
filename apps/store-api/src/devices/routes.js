@@ -84,14 +84,15 @@ export function createDeviceRouter({ pool, rateLimit }) {
       try {
         const ins = await db.query(
           `insert into devices (device_uuid, public_key, public_key_hash, key_protection, machine_code, device_name)
-           values ($1, $2, $3, $4, $5, $6) on conflict (device_uuid) do nothing returning id`,
+           values ($1, $2, $3, $4, $5, $6) on conflict do nothing returning id`,
           [ch.device_uuid, ch.public_key, ch.public_key_hash, ch.key_protection, ch.machine_code, ch.device_name]);
         registered = ins.rowCount === 1;
         deviceId = ins.rows[0]?.id;
-      } catch (e) { if (e.code === '23505') throw apiError('DEVICE_KEY_MISMATCH'); throw e; } // khoa nay da thuoc uuid khac
+      } catch (e) { if (e.code === '23505') throw apiError('DEVICE_KEY_MISMATCH'); throw e; }
       if (!registered) {
         const dev = (await db.query('select id, public_key_hash, status from devices where device_uuid = $1 for update', [ch.device_uuid])).rows[0];
-        if (!dev.public_key_hash.equals(ch.public_key_hash)) throw apiError('DEVICE_KEY_MISMATCH');
+        // `on conflict do nothing` (ca uuid lan khoa): hai lan dang ky song song cung may khong con va nhau; khoa da thuoc uuid khac -> khong co dong theo uuid.
+        if (!dev || !dev.public_key_hash.equals(ch.public_key_hash)) throw apiError('DEVICE_KEY_MISMATCH');
         if (dev.status === 'BLOCKED') throw apiError('DEVICE_BLOCKED');
         deviceId = dev.id;
         await db.query('update devices set last_seen_at = now(), device_name = $2, machine_code = $3, key_protection = $4 where id = $1',

@@ -19,7 +19,7 @@ namespace MaxWebViewHost
         public string EntryFile { get; set; }
     }
 
-    /// <summary>Replaces GoogleDriveDownloader: the plugin only ever talks to the 3DS Mood API. import-session -> verified stream to disk.
+    /// <summary>The plugin only ever talks to the 3DS Mood API. import-session -> verified stream to disk.
     /// The Drive link/ID never reaches the plugin, so there is no Google host allowlist here.</summary>
     internal sealed class BackendModelDownloader
     {
