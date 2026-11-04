@@ -293,3 +293,16 @@ phần **không làm hỏng chức năng đang dùng**, phần còn lại giữ 
 
 Điều kiện để làm nốt: (1) P3.5 xong → gỡ `apps/license-admin`; (2) script tạo admin → gỡ đăng ký khách + `StoreApp`;
 (3) gỡ các màn admin đọc payOS/R2 → backup rồi xóa bảng cũ; (4) quyết định chế độ đóng gói → dọn C#; (5) P6 deploy ổn ≥ 2 tuần.
+
+## D28 — License cả thư viện, tải lần đầu từ VPS, dọn sạch code cũ (locked 2026-11-04)
+
+Chủ dự án chốt, **thay D18 (license từng model), D24 (seed ảnh trong installer) và phần "giữ" của D27**:
+
+| # | Quyết định |
+|---|---|
+| D28.1 | Mua 1 lần = **license cả thư viện, vĩnh viễn, gồm cả model thêm sau**. Xác nhận đơn → cấp `ALL_MODELS` cho thiết bị. Một giá duy nhất (sửa trong admin) |
+| D28.2 | **1 license = 1 máy**. Đổi/cài lại máy → chủ chuyển license sang thiết bị mới trong admin |
+| D28.3 | Installer **không** đóng sẵn catalog/ảnh. Lần chạy đầu plugin tải toàn bộ catalog + preview từ VPS (có tiến độ, chạy tiếp khi bị ngắt); sau đó cập nhật qua ETag + SSE như cũ |
+| D28.4 | File model giữ nguyên D26: VPS tải hộ từ Drive, khách không thấy link |
+| D28.5 | Gỡ hết code của hướng đã bỏ: R2/Cloudflare, payOS còn sót, đăng ký khách/StoreApp, `apps/license-admin`, MXL1, `licensing/` cũ, OAuth Drive, chế độ đóng gói (`library/`, `GoogleDriveDownloader.cs`, `StaticCatalogService.cs`), tài liệu lỗi thời. Admin đầu tiên tạo bằng script |
+| D28.6 | Deploy lên VPS Vietnix `14.225.224.169`, domain `3dsmood.io.vn` |
