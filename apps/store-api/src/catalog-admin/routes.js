@@ -4,6 +4,7 @@
 import express from 'express';
 import { apiError, requestId, v3ErrorHandler } from '../drive/errors.js';
 import { refreshCatalogState } from '../catalog-v1/manifest.js';
+import { addPreviewRoutes } from './previews.js';
 import { addReviewRoutes } from './review.js';
 import { audit, bad, inTransaction, UUID } from './shared.js';
 
@@ -53,10 +54,18 @@ const settingsView = (r) => ({
   libraryPriceVnd: r.library_price_vnd, orderTtlMinutes: r.order_ttl_minutes, maxPendingOrdersPerDevice: r.max_pending_orders_per_device,
   updatedAt: r.updated_at,
 });
+// D29: trang thai ghep cap suy ra tu du lieu (khong luu): FULL = anh + file nen = cong khai; con lai chi hien o admin.
+const STATE_WHERE = { FULL: 'has_archive and has_preview', PREVIEW_ONLY: 'has_preview and not has_archive', ARCHIVE_ONLY: 'has_archive and not has_preview', MISMATCH: 'mismatch' };
+const BASE = `select m.id, m.name, c.full_path, m.status, m.name_overridden, m.updated_at, p.local_path as thumb_path,
+    (m.primary_file_id is not null) as has_archive, (p.local_path is not null) as has_preview,
+    (m.drive_category_id is not null and m.drive_category_id <> m.category_id) as mismatch
+  from models m join categories c on c.id = m.category_id
+  left join model_previews p on p.model_id = m.id and p.variant = 'sm' and p.is_primary`;
 const modelView = (r) => ({ id: r.id, name: r.name, categoryPath: r.full_path, status: r.status,
+  state: r.has_preview ? (r.has_archive ? 'FULL' : 'PREVIEW_ONLY') : 'ARCHIVE_ONLY', categoryMismatch: r.mismatch,
   nameOverridden: r.name_overridden, updatedAt: r.updated_at, thumbUrl: r.thumb_path ? `/previews/${r.thumb_path}` : null });
 
-export function createCatalogAdminRouter({ pool, guards = [], rateLimit, envDefaultPrice = 500000 }) {
+export function createCatalogAdminRouter({ pool, guards = [], rateLimit, envDefaultPrice = 500000, previewDir }) {
   const router = express.Router();
   const pre = [requestId, ...(rateLimit ? [rateLimit] : []), ...guards];
   const json = express.json({ limit: '4kb' });
@@ -105,14 +114,26 @@ export function createCatalogAdminRouter({ pool, guards = [], rateLimit, envDefa
       const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
       const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 20));
       const like = q ? q.replace(/[\\%_]/g, '\\$&') : null; // % _ \ la ky tu thuong, khong phai ky tu thay the
-      const where = `($1::text is null or m.name ilike '%' || $1 || '%' escape '\\') and ($2::text is null or m.status = $2)`;
-      const total = Number((await pool.query(`select count(*) from models m where ${where}`, [like, status])).rows[0].count);
+      const state = req.query.state === undefined || req.query.state === '' ? null : String(req.query.state);
+      if (state !== null && !(state in STATE_WHERE)) throw bad();
+      const where = `($1::text is null or name ilike '%' || $1 || '%' escape '\\') and ($2::text is null or status = $2)${state ? ` and ${STATE_WHERE[state]}` : ''}`;
+      const total = Number((await pool.query(`with b as (${BASE}) select count(*) from b where ${where}`, [like, status])).rows[0].count);
       const rows = (await pool.query(
-        `select m.id, m.name, c.full_path, m.status, m.name_overridden, m.updated_at, p.local_path as thumb_path
-           from models m join categories c on c.id = m.category_id
-           left join model_previews p on p.model_id = m.id and p.variant = 'sm' and p.is_primary where ${where}
-          order by lower(m.name), m.id limit $3 offset $4`, [like, status, limit, (page - 1) * limit])).rows;
-      res.json({ items: rows.map(modelView), total, page, limit });
+        `with b as (${BASE}) select * from b where ${where} order by lower(name), id limit $3 offset $4`, [like, status, limit, (page - 1) * limit])).rows;
+      const c = (await pool.query(`with b as (${BASE}) select
+          count(*) filter (where ${STATE_WHERE.FULL}) as full, count(*) filter (where ${STATE_WHERE.PREVIEW_ONLY}) as preview_only,
+          count(*) filter (where ${STATE_WHERE.ARCHIVE_ONLY}) as archive_only, count(*) filter (where mismatch) as mismatch from b`)).rows[0];
+      const counts = { FULL: Number(c.full), PREVIEW_ONLY: Number(c.preview_only), ARCHIVE_ONLY: Number(c.archive_only), MISMATCH: Number(c.mismatch) };
+      res.json({ items: rows.map(modelView), total, page, limit, counts });
+    } catch (e) { next(e); }
+  });
+
+  // Cay danh muc cho man tai anh: phang, client tu dung cay theo parentId. modelCount = model truc tiep trong danh muc.
+  router.get('/categories', ...pre, async (_req, res, next) => {
+    try {
+      const rows = (await pool.query(
+        `select c.id, c.parent_id, c.name, c.full_path, (select count(*) from models m where m.category_id = c.id) as n from categories c order by c.full_path`)).rows;
+      res.json({ items: rows.map((r) => ({ id: r.id, parentId: r.parent_id, name: r.name, fullPath: r.full_path, modelCount: Number(r.n) })) });
     } catch (e) { next(e); }
   });
 
@@ -134,7 +155,7 @@ export function createCatalogAdminRouter({ pool, guards = [], rateLimit, envDefa
         const next_ = { name: patch.name ?? cur.name, status: patch.status ?? cur.status };
         const before = { name: cur.name, status: cur.status };
         const changed = ['name', 'status'].filter((k) => before[k] !== next_[k]);
-        if (!changed.length) return modelView(cur);
+        if (!changed.length) return cur.id;
         const row = (await c.query(
           `update models set name = $2, status = $3,
                   name_overridden = name_overridden or $4,
@@ -144,12 +165,13 @@ export function createCatalogAdminRouter({ pool, guards = [], rateLimit, envDefa
         await audit(c, req.user.id, 'MODEL_UPDATED', 'model', cur.id,
           { changed, ...Object.fromEntries(changed.map((k) => [k, { from: before[k], to: next_[k] }])) });
         await refreshCatalogState(c); // ten, gia, trang thai la du lieu cong khai: tang phien ban de plugin cap nhat
-        return modelView({ ...row, full_path: cur.full_path });
+        return row.id;
       });
-      res.json(view);
+      res.json(modelView((await pool.query(`with b as (${BASE}) select * from b where id = $1`, [view])).rows[0]));
     } catch (e) { next(e); }
   });
 
+  if (previewDir) addPreviewRoutes(router, { pool, pre: [requestId, ...guards], previewDir }); // D29; khong gioi han rateLimit: tai hang tram anh
   addReviewRoutes(router, { pool, pre, json }); // P3.4: /catalog/review
 
   router.use(v3ErrorHandler);

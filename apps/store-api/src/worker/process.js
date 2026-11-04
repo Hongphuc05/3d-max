@@ -1,10 +1,9 @@
-// Handler cua mot job dong bo: SCANNING -> COMPARING -> DOWNLOADING_PREVIEWS -> PUBLISHING.
+// Handler cua mot job dong bo: SCANNING -> COMPARING -> PUBLISHING. D29: khong tai anh tu Drive (anh do admin tai len).
 // Moi giai doan doc lai checkpoint tu DB nen job bi gian doan (SIGTERM, worker chet) tiep tuc dung cho.
 // Chi PUBLISHING ghi vao catalog, trong 1 transaction; tat ca giai doan truoc chi tao du lieu trung gian.
 import { createDriveClient } from '../drive/client.js';
 import { messageFor } from '../drive/errors.js';
 import { computeDiff } from './diff.js';
-import { runPreviewStage } from './previews.js';
 import { publishPlan } from './publish.js';
 import { scanSource } from './scan.js';
 
@@ -32,7 +31,7 @@ const planCounters = (plan, scanSkipped) => ({
   missingCount: plan.counters.missingCount, reviewCount: plan.counters.reviewCount, skippedCount: scanSkipped + plan.counters.skippedCount,
 });
 
-export function createSyncHandler({ pool, previewDir, minFreeDiskBytes, previewDelayMs, previewConcurrency, previewCooldownMs, apiKey, createClient, freeDiskBytes }) {
+export function createSyncHandler({ pool, apiKey, createClient }) {
   const makeClient = createClient ?? (() => createDriveClient({ apiKey }));
   const reload = async (id) => (await pool.query('select * from drive_sync_jobs where id = $1', [id])).rows[0];
 
@@ -52,16 +51,12 @@ export function createSyncHandler({ pool, previewDir, minFreeDiskBytes, previewD
     const scanSkipped = cur.checkpoint?.scan?.counters?.skippedCount ?? 0;
     if (!(await ctx.saveProgress({ stage: 'COMPARING', counters: { ...planCounters(plan, scanSkipped), reviewCount: await openReviewCount(pool, source.id, plan) } }))) return { interrupted: true };
 
-    const p = await runPreviewStage({ pool, client, job: cur, images: plan.previews, checkpoint: cur.checkpoint ?? {}, ctx, previewDir, minFreeDiskBytes, freeDiskBytes, delayMs: previewDelayMs, cooldownMs: previewCooldownMs, concurrency: previewConcurrency });
-    const s2 = stopped(p);
-    if (s2) return s2;
-
     // Diem dung an toan cuoi cung: publish la mot transaction, khong the bi cat ngang.
     if (ctx.cancelled) return { status: 'CANCELLED' };
     if (ctx.shuttingDown) return { interrupted: true };
     if (!(await ctx.saveProgress({ stage: 'PUBLISHING' }))) return { interrupted: true };
-    const fresh = await computeDiff(pool, { sourceId: source.id, jobId: job.id }); // khong dung ke hoach cu: admin co the da sua trong luc tai anh
-    await publishPlan(pool, { sourceId: source.id, jobId: job.id, plan: fresh, results: p.results });
+    const fresh = await computeDiff(pool, { sourceId: source.id, jobId: job.id }); // tinh lai: admin co the da sua/tai anh len trong luc so sanh
+    await publishPlan(pool, { sourceId: source.id, jobId: job.id, plan: fresh });
     await ctx.saveProgress({ counters: { ...planCounters(fresh, scanSkipped), reviewCount: await openReviewCount(pool, source.id, fresh) } });
     await pool.query('update drive_sources set last_successful_sync_at = now() where id = $1', [source.id]);
     return { status: (await reload(job.id)).error_count > 0 ? 'COMPLETED_WITH_ERRORS' : 'COMPLETED' };

@@ -46,6 +46,10 @@ const MESSAGES = {
   ORDER_NOT_FOUND: 'Không tìm thấy đơn hàng.',
   DEVICE_NOT_FOUND: 'Không tìm thấy thiết bị.',
   LICENSE_NOT_FOUND: 'Thiết bị này chưa có license thư viện.',
+  PREVIEW_TOO_LARGE: 'Ảnh quá lớn (tối đa 15 MB, kích thước điểm ảnh có giới hạn).',
+  PREVIEW_INVALID: 'Không đọc được ảnh. Chỉ nhận JPG, PNG hoặc WebP hợp lệ.',
+  PREVIEW_EXISTS: 'Model này đã có ảnh. Xác nhận để thay ảnh.',
+  PREVIEW_COLLISION: 'Đã có model cùng tên nhưng ở danh mục khác. Mục này được đưa vào danh sách cần duyệt.',
   INTERNAL: 'Lỗi hệ thống. Thử lại sau.',
 };
 
@@ -68,6 +72,7 @@ const STATUS = {
   DEVICE_BLOCKED: 403, DEVICE_KEY_MISMATCH: 403, CHALLENGE_INVALID: 403, SIGNATURE_INVALID: 403,
   NOT_ENTITLED: 403, MODEL_NOT_AVAILABLE: 409, MODEL_DOWNLOAD_RESTRICTED: 409, SESSION_INVALID: 404, DOWNLOAD_BUSY: 503, STORAGE_DOWNLOAD_FAILED: 502,
   ALREADY_ENTITLED: 409, TOO_MANY_PENDING_ORDERS: 429, PAYMENT_NOT_CONFIGURED: 503, ORDER_STATE_INVALID: 409, ORDER_NOT_FOUND: 404, DEVICE_NOT_FOUND: 422, LICENSE_NOT_FOUND: 409,
+  PREVIEW_TOO_LARGE: 413, PREVIEW_INVALID: 415, PREVIEW_EXISTS: 409, PREVIEW_COLLISION: 409,
 };
 export const apiError = (code, opts) => new ApiError(code, STATUS[code] ?? 400, opts);
 export const messageFor = (code) => MESSAGES[code];

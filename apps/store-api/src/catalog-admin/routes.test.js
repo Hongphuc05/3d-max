@@ -24,6 +24,8 @@ async function addModel(name, over = {}) {
   // Manifest cong khai chi gom model co file chinh (join model_files), nen moi model test deu co mot.
   const f = await pool.query("insert into model_files(model_id,source_id,drive_file_id,filename,file_type,size_bytes) values($1,$2,$3,'m.rar','rar',1000) returning id", [id, sourceId, `fileFor${++fileSeq}`]);
   await pool.query('update models set primary_file_id=$1 where id=$2', [f.rows[0].id, id]);
+  // D29: model chi len catalog cong khai khi co CA file nen va anh (xem previews.test.js).
+  for (const v of ['sm', 'lg']) await pool.query("insert into model_previews(model_id,source,local_path,sha256,file_size,width,height,variant,is_primary) values($1,'UPLOAD',$2,$3,10,10,10,$4,true)", [id, `${'a'.repeat(64)}.webp`, 'a'.repeat(64), v]);
   return id;
 }
 const model = async (id) => (await pool.query('select * from models where id=$1', [id])).rows[0];
@@ -142,10 +144,10 @@ test('PUT settings validation: every bad body is 400 and the saved row is untouc
 test('GET models: pagination envelope, exact safe fields, ordered by name, no ids other than the public model id', { skip }, async () => {
   for (const n of ['Zebra', 'apple', 'Mango']) await addModel(n);
   const page = await (await j('/models')).json();
-  assert.deepEqual(Object.keys(page).sort(), ['items', 'limit', 'page', 'total']);
+  assert.deepEqual(Object.keys(page).sort(), ['counts', 'items', 'limit', 'page', 'total']);
   assert.equal(page.total, 3); assert.equal(page.page, 1); assert.equal(page.limit, 20);
   assert.deepEqual(page.items.map((m) => m.name), ['apple', 'Mango', 'Zebra'], 'case-insensitive order');
-  assert.deepEqual(Object.keys(page.items[0]).sort(), ['categoryPath', 'id', 'name', 'nameOverridden', 'status', 'thumbUrl', 'updatedAt']);
+  assert.deepEqual(Object.keys(page.items[0]).sort(), ['categoryMismatch', 'categoryPath', 'id', 'name', 'nameOverridden', 'state', 'status', 'thumbUrl', 'updatedAt']);
   assert.equal(page.items[0].categoryPath, 'Living / Sofa');
   const p2 = await (await j('/models?limit=2&page=2')).json();
   assert.deepEqual(p2.items.map((m) => m.name), ['Zebra']); assert.equal(p2.total, 3);
@@ -253,7 +255,7 @@ test('PATCH response has exactly the same safe fields as the list (no legacy id,
   const id = await addModel('Sofa A');
   await pool.query("update models set legacy_id = 'plugin-visible-old-id' where id = $1", [id]);
   const body = await (await j(`/models/${id}`, { method: 'PATCH', body: { name: 'Q' } })).json();
-  assert.deepEqual(Object.keys(body).sort(), ['categoryPath', 'id', 'name', 'nameOverridden', 'status', 'thumbUrl', 'updatedAt']);
+  assert.deepEqual(Object.keys(body).sort(), ['categoryMismatch', 'categoryPath', 'id', 'name', 'nameOverridden', 'state', 'status', 'thumbUrl', 'updatedAt']);
   assert.equal(body.categoryPath, 'Living / Sofa');
   assert.equal(JSON.stringify(body).includes('plugin-visible-old-id'), false);
 });

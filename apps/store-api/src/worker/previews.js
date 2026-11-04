@@ -60,13 +60,13 @@ async function download(client, imageId, part, { maxBytes, signal }) {
   return size;
 }
 
-async function checkMagic(part) {
+export async function checkMagic(part) {
   const fh = await open(part, 'r');
   try { const buf = Buffer.alloc(12); const { bytesRead } = await fh.read(buf, 0, 12, 0); if (!looksLikeImage(buf.subarray(0, bytesRead))) throw codeError('PREVIEW_INVALID'); }
   finally { await fh.close(); }
 }
 
-async function makeVariants(part, dir, maxPixels) {
+export async function makeVariants(part, dir, maxPixels) {
   const out = {};
   for (const v of VARIANTS) {
     let data, info;

@@ -23,6 +23,19 @@ after(async () => { if (dispose) await dispose(pool); });
 // (chi xoa dong ghi nhan; KHONG chay lai migrate() vi 024 khong chay lai duoc tren schema da don).
 const hideIrreversible = () => pool.query("delete from schema_migrations where name in ('023_drop_legacy_tables.sql', '024_library_license.sql')");
 
+test('025 (uploaded previews) rolls back cleanly when no upload exists, and refuses when one does', { skip }, async () => {
+  assert.equal((await applied())[0], '025_upload_previews.sql');
+  const cat = (await pool.query("insert into categories(name,slug,full_path) values('A','a','A') returning id")).rows[0].id;
+  const m = (await pool.query("insert into models(category_id,name,status,stem) values($1,'x','PUBLISHED','x') returning id", [cat])).rows[0].id;
+  await pool.query("insert into model_previews(model_id,source,local_path,sha256,file_size,width,height,variant,is_primary) values($1,'UPLOAD','p.webp',$2,1,1,1,'sm',true)", [m, 'a'.repeat(64)]);
+  await assert.rejects(rollbackMigration(pool, '025_upload_previews.sql'), (e) => e.code === 'ROLLBACK_REFUSED' && /uploaded previews/.test(e.message));
+  assert.equal((await applied())[0], '025_upload_previews.sql');
+  await pool.query('delete from models where id = $1', [m]); await pool.query('delete from categories where id = $1', [cat]);
+  await rollbackMigration(pool, '025_upload_previews.sql');
+  assert.equal((await pool.query("select count(*)::int n from information_schema.columns where table_name='models' and column_name='stem' and table_schema=current_schema()")).rows[0].n, 0);
+  assert.equal((await applied())[0], '024_library_license.sql');
+});
+
 test('024 (library license) is irreversible: rollback refuses and stays applied; so does 023 once 024 is out of the way', { skip }, async () => {
   assert.equal((await applied())[0], '024_library_license.sql');
   await assert.rejects(rollbackMigration(pool, '024_library_license.sql'), (e) => e.code === 'ROLLBACK_REFUSED' && /irreversibly/.test(e.message));

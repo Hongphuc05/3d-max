@@ -56,7 +56,7 @@ app.use('/api/admin', createOrderAdminRouter({ service: orders, client: telegram
 app.use('/api/admin', createDeviceAdminRouter({ pool, guards: [requireAuth, requireAdmin], rateLimit: rateLimit({ limit: 60 }) }));
 app.use('/api/admin', createOverviewRouter({ service: createOverviewService({ pool }), guards: [requireAuth, requireAdmin], rateLimit: rateLimit({ limit: 60 }) }));
 // v3 P3.7: cai dat + bang model. Guard gan tung route, duong dan khac roi xuong adminRouter.
-app.use('/api/admin', createCatalogAdminRouter({ pool, guards: [requireAuth, requireAdmin], rateLimit: rateLimit({ limit: 60 }) }));
+app.use('/api/admin', createCatalogAdminRouter({ pool, guards: [requireAuth, requireAdmin], rateLimit: rateLimit({ limit: 60 }), previewDir: PREVIEW_DIR }));
 app.use('/api/admin', adminRouter());
 app.get('/api/health', async (_q, r) => {
   const db = await pool.query('select 1').then(() => true, () => false);

@@ -25,11 +25,13 @@ export async function buildManifest(db) {
   const models = (await db.query(
     `select m.id, m.name, m.category_id, coalesce(f.size_bytes, 0) as size_bytes, f.file_type
        from models m join model_files f on f.id = m.primary_file_id
-      where m.status = 'PUBLISHED' order by m.id`)).rows;
+      where m.status = 'PUBLISHED'
+        and exists (select 1 from model_previews pp where pp.model_id = m.id and pp.is_primary and pp.variant = 'sm') -- D29: chi model DU anh + file nen
+      order by m.id`)).rows;
   const previews = (await db.query(
     `select p.model_id, p.variant, p.local_path, p.sha256, p.version, p.file_size, p.width, p.height
        from model_previews p join models m on m.id = p.model_id
-      where m.status = 'PUBLISHED' and p.is_primary order by p.model_id, p.variant`)).rows;
+      where m.status = 'PUBLISHED' and m.primary_file_id is not null and p.is_primary order by p.model_id, p.variant`)).rows;
 
   // modelCount tinh ca danh muc con: danh muc cha hien so model cua ca nhanh.
   const own = new Map();
