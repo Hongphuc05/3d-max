@@ -56,7 +56,7 @@ async function mkModel({ name = 'Model', category = 'Furniture / Desk', archiveI
     path = path ? `${path} / ${p}` : p;
     parent = (await pool.query('insert into categories(parent_id,name,slug,full_path) values($1,$2,$2,$3) on conflict (full_path) do update set name=excluded.name returning id', [parent, p, path])).rows[0].id;
   }
-  const id = (await pool.query('insert into models(category_id,name,status,price_vnd,name_overridden,missing_scans) values($1,$2,$3,15000,$4,$5) returning id', [parent, name, status, nameOverridden, missingScans])).rows[0].id;
+  const id = (await pool.query('insert into models(category_id,name,status,name_overridden,missing_scans) values($1,$2,$3,$4,$5) returning id', [parent, name, status, nameOverridden, missingScans])).rows[0].id;
   const fid = (await pool.query("insert into model_files(model_id,source_id,drive_file_id,filename,file_type,size_bytes,md5_checksum) values($1,$2,$3,$4,'rar',$5,$6) returning id", [id, sourceId, archiveId, filename, size, m])).rows[0].id;
   await pool.query('update models set primary_file_id=$1 where id=$2', [fid, id]);
   let first = true;

@@ -10,12 +10,6 @@ import { scanSource } from './scan.js';
 
 const CODE = /^[A-Z][A-Z0-9_]{1,60}$/;
 
-// Gia mac dinh admin da luu (D25), doc luc cong bo. Chua luu (khong co dong) thi tra null -> dung gia cau hinh. Gia 0 la gia hop le.
-// DB chua ap migration 017 (42P01) cung dung gia cau hinh, de khong lam hong ca luot dong bo sau khi da tai xong anh.
-async function savedDefaultPrice(pool) {
-  try { return (await pool.query('select default_model_price_vnd from app_settings where id = 1')).rows[0]?.default_model_price_vnd ?? null; }
-  catch (e) { if (e?.code === '42P01') return null; throw e; }
-}
 const failed = (code) => ({ status: 'FAILED', errorCode: code, errorMessage: messageFor(code) ?? messageFor('JOB_HANDLER_ERROR') });
 
 // Ket qua cua mot giai doan -> cach ket thuc job (null = chay tiep).
@@ -38,7 +32,7 @@ const planCounters = (plan, scanSkipped) => ({
   missingCount: plan.counters.missingCount, reviewCount: plan.counters.reviewCount, skippedCount: scanSkipped + plan.counters.skippedCount,
 });
 
-export function createSyncHandler({ pool, previewDir, minFreeDiskBytes, defaultPriceVnd, previewDelayMs, previewConcurrency, previewCooldownMs, apiKey, createClient, freeDiskBytes }) {
+export function createSyncHandler({ pool, previewDir, minFreeDiskBytes, previewDelayMs, previewConcurrency, previewCooldownMs, apiKey, createClient, freeDiskBytes }) {
   const makeClient = createClient ?? (() => createDriveClient({ apiKey }));
   const reload = async (id) => (await pool.query('select * from drive_sync_jobs where id = $1', [id])).rows[0];
 
@@ -67,7 +61,7 @@ export function createSyncHandler({ pool, previewDir, minFreeDiskBytes, defaultP
     if (ctx.shuttingDown) return { interrupted: true };
     if (!(await ctx.saveProgress({ stage: 'PUBLISHING' }))) return { interrupted: true };
     const fresh = await computeDiff(pool, { sourceId: source.id, jobId: job.id }); // khong dung ke hoach cu: admin co the da sua trong luc tai anh
-    await publishPlan(pool, { sourceId: source.id, jobId: job.id, plan: fresh, results: p.results, defaultPriceVnd: (await savedDefaultPrice(pool)) ?? defaultPriceVnd });
+    await publishPlan(pool, { sourceId: source.id, jobId: job.id, plan: fresh, results: p.results });
     await ctx.saveProgress({ counters: { ...planCounters(fresh, scanSkipped), reviewCount: await openReviewCount(pool, source.id, fresh) } });
     await pool.query('update drive_sources set last_successful_sync_at = now() where id = $1', [source.id]);
     return { status: (await reload(job.id)).error_count > 0 ? 'COMPLETED_WITH_ERRORS' : 'COMPLETED' };

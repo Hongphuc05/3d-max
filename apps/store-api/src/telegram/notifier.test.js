@@ -5,7 +5,7 @@ import { createTelegramNotifier, orderText, CALLBACK_DATA } from './notifier.js'
 
 const ORDER = '11111111-2222-4333-8444-555555555555';
 const summary = (over = {}) => ({ orderId: ORDER, code: '3DMK7Q2XA', amountVnd: 35000, deviceName: 'PC-Khach', expiresAt: new Date('2026-11-03T10:00:00Z'),
-  claimedPaidAt: new Date('2026-11-02T10:00:00Z'), models: [{ name: 'Sofa One', priceVnd: 15000 }, { name: 'Lamp Two', priceVnd: 20000 }], ...over });
+  claimedPaidAt: new Date('2026-11-02T10:00:00Z'), ...over });
 function rig({ owners = ['111', '222'], failFor = new Set() } = {}) {
   const sent = [], saved = [];
   const client = { async sendMessage(m) { if (failFor.has(m.chatId)) throw Object.assign(new Error('x'), { code: 'TELEGRAM_API' }); sent.push(m); return { messageId: `m-${m.chatId}`, chatId: m.chatId }; } };
@@ -13,9 +13,9 @@ function rig({ owners = ['111', '222'], failFor = new Set() } = {}) {
   return { sent, saved, notifier: createTelegramNotifier({ client, service, ownerChatIds: owners }) };
 }
 
-test('the message tells the owner code, amount, device and models, and nothing about the bank account', () => {
+test('the message tells the owner code, amount, device and that it is a library license, and nothing about the bank account', () => {
   const text = orderText(summary());
-  for (const part of ['3DMK7Q2XA', '35.000', 'PC-Khach', 'Sofa One', 'Lamp Two', '15.000', '20.000']) assert.ok(text.includes(part), part);
+  for (const part of ['3DMK7Q2XA', '35.000', 'PC-Khach', 'license thư viện']) assert.ok(text.includes(part), part);
   assert.ok(!/\b\d{9,}\b/.test(text), 'no long digit runs (account numbers)');
 });
 
@@ -45,10 +45,9 @@ test('one owner unreachable is fine; all unreachable throws so the failure is re
   assert.equal(none.saved.length, 0);
 });
 
-test('customer-controlled text is sanitised: control characters removed, long names and long basket lists truncated, size stays under 4096', () => {
-  const text = orderText(summary({ deviceName: 'PC\n\u0007Evil\r' + 'x'.repeat(500), models: Array.from({ length: 40 }, (_, i) => ({ name: `Model ${i}\n${'y'.repeat(300)}`, priceVnd: 15000 })) }));
+test('customer-controlled text is sanitised: control characters removed, long names truncated, size stays under 4096', () => {
+  const text = orderText(summary({ deviceName: 'PC\n\u0007Evil\r' + 'x'.repeat(500) }));
   assert.ok(!/[\u0000-\u0009\u000b-\u001f\u007f]/.test(text.replace(/\n/g, '')), 'no control characters except newlines we add ourselves');
   assert.ok(text.length < 4000);
-  assert.ok(text.includes('…'), 'the list is cut with an ellipsis');
-  assert.ok(!text.includes('Model 39'), 'only the first models are listed');
+  assert.ok(!text.includes('x'.repeat(100)), 'the device name is cut');
 });

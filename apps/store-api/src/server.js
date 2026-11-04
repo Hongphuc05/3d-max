@@ -18,6 +18,7 @@ import { createDownloadRouter } from './downloads/routes.js';
 import { createOrderService } from './orders/service.js';
 import { createOrderRouter } from './orders/routes.js';
 import { createOrderAdminRouter } from './orders/admin-routes.js';
+import { createDeviceAdminRouter } from './devices/admin-routes.js';
 import { createOrderMaintenance } from './orders/maintenance.js';
 import { loadTelegramConfig } from './telegram/config.js';
 import { createTelegramClient } from './telegram/client.js';
@@ -50,8 +51,9 @@ const telegramClient = telegramConfig.enabled ? createTelegramClient({ token: te
 const orders = createOrderService({ pool });
 // Admin xu ly don: gan TRUOC adminRouter (cung tien to /api/admin); plan §2.7: /api/admin/orders.
 app.use('/api/admin', createOrderAdminRouter({ service: orders, client: telegramClient, guards: [requireAuth, requireAdmin], rateLimit: rateLimit({ limit: 60 }) }));
+app.use('/api/admin', createDeviceAdminRouter({ pool, guards: [requireAuth, requireAdmin], rateLimit: rateLimit({ limit: 60 }) }));
 // v3 P3.7: cai dat + bang model. Guard gan tung route, duong dan khac roi xuong adminRouter.
-app.use('/api/admin', createCatalogAdminRouter({ pool, guards: [requireAuth, requireAdmin], rateLimit: rateLimit({ limit: 60 }), envDefaultPrice: loadWorkerConfig(process.env).defaultPriceVnd }));
+app.use('/api/admin', createCatalogAdminRouter({ pool, guards: [requireAuth, requireAdmin], rateLimit: rateLimit({ limit: 60 }) }));
 app.use('/api/admin', adminRouter());
 app.get('/api/health', async (_q, r) => {
   const db = await pool.query('select 1').then(() => true, () => false);

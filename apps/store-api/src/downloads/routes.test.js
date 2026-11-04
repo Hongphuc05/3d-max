@@ -33,7 +33,7 @@ async function mkDevice(status = 'ACTIVE') {
 }
 async function mkModel({ data = payload(3000), status = 'PUBLISHED', file = {}, behaviour = {}, noPrimary = false } = {}) {
   const driveFileId = `DriveFile${String(++seq).padStart(8, '0')}`;
-  const id = (await pool.query("insert into models(category_id,name,status,price_vnd,published_at) values ($1,$2,$3,15000,now()) returning id", [catId, `m-${seq}`, status])).rows[0].id;
+  const id = (await pool.query("insert into models(category_id,name,status,published_at) values ($1,$2,$3,now()) returning id", [catId, `m-${seq}`, status])).rows[0].id;
   const fid = (await pool.query(
     `insert into model_files(model_id,source_id,drive_file_id,filename,file_type,size_bytes,md5_checksum,sha256,entry_file,can_download,download_status)
      values ($1,$2,$3,'m.rar','rar',$4,$5,$6,$7,$8,$9) returning id`,
@@ -43,8 +43,11 @@ async function mkModel({ data = payload(3000), status = 'PUBLISHED', file = {}, 
   upstream.set(driveFileId, { data, chunk: 500, ...behaviour });
   return { id, fid, driveFileId, data };
 }
-const grant = (deviceId, modelId) => pool.query("insert into entitlements(device_id,scope,model_id,source) values ($1,'MODEL',$2,'ADMIN') returning id", [deviceId, modelId]).then((r) => r.rows[0].id);
-const grantAll = (deviceId) => pool.query("insert into entitlements(device_id,scope,source) values ($1,'ALL_MODELS','ADMIN') returning id", [deviceId]).then((r) => r.rows[0].id);
+const grant = async (deviceId) => {  // D28.1: quyen = ca thu vien; cap lai khi da co thi tra quyen hien tai
+  await pool.query("insert into entitlements(device_id,source) values ($1,'ADMIN') on conflict do nothing", [deviceId]);
+  return (await pool.query('select id from entitlements where device_id=$1 and revoked_at is null', [deviceId])).rows[0].id;
+};
+const grantAll = grant;
 
 // Nguon gia lap: cung hinh dang voi public-link open().
 async function fakeOpen(fileId, { signal } = {}) {

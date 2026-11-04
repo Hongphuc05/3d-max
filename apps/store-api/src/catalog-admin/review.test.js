@@ -23,9 +23,9 @@ const model = async (id) => (await pool.query('select * from models where id=$1'
 async function makeModel(name, o = {}) {
   const status = o.status ?? 'PUBLISHED';
   const m = (await pool.query(
-    `insert into models(legacy_id, category_id, name, status, price_vnd, name_overridden, price_overridden, missing_scans, published_at)
-     values($1,$2,$3,$4,$5,$6,$7,$8,case when $4='PUBLISHED' then now() end) returning id`,
-    [o.legacy ?? null, catId, name, status, o.price ?? 15000, o.nameOverridden ?? false, o.priceOverridden ?? false, o.missing ?? 0])).rows[0].id;
+    `insert into models(legacy_id, category_id, name, status, name_overridden, missing_scans, published_at)
+     values($1,$2,$3,$4,$5,$6,case when $4='PUBLISHED' then now() end) returning id`,
+    [o.legacy ?? null, catId, name, status, o.nameOverridden ?? false, o.missing ?? 0])).rows[0].id;
   const driveId = o.driveId ?? `drive-${++seq}`;
   const f = (await pool.query(
     "insert into model_files(model_id,source_id,drive_file_id,filename,file_type,size_bytes) values($1,$2,$3,$4,$5,$6) returning id",
@@ -171,8 +171,8 @@ test('ACCEPT is refused for kinds that have nothing to approve; the item stays O
   assert.equal((await audits('REVIEW_ACCEPTED')).length, 0);
 });
 
-test('ACCEPT REMAP_CANDIDATE merges the new file into the OLD model: old id, price, hand-edited name and legacy id survive; the duplicate is deleted', { skip }, async () => {
-  const old = await makeModel('Old pretty name', { missing: 2, price: 99000, priceOverridden: true, nameOverridden: true, legacy: 'plugin-legacy-id', driveId: 'old-drive-file', fileType: 'rar', size: 111 });
+test('ACCEPT REMAP_CANDIDATE merges the new file into the OLD model: old id, hand-edited name and legacy id survive; the duplicate is deleted', { skip }, async () => {
+  const old = await makeModel('Old pretty name', { missing: 2, nameOverridden: true, legacy: 'plugin-legacy-id', driveId: 'old-drive-file', fileType: 'rar', size: 111 });
   const neu = await makeModel('new-file-name', { status: 'NEEDS_REVIEW', driveId: 'new-drive-file', fileType: 'zip', size: 222 });
   const id = await makeReview('REMAP_CANDIDATE', { modelId: neu.id, payload: { files: ['new-file-name.zip'], previousModelId: old.id, previousModel: 'Old pretty name' } });
   const v0 = await version();
@@ -181,8 +181,8 @@ test('ACCEPT REMAP_CANDIDATE merges the new file into the OLD model: old id, pri
 
   assert.equal(await model(neu.id), undefined, 'the duplicate model is gone');
   const o = await model(old.id);
-  assert.equal(o.name, 'Old pretty name'); assert.equal(o.price_vnd, 99000); assert.equal(o.legacy_id, 'plugin-legacy-id');
-  assert.equal(o.price_overridden, true); assert.equal(o.name_overridden, true); assert.equal(o.status, 'PUBLISHED'); assert.equal(o.missing_scans, 0);
+  assert.equal(o.name, 'Old pretty name'); assert.equal(o.legacy_id, 'plugin-legacy-id');
+assert.equal(o.name_overridden, true); assert.equal(o.status, 'PUBLISHED'); assert.equal(o.missing_scans, 0);
   const files = (await pool.query('select id, drive_file_id, file_type, size_bytes from model_files where model_id=$1', [old.id])).rows;
   assert.deepEqual(files.map((f) => [f.drive_file_id, f.file_type, Number(f.size_bytes)]), [['new-drive-file', 'zip', 222]], 'only the new file remains, old (gone from Drive) removed');
   assert.equal(o.primary_file_id, neu.fileId);
@@ -194,7 +194,7 @@ test('ACCEPT REMAP_CANDIDATE merges the new file into the OLD model: old id, pri
   assert.equal(row.status, 'RESOLVED'); assert.equal(row.resolved_by, adminId);
   assert.equal(await version(), v0 + 1);
   const pub = (await manifest(pool)).models.find((x) => x.id === old.id);
-  assert.equal(pub.fileType, 'zip'); assert.equal(pub.sizeBytes, 222); assert.equal(pub.priceVnd, 99000);
+  assert.equal(pub.fileType, 'zip'); assert.equal(pub.sizeBytes, 222);
   const [e] = await audits('REVIEW_ACCEPTED');
   assert.equal(e.details.kind, 'REMAP_CANDIDATE'); assert.equal(e.details.mergedInto, old.id);
 });

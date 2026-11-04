@@ -30,11 +30,11 @@ async function register(k = newKey(), over = {}, extra = {}) {
 const deviceRow = async (uuid) => (await pool.query('select * from devices where device_uuid=$1', [uuid])).rows[0];
 const code = async (r) => (await r.json()).error?.code;
 async function addModel(name) {
-  const id = (await pool.query("insert into models(category_id,name,status,price_vnd,published_at) values($1,$2,'PUBLISHED',15000,now()) returning id", [catId, name])).rows[0].id;
+  const id = (await pool.query("insert into models(category_id,name,status,published_at) values($1,$2,'PUBLISHED',now()) returning id", [catId, name])).rows[0].id;
   await pool.query("insert into model_files(model_id,source_id,drive_file_id,filename,file_type,size_bytes) values($1,$2,$3,'m.rar','rar',1000)", [id, sourceId, `devFile${++fileSeq}`]);
   return id;
 }
-const grant = (deviceId, modelId) => pool.query("insert into entitlements(device_id,scope,model_id,source) values($1,'MODEL',$2,'ADMIN')", [deviceId, modelId]);
+const grant = (deviceId) => pool.query("insert into entitlements(device_id,source) values($1,'ADMIN')", [deviceId]);
 const auth = (token) => ({ authorization: `Device ${token}` });
 
 before(async () => {
@@ -102,7 +102,7 @@ test('verify: valid signature registers the device, issues a 15 minute token (on
   assert.match(j.deviceToken, /^[A-Za-z0-9_-]{43}$/);
   const ms = new Date(j.expiresAt) - Date.now();
   assert.ok(ms > 14 * 60_000 && ms <= 15 * 60_000, `ttl ${ms}`);
-  assert.deepEqual(j.entitlements, { allModels: false, modelIds: [] });
+  assert.deepEqual(j.entitlements, { allModels: false });
   const dev = await deviceRow(body.deviceUuid);
   assert.equal(dev.status, 'ACTIVE'); assert.equal(dev.machine_code, MACHINE); assert.equal(dev.device_name, 'PC-Test'); assert.equal(dev.key_protection, 'SOFTWARE');
   const stored = (await pool.query('select id from device_tokens')).rows;
@@ -237,15 +237,14 @@ test('requireDevice exported middleware sets req.device and rejects with the v3 
   } finally { s.closeAllConnections?.(); await new Promise((r) => s.close(r)); }
 });
 
-test('entitlements: only this device\'s active rights are listed; revoked and other devices\' are not', { skip }, async () => {
+test('entitlements: only this device\'s active license counts; revoked and other devices\' do not', { skip }, async () => {
   const a = await register(), b = await register();
-  const [m1, m2, m3] = [await addModel('M1'), await addModel('M2'), await addModel('M3')];
-  const idA = (await deviceRow(a.body.deviceUuid)).id, idB = (await deviceRow(b.body.deviceUuid)).id;
-  await grant(idA, m1); await grant(idA, m2); await grant(idB, m3);
-  await pool.query("update entitlements set revoked_at = now() where device_id=$1 and model_id=$2", [idA, m2]);
+  const idA = (await deviceRow(a.body.deviceUuid)).id;
   const list = async (t) => (await call('/api/v1/me/entitlements', { method: 'GET', headers: auth(t) })).json();
-  assert.deepEqual(await list(a.j.deviceToken), { allModels: false, modelIds: [m1] });
-  assert.deepEqual(await list(b.j.deviceToken), { allModels: false, modelIds: [m3] });
-  await pool.query("insert into entitlements(device_id,scope,source) values($1,'ALL_MODELS','ADMIN')", [idA]);
-  assert.deepEqual(await list(a.j.deviceToken), { allModels: true, modelIds: [m1] });
+  assert.deepEqual(await list(a.j.deviceToken), { allModels: false });
+  await grant(idA);
+  assert.deepEqual(await list(a.j.deviceToken), { allModels: true });
+  assert.deepEqual(await list(b.j.deviceToken), { allModels: false }, 'another device is not licensed');
+  await pool.query('update entitlements set revoked_at = now() where device_id=$1', [idA]);
+  assert.deepEqual(await list(a.j.deviceToken), { allModels: false });
 });

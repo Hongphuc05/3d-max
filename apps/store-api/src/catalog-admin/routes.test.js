@@ -16,10 +16,10 @@ const j = (path, { method = 'GET', body, user = 'admin' } = {}) => fetch(base + 
   method, headers: { 'content-type': 'application/json', ...(user ? { 'x-test-user': user } : {}) },
   body: body === undefined ? undefined : JSON.stringify(body) });
 const settingsBody = (over = {}) => ({ bankName: 'Vietcombank', bankBin: '970436', accountNo: ACCOUNT_NO, accountName: 'NGUYEN VAN A',
-  defaultModelPriceVnd: 25000, orderTtlMinutes: 720, maxPendingOrdersPerDevice: 2, ...over });
+  libraryPriceVnd: 250000, orderTtlMinutes: 720, maxPendingOrdersPerDevice: 2, ...over });
 async function addModel(name, over = {}) {
-  const r = await pool.query("insert into models(category_id,name,status,price_vnd,published_at) values($1,$2,$3,$4,case when $3='PUBLISHED' then now() end) returning id",
-    [catId, name, over.status ?? 'PUBLISHED', over.price ?? 15000]);
+  const r = await pool.query("insert into models(category_id,name,status,published_at) values($1,$2,$3,case when $3='PUBLISHED' then now() end) returning id",
+    [catId, name, over.status ?? 'PUBLISHED']);
   const id = r.rows[0].id;
   // Manifest cong khai chi gom model co file chinh (join model_files), nen moi model test deu co mot.
   const f = await pool.query("insert into model_files(model_id,source_id,drive_file_id,filename,file_type,size_bytes) values($1,$2,$3,'m.rar','rar',1000) returning id", [id, sourceId, `fileFor${++fileSeq}`]);
@@ -83,7 +83,7 @@ test('paths this router does not own fall through to the legacy admin router (it
 
 test('GET settings before the first save: defaults (price = env value), updatedAt null, bank empty', { skip }, async () => {
   const s = await (await j('/settings')).json();
-  assert.deepEqual(s, { bankName: null, bankBin: null, accountNo: null, accountName: null, defaultModelPriceVnd: ENV_PRICE,
+  assert.deepEqual(s, { bankName: null, bankBin: null, accountNo: null, accountName: null, libraryPriceVnd: ENV_PRICE,
     orderTtlMinutes: 1440, maxPendingOrdersPerDevice: 3, updatedAt: null });
 });
 
@@ -91,18 +91,18 @@ test('PUT settings saves one row, records who and when, returns the saved view, 
   const r = await j('/settings', { method: 'PUT', body: settingsBody() });
   assert.equal(r.status, 200);
   const saved = await r.json();
-  assert.deepEqual(Object.keys(saved).sort(), ['accountName', 'accountNo', 'bankBin', 'bankName', 'defaultModelPriceVnd', 'maxPendingOrdersPerDevice', 'orderTtlMinutes', 'updatedAt']);
-  assert.equal(saved.accountNo, ACCOUNT_NO); assert.equal(saved.defaultModelPriceVnd, 25000); assert.ok(saved.updatedAt);
+  assert.deepEqual(Object.keys(saved).sort(), ['accountName', 'accountNo', 'bankBin', 'bankName', 'libraryPriceVnd', 'maxPendingOrdersPerDevice', 'orderTtlMinutes', 'updatedAt']);
+  assert.equal(saved.accountNo, ACCOUNT_NO); assert.equal(saved.libraryPriceVnd, 250000); assert.ok(saved.updatedAt);
   const row = (await pool.query('select * from app_settings')).rows;
   assert.equal(row.length, 1); assert.equal(row[0].id, 1); assert.equal(row[0].updated_by, adminId);
   assert.deepEqual(await (await j('/settings')).json(), saved);
 
   const [event] = await audits('SETTINGS_UPDATED');
   assert.ok(event, 'audited'); assert.equal(event.actor_kind, 'ADMIN'); assert.equal(event.actor_ref, adminId); assert.equal(event.target_type, 'app_settings');
-  assert.ok(event.details.changed.includes('accountNo') && event.details.changed.includes('defaultModelPriceVnd'));
+  assert.ok(event.details.changed.includes('accountNo') && event.details.changed.includes('libraryPriceVnd'));
   assert.equal(JSON.stringify(event).includes(ACCOUNT_NO), false, 'bank account number is not copied into the audit trail');
   assert.equal(JSON.stringify(event).includes('NGUYEN VAN A'), false);
-  assert.deepEqual(event.details.defaultModelPriceVnd, { from: ENV_PRICE, to: 25000 });
+  assert.deepEqual(event.details.libraryPriceVnd, { from: ENV_PRICE, to: 250000 });
 });
 
 test('PUT settings again: the same values write no new audit event; a change records only what changed', { skip }, async () => {
@@ -128,8 +128,8 @@ test('PUT settings validation: every bad body is 400 and the saved row is untouc
     settingsBody({ bankBin: '97043' }), settingsBody({ bankBin: '97043a' }), settingsBody({ bankBin: 970436 }),
     settingsBody({ accountNo: '12345' }), settingsBody({ accountNo: 'ABC123456' }), settingsBody({ accountNo: '1'.repeat(20) }),
     settingsBody({ bankName: 'x'.repeat(101) }), settingsBody({ accountName: 'a\u0000b' }), settingsBody({ bankName: 5 }),
-    settingsBody({ defaultModelPriceVnd: -1 }), settingsBody({ defaultModelPriceVnd: 1.5 }), settingsBody({ defaultModelPriceVnd: '100' }),
-    settingsBody({ defaultModelPriceVnd: 100_000_001 }), settingsBody({ defaultModelPriceVnd: null }),
+    settingsBody({ libraryPriceVnd: -1 }), settingsBody({ libraryPriceVnd: 1.5 }), settingsBody({ libraryPriceVnd: '100' }),
+    settingsBody({ libraryPriceVnd: 100_000_001 }), settingsBody({ libraryPriceVnd: null }),
     settingsBody({ orderTtlMinutes: 0 }), settingsBody({ orderTtlMinutes: 43201 }), settingsBody({ orderTtlMinutes: 1.2 }),
     settingsBody({ maxPendingOrdersPerDevice: 0 }), settingsBody({ maxPendingOrdersPerDevice: 21 }),
     { ...settingsBody(), extra: 1 }, (({ bankBin, ...rest }) => rest)(settingsBody()), [], 'text', null,
@@ -145,7 +145,7 @@ test('GET models: pagination envelope, exact safe fields, ordered by name, no id
   assert.deepEqual(Object.keys(page).sort(), ['items', 'limit', 'page', 'total']);
   assert.equal(page.total, 3); assert.equal(page.page, 1); assert.equal(page.limit, 20);
   assert.deepEqual(page.items.map((m) => m.name), ['apple', 'Mango', 'Zebra'], 'case-insensitive order');
-  assert.deepEqual(Object.keys(page.items[0]).sort(), ['categoryPath', 'id', 'name', 'nameOverridden', 'priceOverridden', 'priceVnd', 'status', 'updatedAt']);
+  assert.deepEqual(Object.keys(page.items[0]).sort(), ['categoryPath', 'id', 'name', 'nameOverridden', 'status', 'updatedAt']);
   assert.equal(page.items[0].categoryPath, 'Living / Sofa');
   const p2 = await (await j('/models?limit=2&page=2')).json();
   assert.deepEqual(p2.items.map((m) => m.name), ['Zebra']); assert.equal(p2.total, 3);
@@ -165,27 +165,23 @@ test('GET models: q is a case-insensitive substring search and wildcard characte
   assert.equal((await j('/models?q=' + 'x'.repeat(101))).status, 400);
 });
 
-test('PATCH model: a name edit marks name_overridden only; a price edit marks price_overridden only; the public catalog version moves', { skip }, async () => {
+test('PATCH model: a name edit marks name_overridden; the public catalog version moves', { skip }, async () => {
   const id = await addModel('Sofa A');
   await addModel('Other');
   const v0 = await version();
   const r = await j(`/models/${id}`, { method: 'PATCH', body: { name: '  Sofa B  ' } });
   assert.equal(r.status, 200);
   const item = await r.json();
-  assert.equal(item.name, 'Sofa B'); assert.equal(item.nameOverridden, true); assert.equal(item.priceOverridden, false);
+  assert.equal(item.name, 'Sofa B'); assert.equal(item.nameOverridden, true);
   assert.equal(await version(), v0 + 1, 'name is public data: the catalog version moves');
   assert.equal((await manifest(pool)).models.find((m) => m.id === id).name, 'Sofa B');
 
-  const item2 = await (await j(`/models/${id}`, { method: 'PATCH', body: { priceVnd: 99000 } })).json();
-  assert.equal(item2.priceVnd, 99000); assert.equal(item2.priceOverridden, true); assert.equal(item2.nameOverridden, true);
-  assert.equal(await version(), v0 + 2);
-  assert.equal((await model(id)).price_vnd, 99000);
-  assert.equal((await pool.query("select count(*)::int n from models where name='Other' and price_vnd=15000 and not name_overridden and not price_overridden")).rows[0].n, 1, 'other models untouched');
+  assert.equal((await pool.query("select count(*)::int n from models where name='Other' and not name_overridden")).rows[0].n, 1, 'other models untouched');
+  assert.equal((await j(`/models/${id}`, { method: 'PATCH', body: { priceVnd: 99000 } })).status, 400, 'no per-model price any more (D28.1)');
 });
 
 test('PATCH model: HIDDEN removes it from the public manifest and bumps the version; PUBLISHED brings it back and stamps published_at once', { skip }, async () => {
   const id = await addModel('Sofa A'); await addModel('Other');
-  await j(`/models/${id}`, { method: 'PATCH', body: { priceVnd: 15000 } }); // no real change: baseline
   const v0 = await version();
   assert.ok((await manifest(pool)).models.some((m) => m.id === id));
   await j(`/models/${id}`, { method: 'PATCH', body: { status: 'HIDDEN' } });
@@ -206,20 +202,20 @@ test('PATCH model: a request that changes nothing writes no audit event, no flag
   const id = await addModel('Sofa A');
   await j(`/models/${id}`, { method: 'PATCH', body: { name: 'Sofa A2' } });
   const v = await version(); const events = (await audits('MODEL_UPDATED')).length;
-  const r = await j(`/models/${id}`, { method: 'PATCH', body: { name: 'Sofa A2', priceVnd: 15000, status: 'PUBLISHED' } });
+  const r = await j(`/models/${id}`, { method: 'PATCH', body: { name: 'Sofa A2', status: 'PUBLISHED' } });
   assert.equal(r.status, 200);
   const m = await model(id);
-  assert.equal(m.price_overridden, false, 'same price = not an override');
+  assert.equal(m.name_overridden, true);
   assert.equal(await version(), v); assert.equal((await audits('MODEL_UPDATED')).length, events);
 });
 
-test('PATCH model audits what changed (field names + old/new price and status), attributed to the admin', { skip }, async () => {
+test('PATCH model audits what changed (field names + old/new values), attributed to the admin', { skip }, async () => {
   const id = await addModel('Sofa A');
-  await j(`/models/${id}`, { method: 'PATCH', body: { priceVnd: 20000, status: 'HIDDEN' } });
+  await j(`/models/${id}`, { method: 'PATCH', body: { name: 'Sofa Z', status: 'HIDDEN' } });
   const [e] = await audits('MODEL_UPDATED');
   assert.equal(e.actor_kind, 'ADMIN'); assert.equal(e.actor_ref, adminId); assert.equal(e.target_type, 'model'); assert.equal(e.target_id, id);
-  assert.deepEqual(e.details.changed.sort(), ['priceVnd', 'status']);
-  assert.deepEqual(e.details.priceVnd, { from: 15000, to: 20000 });
+  assert.deepEqual(e.details.changed.sort(), ['name', 'status']);
+  assert.deepEqual(e.details.name, { from: 'Sofa A', to: 'Sofa Z' });
   assert.deepEqual(e.details.status, { from: 'PUBLISHED', to: 'HIDDEN' });
 });
 
@@ -227,7 +223,7 @@ test('PATCH model validation: bad body is 400 and nothing changes; unknown or ma
   const id = await addModel('Sofa A');
   const before = await model(id);
   const bad = [{}, [], 'x', null, { name: '' }, { name: '   ' }, { name: 'x'.repeat(301) }, { name: 'a\u0007b' }, { name: 5 },
-    { priceVnd: -1 }, { priceVnd: 1.5 }, { priceVnd: '100' }, { priceVnd: 100_000_001 },
+    { priceVnd: 1 },
     { status: 'DRAFT' }, { status: 'NEEDS_REVIEW' }, { status: 'published' }, { status: 1 }, { legacyId: 'x' }, { name: 'ok', extra: 1 }];
   for (const body of bad) assert.equal((await j(`/models/${id}`, { method: 'PATCH', body })).status, 400, JSON.stringify(body)?.slice(0, 60));
   assert.deepEqual(await model(id), before);
@@ -256,8 +252,8 @@ test('the LAST admin to save is recorded (updated_by follows the editor, not jus
 test('PATCH response has exactly the same safe fields as the list (no legacy id, no internal columns)', { skip }, async () => {
   const id = await addModel('Sofa A');
   await pool.query("update models set legacy_id = 'plugin-visible-old-id' where id = $1", [id]);
-  const body = await (await j(`/models/${id}`, { method: 'PATCH', body: { priceVnd: 1 } })).json();
-  assert.deepEqual(Object.keys(body).sort(), ['categoryPath', 'id', 'name', 'nameOverridden', 'priceOverridden', 'priceVnd', 'status', 'updatedAt']);
+  const body = await (await j(`/models/${id}`, { method: 'PATCH', body: { name: 'Q' } })).json();
+  assert.deepEqual(Object.keys(body).sort(), ['categoryPath', 'id', 'name', 'nameOverridden', 'status', 'updatedAt']);
   assert.equal(body.categoryPath, 'Living / Sofa');
   assert.equal(JSON.stringify(body).includes('plugin-visible-old-id'), false);
 });

@@ -71,7 +71,7 @@ test('Drive errors per hour: failed items of recent jobs plus failed downloads, 
   const jobId = (await pool.query("insert into drive_sync_jobs(source_id,mode,status,finished_at,created_at) values ($1,'FULL','COMPLETED_WITH_ERRORS',$2,$2) returning id", [sourceId, new Date(NOW - 20 * 60e3)])).rows[0].id;
   for (let i = 0; i < 12; i++) await pool.query("insert into drive_sync_job_items(job_id,drive_file_id,action,status,error_code) values ($1,$2,'PREVIEW','FAILED','DRIVE_RATE_LIMITED')", [jobId, `file-${i}`]);
   assert.deepEqual(keys(await collectProblems(base())).includes('drive-errors'), false, '12 < 20');
-  const modelId = (await pool.query("insert into models(category_id,name,status,price_vnd,published_at) values ($1,'M','PUBLISHED',15000,now()) returning id", [catId])).rows[0].id;
+  const modelId = (await pool.query("insert into models(category_id,name,status,published_at) values ($1,'M','PUBLISHED',now()) returning id", [catId])).rows[0].id;
   const sessionId = (await pool.query("insert into model_download_sessions(token_hash,model_id,device_id,expires_at) values ($1,$2,$3,now()+interval '4 minutes') returning id", [createHash('sha256').update(randomUUID()).digest(), modelId, deviceId])).rows[0].id;
   for (let i = 0; i < 9; i++) await pool.query("insert into model_download_logs(session_id,model_id,device_id,status,error_code,created_at) values ($1,$2,$3,'FAILED','DRIVE_UNAVAILABLE',$4)", [sessionId, modelId, deviceId, new Date(NOW - 10 * 60e3)]);
   const r = await collectProblems(base());

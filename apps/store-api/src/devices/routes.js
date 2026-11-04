@@ -33,8 +33,8 @@ function parseChallenge(body) {
 }
 
 async function entitlementsOf(db, deviceId) {
-  const rows = (await db.query('select scope, model_id from entitlements where device_id = $1 and revoked_at is null order by granted_at, id', [deviceId])).rows;
-  return { allModels: rows.some((r) => r.scope === 'ALL_MODELS'), modelIds: rows.filter((r) => r.scope === 'MODEL').map((r) => r.model_id) };
+  const owned = await db.query('select 1 from entitlements where device_id = $1 and revoked_at is null', [deviceId]);
+  return { allModels: owned.rowCount > 0 }; // D28.1: license ca thu vien
 }
 
 /** Middleware: `Authorization: Device <token>`; gan req.device = { id, deviceUuid }. Moi truong hop sai -> UNAUTHENTICATED. */

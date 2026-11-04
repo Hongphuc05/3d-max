@@ -19,8 +19,7 @@ const logCode = (e) => (/^[A-Z][A-Z0-9_]{1,60}$/.test(e?.code ?? '') ? e.code : 
 const FILE_SQL = `select m.status as model_status, f.id as file_id, f.drive_file_id, f.file_type, f.size_bytes, f.md5_checksum, f.sha256, f.entry_file,
                          f.can_download, f.download_status
                     from models m left join model_files f on f.id = m.primary_file_id where m.id = $1`;
-const ENTITLEMENT_SQL = `select id from entitlements where device_id = $1 and revoked_at is null
-                          and (scope = 'ALL_MODELS' or (scope = 'MODEL' and model_id = $2)) limit 1`;
+const ENTITLEMENT_SQL = `select id from entitlements where device_id = $1 and revoked_at is null limit 1`; // D28.1: quyen = ca thu vien
 
 function checkOfferable(row) {
   if (!row || row.model_status !== 'PUBLISHED' || !row.file_id || row.download_status === 'MISSING' || row.download_status === 'ERROR') throw apiError('MODEL_NOT_AVAILABLE');
@@ -66,7 +65,7 @@ export function createDownloadRouter({ pool, cache, rateLimit, sessionsPerHour =
     if (!UUID.test(modelId)) throw apiError('INVALID_PARAMS');
     const out = await inTransaction(pool, async (db) => {
       await db.query('select 1 from devices where id = $1 for update', [req.device.id]); // tuan tu hoa phien cua mot thiet bi (gioi han toc do)
-      const ent = (await db.query(ENTITLEMENT_SQL, [req.device.id, modelId])).rows[0];
+      const ent = (await db.query(ENTITLEMENT_SQL, [req.device.id])).rows[0];
       if (!ent) throw apiError('NOT_ENTITLED');
       const row = (await db.query(FILE_SQL, [modelId])).rows[0];
       checkOfferable(row);
@@ -102,7 +101,7 @@ export function createDownloadRouter({ pool, cache, rateLimit, sessionsPerHour =
       const fail = async (code) => { await finish(s.id, req.device.id, s.model_id, 'FAILED', code, 0); throw apiError(code); };
 
       // Kiem lai luc mo: quyen co the bi thu hoi, model co the bi go sau khi tao phien.
-      if (!(await pool.query(ENTITLEMENT_SQL, [req.device.id, s.model_id])).rows[0]) await fail('NOT_ENTITLED');
+      if (!(await pool.query(ENTITLEMENT_SQL, [req.device.id])).rows[0]) await fail('NOT_ENTITLED');
       const row = (await pool.query(FILE_SQL, [s.model_id])).rows[0];
       try { checkOfferable(row); } catch (e) { await fail(e.code); }
 

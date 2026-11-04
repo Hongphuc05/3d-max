@@ -26,13 +26,13 @@ test('017: starts EMPTY (no row until the first save) so the worker keeps using 
 test('017: defaults, singleton id=1, numeric ranges; text fields stay free-form (format is validated by the API)', { skip }, async () => {
   await pool.query('insert into app_settings(id) values (1)');
   const r = (await pool.query('select * from app_settings')).rows[0];
-  assert.equal(r.default_model_price_vnd, 15000); assert.equal(r.order_ttl_minutes, 1440); assert.equal(r.max_pending_orders_per_device, 3);
+  assert.equal(r.library_price_vnd, 500000); assert.equal(r.order_ttl_minutes, 1440); assert.equal(r.max_pending_orders_per_device, 3);
   assert.equal(r.bank_name, null); assert.equal(r.account_no, null); assert.equal(r.updated_by, null);
   await rejects('insert into app_settings(id) values (2)');
   await rejects('insert into app_settings(id) values (1)');
-  for (const set of ['default_model_price_vnd = -1', 'order_ttl_minutes = 0', 'max_pending_orders_per_device = 0', 'default_model_price_vnd = null'])
+  for (const set of ['library_price_vnd = -1', 'order_ttl_minutes = 0', 'max_pending_orders_per_device = 0', 'library_price_vnd = null'])
     await rejects(`update app_settings set ${set}`);
-  await pool.query("update app_settings set default_model_price_vnd = 0, bank_bin = '970436', bank_name = 'Vietcombank'");
+  await pool.query("update app_settings set library_price_vnd = 0, bank_bin = '970436', bank_name = 'Vietcombank'");
 });
 
 test('017: updated_by references a user and is cleared (not blocking) when that user is deleted', { skip }, async () => {

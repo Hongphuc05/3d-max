@@ -24,18 +24,15 @@ export function createOrderService({ pool }) {
     return r;
   };
 
-  async function createOrder(deviceId, modelIds) {
+  async function createOrder(deviceId) {
     return inTransaction(pool, async (db) => {
       await db.query('select 1 from devices where id = $1 for update', [deviceId]); // tuan tu hoa don cua mot thiet bi (gioi han don cho)
-      const s = (await db.query('select bank_name, bank_bin, account_no, account_name, order_ttl_minutes, max_pending_orders_per_device from app_settings where id = 1')).rows[0];
+      const s = (await db.query('select bank_name, bank_bin, account_no, account_name, order_ttl_minutes, max_pending_orders_per_device, library_price_vnd from app_settings where id = 1')).rows[0];
       if (!s || !s.bank_name || !s.bank_bin || !s.account_no || !s.account_name) throw apiError('PAYMENT_NOT_CONFIGURED');
-      const models = (await db.query('select id, price_vnd, status from models where id = any($1::uuid[])', [modelIds])).rows;
-      if (models.length !== modelIds.length || models.some((m) => m.status !== 'PUBLISHED')) throw apiError('MODEL_NOT_AVAILABLE');
-      const amount = models.reduce((n, m) => n + m.price_vnd, 0); // GIA LAY TU DB, bo qua moi gia do client gui
-      if (amount < 1) throw bad();
-      const owned = await db.query(
-        "select 1 from entitlements where device_id = $1 and revoked_at is null and (scope = 'ALL_MODELS' or model_id = any($2::uuid[])) limit 1", [deviceId, modelIds]);
-      if (owned.rowCount) throw apiError('ALREADY_ENTITLED');
+      const amount = s.library_price_vnd; // GIA THU VIEN lay tu DB (D28.1)
+      if (amount < 1) throw apiError('PAYMENT_NOT_CONFIGURED');
+      const owned = await db.query("select 1 from entitlements where device_id = $1 and revoked_at is null", [deviceId]);
+      if (owned.rowCount) throw apiError('ALREADY_ENTITLED'); // 1 license = 1 may (D28.2)
       const pending = (await db.query(
         "select count(*)::int n from purchase_orders where device_id = $1 and status = any($2) and expires_at > now()", [deviceId, OPEN])).rows[0].n;
       if (pending >= s.max_pending_orders_per_device) throw apiError('TOO_MANY_PENDING_ORDERS');
@@ -50,7 +47,6 @@ export function createOrderService({ pool }) {
           [code, deviceId, amount, s.order_ttl_minutes, JSON.stringify(snapshot)])).rows[0];
       }
       if (!order) throw new Error('could not allocate an order code');
-      await db.query('insert into purchase_order_items (order_id, model_id, price_vnd) select $1, id, price_vnd from models where id = any($2::uuid[])', [order.id, modelIds]);
       let qrPayload;
       try { qrPayload = buildVietQr({ bankBin: snapshot.bankBin, accountNo: snapshot.accountNo, amountVnd: amount, content: order.code }); }
       catch (e) { if (e.code === 'VIETQR_INVALID') throw apiError('PAYMENT_NOT_CONFIGURED'); throw e; } // cai dat ngan hang sai dinh dang: khong tao don
@@ -81,11 +77,9 @@ export function createOrderService({ pool }) {
   /** Noi dung thong bao cho chu: KHONG co thong tin ngan hang. */
   async function summary(orderId) {
     const o = (await pool.query(
-      `select o.id, o.code, o.amount_vnd, o.expires_at, o.claimed_paid_at, d.device_name,
-              coalesce((select jsonb_agg(jsonb_build_object('name', m.name, 'priceVnd', i.price_vnd) order by m.name)
-                          from purchase_order_items i join models m on m.id = i.model_id where i.order_id = o.id), '[]'::jsonb) as models
+      `select o.id, o.code, o.amount_vnd, o.expires_at, o.claimed_paid_at, d.device_name
          from purchase_orders o join devices d on d.id = o.device_id where o.id = $1`, [orderId])).rows[0];
-    return o && { orderId: o.id, code: o.code, amountVnd: o.amount_vnd, deviceName: o.device_name, expiresAt: o.expires_at, claimedPaidAt: o.claimed_paid_at, models: o.models };
+    return o && { orderId: o.id, code: o.code, amountVnd: o.amount_vnd, deviceName: o.device_name, expiresAt: o.expires_at, claimedPaidAt: o.claimed_paid_at };
   }
 
   const saveTelegramMessage = (orderId, chatId, messageId) => pool.query(
@@ -95,27 +89,22 @@ export function createOrderService({ pool }) {
   /** @returns {{outcome:'CONFIRMED'|'REJECTED'|'EXPIRED'|'ALREADY_DECIDED'|'NOT_FOUND', order?}} */
   async function decide(orderId, action, actor) {
     if (!UUID.test(orderId ?? '')) return { outcome: 'NOT_FOUND' };
-    const allowed = ['AWAITING_OWNER']; // plan P5.6: chi don khach DA bao chuyen khoan, ca Telegram lan admin web
+    // Chi don khach DA bao chuyen khoan (claimed_paid_at); don da het han van xac nhan duoc vi tien da chuyen that (quyet dinh chu, 2026-11-04).
     const tgUser = actor.kind === 'TELEGRAM_OWNER' && /^\d{1,18}$/.test(String(actor.ref)) ? String(actor.ref) : null;
     const confirm = action === 'CONFIRM';
     return inTransaction(pool, async (db) => {
       const done = (await db.query(
-        `update purchase_orders set status = $2, decided_at = now(), decided_by_telegram_user = $4
-          where id = $1 and status = any($3) ${confirm ? 'and expires_at > now()' : ''} returning ${ORDER_COLUMNS}`,
-        [orderId, confirm ? 'CONFIRMED' : 'REJECTED', allowed, tgUser])).rows[0];
+        `update purchase_orders set status = $2, decided_at = now(), decided_by_telegram_user = $3
+          where id = $1 and claimed_paid_at is not null and status in ('AWAITING_OWNER', 'EXPIRED') returning ${ORDER_COLUMNS}`,
+        [orderId, confirm ? 'CONFIRMED' : 'REJECTED', tgUser])).rows[0];
       if (!done) {
-        const cur = (await db.query(`select ${ORDER_COLUMNS}, expires_at <= now() as late from purchase_orders where id = $1`, [orderId])).rows[0];
+        const cur = (await db.query(`select ${ORDER_COLUMNS} from purchase_orders where id = $1`, [orderId])).rows[0];
         if (!cur) return { outcome: 'NOT_FOUND' };
-        if (confirm && allowed.includes(cur.status) && cur.late) {
-          const expired = (await db.query(`update purchase_orders set status = 'EXPIRED' where id = $1 and status = any($2) returning ${ORDER_COLUMNS}`, [orderId, allowed])).rows[0];
-          return { outcome: 'EXPIRED', order: view(expired ?? cur) };
-        }
         return { outcome: 'ALREADY_DECIDED', order: view(cur) };
       }
       if (confirm) {
         await db.query(
-          `insert into entitlements (device_id, scope, model_id, source, order_id)
-           select $2, 'MODEL', model_id, 'ORDER', $1 from purchase_order_items where order_id = $1 on conflict do nothing`, [orderId, done.device_id]);
+          `insert into entitlements (device_id, source, order_id) values ($1, 'ORDER', $2) on conflict do nothing`, [done.device_id, orderId]);
       }
       await audit(db, actor, confirm ? 'ORDER_CONFIRMED' : 'ORDER_REJECTED', orderId, { code: done.code, amountVnd: done.amount_vnd });
       return { outcome: confirm ? 'CONFIRMED' : 'REJECTED', order: view(done) };
@@ -132,12 +121,11 @@ export function createOrderService({ pool }) {
   async function listOrders({ status, limit = 100 } = {}) {
     if (status !== undefined && !STATUSES.includes(status)) throw apiError('INVALID_PARAMS');
     const rows = (await pool.query(
-      `select o.id, o.code, o.amount_vnd, o.status, o.created_at, o.expires_at, o.claimed_paid_at, o.decided_at, d.device_name,
-              coalesce((select jsonb_agg(m.name order by m.name) from purchase_order_items i join models m on m.id = i.model_id where i.order_id = o.id), '[]'::jsonb) as models
+      `select o.id, o.code, o.amount_vnd, o.status, o.created_at, o.expires_at, o.claimed_paid_at, o.decided_at, d.device_name, o.device_id
          from purchase_orders o join devices d on d.id = o.device_id
         where ($1::text is null or o.status = $1) order by o.created_at desc limit $2`, [status ?? null, Math.min(Math.max(Number(limit) || 100, 1), 500)])).rows;
     return rows.map((o) => ({ orderId: o.id, code: o.code, amountVnd: o.amount_vnd, status: o.status, createdAt: o.created_at, expiresAt: o.expires_at,
-      claimedPaidAt: o.claimed_paid_at, decidedAt: o.decided_at, deviceName: o.device_name, models: o.models }));
+      claimedPaidAt: o.claimed_paid_at, decidedAt: o.decided_at, deviceName: o.device_name, deviceId: o.device_id }));
   }
 
   return { createOrder, getOrder, claimPaid, cancelOrder, summary, saveTelegramMessage, recordNotifyFailure, decide, expireDue, listOrders };

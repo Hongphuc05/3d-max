@@ -10,20 +10,18 @@ const skip = !configured;
 const SECRET = 'webhook_secret_ABCDEFGH-1234';
 const PATH = 'hook_path_ABCDEFGHIJKLMNOP-12';
 const OWNER = '111222333';
-let dispose, pool, svc, catId, base, servers = [], client, calls, mod, maintenance;
+let dispose, pool, svc, base, servers = [], client, calls, mod, maintenance;
 
 const sha = (b) => createHash('sha256').update(b).digest();
 async function mkDevice() {
   return (await pool.query("insert into devices(device_uuid,public_key,public_key_hash,key_protection,machine_code,device_name) values ($1,'{}',$2,'SOFTWARE',$3,'PC-Khach') returning id",
     [randomUUID(), sha(randomUUID()), `MAX-${'E5'.repeat(32)}`])).rows[0].id;
 }
-let n = 0;
-const mkModel = async () => (await pool.query("insert into models(category_id,name,status,price_vnd,published_at) values ($1,$2,'PUBLISHED',15000,now()) returning id", [catId, `Model ${++n}`])).rows[0].id;
 async function awaiting() {
-  const device = await mkDevice(), model = await mkModel();
-  const order = await svc.createOrder(device, [model]);
+  const device = await mkDevice();
+  const order = await svc.createOrder(device);
   await pool.query("update purchase_orders set status='AWAITING_OWNER', claimed_paid_at=now() where id=$1", [order.orderId]);
-  return { device, model, order };
+  return { device, order };
 }
 const row = async (id) => (await pool.query('select * from purchase_orders where id=$1', [id])).rows[0];
 const rights = async (device) => (await pool.query('select 1 from entitlements where device_id=$1 and revoked_at is null', [device])).rowCount;
@@ -37,15 +35,13 @@ before(async () => {
   dispose = await isolatedTestDatabase('telegram_routes');
   const db = await import('../db.js');
   pool = db.pool; await db.migrate();
-  catId = (await pool.query("insert into categories(name,slug,full_path) values('Living','living','Living') returning id")).rows[0].id;
   svc = (await import('../orders/service.js')).createOrderService({ pool });
   mod = await import('./routes.js'); maintenance = await import('../orders/maintenance.js');
 });
 after(async () => { if (dispose) await dispose(pool); });
 beforeEach(async () => {
   if (!configured) return;
-  for (const t of ['entitlements', 'purchase_order_items', 'purchase_orders', 'device_tokens', 'devices', 'audit_events', 'app_settings']) await pool.query(`delete from ${t}`);
-  await pool.query('update models set primary_file_id = null'); await pool.query('delete from models');
+  for (const t of ['entitlements', 'purchase_orders', 'device_tokens', 'devices', 'audit_events', 'app_settings']) await pool.query(`delete from ${t}`);
   await pool.query("insert into app_settings(id,bank_name,bank_bin,account_no,account_name) values (1,'Test Bank','970436','0123456789012','TEST ACCOUNT')");
   calls = []; client = { fail: false };
   for (const m of ['answerCallbackQuery', 'editMessageText']) client[m] = async (...args) => { calls.push([m, ...args]); if (client.fail) throw new Error('telegram down'); };
@@ -103,13 +99,12 @@ test('two presses at once (or Telegram retrying the same update) grant exactly o
   assert.ok(texts.some((t) => /đã được xử lý/i.test(t)));
 });
 
-test('✅ after the order expired grants nothing and edits the message to say the order expired', { skip }, async () => {
+test('✅ after the order expired still grants the library license (the customer had claimed payment) and edits the message', { skip }, async () => {
   const x = await awaiting();
   await pool.query("update purchase_orders set expires_at = now() - interval '1 second' where id=$1", [x.order.orderId]);
   assert.equal((await hook(cb(x.order.orderId, 'ok'))).status, 200);
-  assert.equal(await rights(x.device), 0); assert.equal((await row(x.order.orderId)).status, 'EXPIRED');
-  assert.match(calls.find((c) => c[0] === 'editMessageText')[1].text, /hết hạn/);
-  assert.match(calls.find((c) => c[0] === 'answerCallbackQuery')[2], /hết hạn/);
+  assert.equal(await rights(x.device), 1); assert.equal((await row(x.order.orderId)).status, 'CONFIRMED');
+  assert.match(calls.find((c) => c[0] === 'editMessageText')[1].text, /ĐÃ XÁC NHẬN/);
 });
 
 test('anyone who is not an owner is ignored silently: no state change, no answer, no edit (also: owner user in a foreign chat)', { skip }, async () => {
@@ -135,8 +130,8 @@ test('malformed callback data and non-callback updates change nothing (always 20
 test('unknown order and an order the customer never marked as paid: the owner is told, nothing is granted', { skip }, async () => {
   assert.equal((await hook(cb(randomUUID(), 'ok'))).status, 200);
   assert.match(calls.find((c) => c[0] === 'answerCallbackQuery')[2], /không tìm thấy/i);
-  const device = await mkDevice(), model = await mkModel();
-  const pending = await svc.createOrder(device, [model]);
+  const device = await mkDevice();
+  const pending = await svc.createOrder(device);
   calls.length = 0;
   assert.equal((await hook(cb(pending.orderId, 'ok'))).status, 200);
   assert.equal((await row(pending.orderId)).status, 'PENDING_PAYMENT'); assert.equal(await rights(device), 0);
@@ -163,18 +158,14 @@ test('a failing answer does not stop the message edit, and a failing edit does n
   assert.equal(res.status, 200);
 });
 
-test('sweeper: expired orders become EXPIRED and their Telegram message is edited; orders without a message are skipped; Telegram errors do not stop it', { skip }, async () => {
-  const a = await awaiting(), b = await awaiting(), c = await awaiting();
+test('sweeper: expired orders become EXPIRED once; Telegram messages are left alone so the owner can still confirm a late payment', { skip }, async () => {
+  const a = await awaiting(), b = await awaiting();
   await pool.query("update purchase_orders set telegram_chat_id=$2, telegram_message_id=77 where id=$1", [a.order.orderId, OWNER]);
-  await pool.query("update purchase_orders set telegram_chat_id=$2, telegram_message_id=78 where id=$1", [c.order.orderId, OWNER]);
-  await pool.query("update purchase_orders set expires_at = now() - interval '1 second' where id = any($2::uuid[]) or id=$1", [a.order.orderId, [b.order.orderId, c.order.orderId]]);
-  const m = maintenance.createOrderMaintenance({ service: svc, client, intervalMs: 3_600_000 });
-  let failedOnce = false;
-  client.editMessageText = async (...args) => { calls.push(['editMessageText', ...args]); if (!failedOnce) { failedOnce = true; throw new Error('telegram down'); } };
-  assert.equal(await m.runOnce(), 3);
-  for (const o of [a, b, c]) assert.equal((await row(o.order.orderId)).status, 'EXPIRED');
-  assert.equal(calls.filter((x) => x[0] === 'editMessageText').length, 2, 'two messages were edited (one failed, the other still tried), the third order had none');
-  assert.match(calls[0][1].text, /hết hạn/);
+  await pool.query("update purchase_orders set expires_at = now() - interval '1 second' where id = any($1::uuid[])", [[a.order.orderId, b.order.orderId]]);
+  const m = maintenance.createOrderMaintenance({ service: svc, intervalMs: 3_600_000 });
+  assert.equal(await m.runOnce(), 2);
+  for (const o of [a, b]) assert.equal((await row(o.order.orderId)).status, 'EXPIRED');
+  assert.equal(calls.filter((x) => x[0] === 'editMessageText').length, 0);
   assert.equal(await m.runOnce(), 0, 'nothing is processed twice');
   m.stop();
 });

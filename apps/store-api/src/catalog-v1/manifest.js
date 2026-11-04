@@ -23,7 +23,7 @@ export async function readCatalogState(db) {
 export async function buildManifest(db) {
   const cats = (await db.query('select id, parent_id, name, full_path from categories')).rows;
   const models = (await db.query(
-    `select m.id, m.name, m.category_id, m.price_vnd, coalesce(f.size_bytes, 0) as size_bytes, f.file_type
+    `select m.id, m.name, m.category_id, coalesce(f.size_bytes, 0) as size_bytes, f.file_type
        from models m join model_files f on f.id = m.primary_file_id
       where m.status = 'PUBLISHED' order by m.id`)).rows;
   const previews = (await db.query(
@@ -41,7 +41,7 @@ export async function buildManifest(db) {
   const out = {
     categories: cats.map((c) => ({ id: c.id, parentId: c.parent_id, name: c.name, fullPath: c.full_path, modelCount: total(c.id) }))
       .filter((c) => c.modelCount > 0).sort((a, b) => (a.fullPath < b.fullPath ? -1 : a.fullPath > b.fullPath ? 1 : 0)),
-    models: models.map((m) => ({ id: m.id, name: m.name, categoryId: m.category_id, priceVnd: m.price_vnd, sizeBytes: Number(m.size_bytes), fileType: m.file_type, status: 'PUBLISHED' })),
+    models: models.map((m) => ({ id: m.id, name: m.name, categoryId: m.category_id, sizeBytes: Number(m.size_bytes), fileType: m.file_type, status: 'PUBLISHED' })),
     previews: previews.map((p) => ({ modelId: p.model_id, variant: p.variant, url: `/previews/${p.local_path}`, sha256: p.sha256, version: p.version, fileSize: p.file_size, width: p.width, height: p.height })),
   };
   out.checksum = createHash('sha256').update(JSON.stringify({ categories: out.categories, models: out.models, previews: out.previews })).digest('hex');

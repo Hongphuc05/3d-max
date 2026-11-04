@@ -53,7 +53,7 @@ async function addPair(parent, stem, seed = ++n, { badImage = false } = {}) {
   return { img, arc };
 }
 const makeHandler = (over = {}) => mod.createSyncHandler({
-  pool, previewDir: dir, minFreeDiskBytes: 1, defaultPriceVnd: 15000, freeDiskBytes: async () => 10 ** 12,
+  pool, previewDir: dir, minFreeDiskBytes: 1, freeDiskBytes: async () => 10 ** 12,
   createClient: () => createDriveClient({ apiKey: KEY, baseUrl: fake.baseUrl, retry: { sleep: async () => {}, retries: 1 } }), ...over,
 });
 const job = id => pool.query('select * from drive_sync_jobs where id=$1', [id]).then(r => r.rows[0]);
@@ -188,7 +188,7 @@ test('the plan is recomputed right before publishing: a model created by someone
       if (!injected) { // an admin tool adds the very same Drive file as a model while we are busy downloading
         injected = true;
         const cat = (await pool.query("insert into categories(name,slug,full_path) values('Desk','desk','Desk') returning id")).rows[0].id;
-        const m = (await pool.query("insert into models(category_id,name,status,price_vnd) values($1,'one','DRAFT',1) returning id", [cat])).rows[0].id;
+        const m = (await pool.query("insert into models(category_id,name,status) values($1,'one','DRAFT') returning id", [cat])).rows[0].id;
         await pool.query("insert into model_files(model_id,source_id,drive_file_id,filename,file_type) values($1,$2,$3,'one.rar','rar')", [m, sourceId, arc.id]);
       }
       return c.openMedia(...a);
@@ -249,7 +249,7 @@ test('ensureApiKeySource: verifies the folder through Drive, creates the source 
   const a = await ensureApiKeySource({ pool, client, rootFolderId: ROOT });
   const b = await ensureApiKeySource({ pool, client, rootFolderId: ROOT });
   assert.equal(a.id, b.id);
-  assert.deepEqual((await pool.query('select access_mode, connection_id, root_folder_name, enabled from drive_sources')).rows, [{ access_mode: 'API_KEY', connection_id: null, root_folder_name: 'root', enabled: true }]);
+  assert.deepEqual((await pool.query('select access_mode, root_folder_name, enabled from drive_sources')).rows, [{ access_mode: 'API_KEY', root_folder_name: 'root', enabled: true }]);
   await pool.query('update drive_sources set enabled = false');
   await ensureApiKeySource({ pool, client, rootFolderId: ROOT });
   assert.equal((await pool.query('select enabled from drive_sources')).rows[0].enabled, true);
@@ -258,59 +258,6 @@ test('ensureApiKeySource: verifies the folder through Drive, creates the source 
   await assert.rejects(ensureApiKeySource({ pool, client, rootFolderId: 'does-not-exist-123' }), e => e.code === 'DRIVE_NOT_FOUND');
   await assert.rejects(ensureApiKeySource({ pool, client, rootFolderId: "x' or '1'='1" }), e => e.code === 'INVALID_PARAMS');
   assert.equal((await pool.query('select count(*)::int n from drive_sources')).rows[0].n, 1);
-});
-
-// ---- P3.7: gia mac dinh cua model MOI lay tu app_settings (D25); chua co cai dat thi dung gia cau hinh (bien moi truong) ----
-const priceOf = async (name) => (await pool.query('select price_vnd from models where name = $1', [name])).rows[0]?.price_vnd;
-
-test('P3.7: new models get the price saved on the admin page; with no saved settings the configured (env) price is used; models already priced keep their price', { skip }, async () => {
-  await pool.query('delete from app_settings');
-  const d = folder('Desk', ROOT);
-  await addPair(d.id, 'first');
-  await work((await enqueue()).id, { handler: makeHandler({ defaultPriceVnd: 12345 }) });
-  assert.equal(await priceOf('first'), 12345, 'no saved settings: env price');
-
-  await pool.query('insert into app_settings(id, default_model_price_vnd) values (1, 33000)');
-  await addPair(d.id, 'second');
-  await work((await enqueue()).id, { handler: makeHandler({ defaultPriceVnd: 12345 }) });
-  assert.equal(await priceOf('second'), 33000, 'saved settings win over the env price');
-  assert.equal(await priceOf('first'), 12345, 'an existing model keeps its price when the default changes');
-  await pool.query('delete from app_settings');
-});
-
-test('P3.7: the saved price is read when publishing (not when the handler is built) and a price of 0 is honoured', { skip }, async () => {
-  await pool.query('delete from app_settings');
-  const handler = makeHandler({ defaultPriceVnd: 12345 }); // built BEFORE the admin saves anything
-  await pool.query('insert into app_settings(id, default_model_price_vnd) values (1, 0)');
-  await addPair(folder('Desk', ROOT).id, 'free');
-  await work((await enqueue()).id, { handler });
-  assert.equal(await priceOf('free'), 0, 'read at publish time; 0 is a valid saved price, not "unset"');
-  await pool.query('delete from app_settings');
-});
-
-test('P3.7: a database where migration 017 is not applied yet still publishes (env price) instead of failing the whole job', { skip }, async () => {
-  await pool.query('delete from app_settings');
-  const down = (await import('node:fs')).readFileSync(new URL('../../migrations/rollback/017_app_settings.sql', import.meta.url), 'utf8');
-  await pool.query(down);
-  try {
-    await addPair(folder('Desk', ROOT).id, 'legacy');
-    const j = await work((await enqueue()).id, { handler: makeHandler({ defaultPriceVnd: 12345 }) });
-    assert.equal(j.status, 'COMPLETED');
-    assert.equal(await priceOf('legacy'), 12345);
-  } finally { await (await import('../db.js')).migrate(); }
-  assert.ok((await pool.query("select to_regclass('app_settings') t")).rows[0].t, 'migration re-applied for the other tests');
-});
-
-test('P3.7: any OTHER failure reading the saved price (e.g. the database dropping) fails the job; it must not silently publish at the wrong price', { skip }, async () => {
-  await pool.query('delete from app_settings');
-  await addPair(folder('Desk', ROOT).id, 'risky');
-  const flaky = {
-    query: (sql, ...rest) => (/app_settings/.test(String(sql)) ? Promise.reject(Object.assign(new Error('connection terminated'), { code: '57P03' })) : pool.query(sql, ...rest)),
-    connect: () => pool.connect(),
-  };
-  const j = await work((await enqueue()).id, { handler: makeHandler({ pool: flaky, defaultPriceVnd: 12345 }) });
-  assert.equal(j.status, 'FAILED');
-  assert.equal((await pool.query('select count(*)::int n from models')).rows[0].n, 0, 'nothing was published at a guessed price');
 });
 
 // ---- P3.4: "Can duyet" cua mot luot = so muc DANG CHO duyet (OPEN), khong phai so muc phat hien trong luot quet ----

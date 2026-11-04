@@ -75,8 +75,8 @@ test('status (key configured): configured true, no missing config, no OAuth conn
   const text = await (await j('/status')).text();
   assert.ok(!text.includes(KEY) && !/AIzaSy/.test(text), 'API key leaked in status');
   const s = JSON.parse(text).sources[0];
-  assert.deepEqual(Object.keys(s).sort(), ['connectionId', 'enabled', 'id', 'lastSuccessfulSyncAt', 'rootFolderName', 'sourceType']);
-  assert.equal(s.connectionId, null); assert.equal(s.rootFolderName, 'Thu vien goc');
+  assert.deepEqual(Object.keys(s).sort(), ['enabled', 'id', 'lastSuccessfulSyncAt', 'rootFolderName', 'sourceType']);
+  assert.equal(s.rootFolderName, 'Thu vien goc');
 });
 
 test('status (key missing): configured false and only the variable NAME is reported', { skip }, async () => {
@@ -98,8 +98,8 @@ test('POST /sources: creates an API_KEY source (201 {id,rootFolderName,sourceTyp
   const body = await r.json();
   assert.deepEqual(Object.keys(body).sort(), ['id', 'rootFolderName', 'sourceType']);
   assert.equal(body.rootFolderName, 'Thu vien goc');
-  const row = (await pool.query('select access_mode, connection_id, root_folder_id from drive_sources')).rows;
-  assert.equal(row.length, 1); assert.equal(row[0].access_mode, 'API_KEY'); assert.equal(row[0].connection_id, null);
+  const row = (await pool.query('select access_mode, root_folder_id from drive_sources')).rows;
+  assert.equal(row.length, 1); assert.equal(row[0].access_mode, 'API_KEY');
   assert.ok(!JSON.stringify(row).includes('AIzaSy'), 'key never stored');
 
   const again = await (await j('/sources', { method: 'POST', body: { rootFolderUrlOrId: `https://drive.google.com/drive/folders/${ROOT}?usp=sharing` } })).json();

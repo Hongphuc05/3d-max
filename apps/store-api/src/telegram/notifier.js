@@ -2,23 +2,19 @@
 // KHONG chua thong tin ngan hang. callback_data = o:<orderId>:ok|no (<= 64 byte).
 const vnd = (n) => `${new Intl.NumberFormat('vi-VN').format(n)} ₫`;
 const clean = (value, max) => String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
-const MAX_LISTED = 10;
 
 export const CALLBACK_DATA = { ok: (orderId) => `o:${orderId}:ok`, no: (orderId) => `o:${orderId}:no` };
 
 const when = (date) => new Date(date).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour12: false });
 
 export function orderText(s) {
-  const listed = s.models.slice(0, MAX_LISTED).map((m) => `• ${clean(m.name, 80)} — ${vnd(m.priceVnd)}`);
-  if (s.models.length > MAX_LISTED) listed.push(`… và ${s.models.length - MAX_LISTED} model khác`);
   return [
     '🧾 Đơn mới chờ xác nhận',
     `Mã đơn: ${clean(s.code, 32)}`,
     `Số tiền: ${vnd(s.amountVnd)}`,
     `Thiết bị: ${clean(s.deviceName, 60)}`,
-    `Model (${s.models.length}):`,
-    ...listed,
-    `Khách báo đã chuyển khoản lúc ${when(s.claimedPaidAt)}. Hạn đơn: ${when(s.expiresAt)}.`,
+    'Nội dung: license thư viện (toàn bộ model, vĩnh viễn, 1 máy).',
+    `Khách báo đã chuyển khoản lúc ${when(s.claimedPaidAt)}. Hạn đơn: ${when(s.expiresAt)} (hết hạn vẫn xác nhận được).`,
     'Kiểm tra app ngân hàng rồi bấm một nút bên dưới.',
   ].join('\n');
 }

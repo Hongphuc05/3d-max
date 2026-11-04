@@ -3,7 +3,7 @@
 import express from 'express';
 import { apiError, requestId, v3ErrorHandler } from '../drive/errors.js';
 
-const MARK = { CONFIRMED: '✅ ĐÃ XÁC NHẬN trên web — đã cấp quyền cho thiết bị.', REJECTED: '❌ ĐÃ TỪ CHỐI trên web.' };
+const MARK = { CONFIRMED: '✅ ĐÃ XÁC NHẬN trên web — đã cấp license thư viện cho thiết bị.', REJECTED: '❌ ĐÃ TỪ CHỐI trên web.' };
 
 export function createOrderAdminRouter({ service, client, guards = [], rateLimit }) {
   const router = express.Router();

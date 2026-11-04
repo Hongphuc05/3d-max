@@ -8,17 +8,16 @@ import { isolatedTestDatabase } from '../test-database.js';
 
 const configured = Boolean(process.env.TEST_DATABASE_URL);
 const skip = !configured;
-let dispose, pool, svc, catId, adminId, userId, base, servers = [], edits, mod;
+let dispose, pool, svc, adminId, userId, base, servers = [], edits, mod;
 const sha = (b) => createHash('sha256').update(b).digest();
 const api = (path, { method = 'GET', user = 'admin' } = {}) => fetch(`${base}/api/admin${path}`, { method, headers: { 'content-type': 'application/json', ...(user ? { 'x-test-user': user } : {}) }, body: method === 'GET' ? undefined : '{}' });
 const code = async (r) => (await r.json()).error?.code;
 let n = 0;
 async function order(status = 'AWAITING_OWNER') {
   const device = (await pool.query("insert into devices(device_uuid,public_key,public_key_hash,key_protection,machine_code,device_name) values ($1,'{}',$2,'SOFTWARE',$3,'PC-A') returning id", [randomUUID(), sha(randomUUID()), `MAX-${'F6'.repeat(32)}`])).rows[0].id;
-  const model = (await pool.query("insert into models(category_id,name,status,price_vnd,published_at) values ($1,$2,'PUBLISHED',15000,now()) returning id", [catId, `Model ${++n}`])).rows[0].id;
-  const o = await svc.createOrder(device, [model]);
+  const o = await svc.createOrder(device);
   if (status !== 'PENDING_PAYMENT') await pool.query('update purchase_orders set status=$2, claimed_paid_at=now() where id=$1', [o.orderId, status]);
-  return { device, model, o };
+  return { device, o };
 }
 const row = async (id) => (await pool.query('select * from purchase_orders where id=$1', [id])).rows[0];
 const rights = async (device) => (await pool.query('select 1 from entitlements where device_id=$1 and revoked_at is null', [device])).rowCount;
@@ -28,7 +27,6 @@ before(async () => {
   dispose = await isolatedTestDatabase('orders_admin');
   const db = await import('../db.js');
   pool = db.pool; await db.migrate();
-  catId = (await pool.query("insert into categories(name,slug,full_path) values('Living','living','Living') returning id")).rows[0].id;
   for (const k of ['admin', 'user']) {
     const id = (await pool.query("insert into users(email,password_hash) values($1,'x') returning id", [`${randomUUID()}@test.invalid`])).rows[0].id;
     if (k === 'admin') adminId = id; else userId = id;
@@ -39,8 +37,7 @@ before(async () => {
 after(async () => { if (dispose) await dispose(pool); });
 beforeEach(async () => {
   if (!configured) return;
-  for (const t of ['entitlements', 'purchase_order_items', 'purchase_orders', 'devices', 'audit_events', 'app_settings']) await pool.query(`delete from ${t}`);
-  await pool.query('update models set primary_file_id = null'); await pool.query('delete from models');
+  for (const t of ['entitlements', 'purchase_orders', 'devices', 'audit_events', 'app_settings']) await pool.query(`delete from ${t}`);
   await pool.query("insert into app_settings(id,bank_name,bank_bin,account_no,account_name) values (1,'Test Bank','970436','0123456789012','TEST ACCOUNT')");
   edits = [];
   const { requireAdmin } = await import('../admin/access.js');
@@ -93,7 +90,7 @@ test('confirm: grants the entitlement, audits the admin, edits the Telegram mess
   assert.equal(await rights(x.device), 1); assert.equal(edits.length, 1);
 });
 
-test('the admin decides only orders the customer marked as paid (like Telegram); reject works; never-claimed / expired / decided / unknown are refused with the right codes', { skip }, async () => {
+test('the admin decides only orders the customer marked as paid (like Telegram); expired-but-claimed is still confirmable; reject works; never-claimed / decided / unknown are refused with the right codes', { skip }, async () => {
   const p = await order('PENDING_PAYMENT');
   const early = await api(`/orders/${p.o.orderId}/confirm`, { method: 'POST' });
   assert.equal(early.status, 409); assert.equal(await code(early), 'ORDER_STATE_INVALID'); assert.equal(await rights(p.device), 0, 'plan P5.6: only AWAITING_OWNER can be confirmed');
@@ -101,10 +98,15 @@ test('the admin decides only orders the customer marked as paid (like Telegram);
   const rej = await api(`/orders/${x.o.orderId}/reject`, { method: 'POST' });
   assert.equal(rej.status, 200); assert.deepEqual(await rej.json(), { status: 'REJECTED' }); assert.equal(await rights(x.device), 0);
   assert.equal(await code(await api(`/orders/${x.o.orderId}/confirm`, { method: 'POST' })), 'ORDER_STATE_INVALID');
-  const late = await order();
+  const late = await order();   // owner decision: a claimed order may be confirmed after it expired (money was really sent)
   await pool.query("update purchase_orders set expires_at = now() - interval '1 second' where id=$1", [late.o.orderId]);
+  await svc.expireDue();
   const r = await api(`/orders/${late.o.orderId}/confirm`, { method: 'POST' });
-  assert.equal(r.status, 409); assert.equal(await code(r), 'ORDER_STATE_INVALID'); assert.equal(await rights(late.device), 0);
+  assert.equal(r.status, 200); assert.deepEqual(await r.json(), { status: 'CONFIRMED' }); assert.equal(await rights(late.device), 1);
+  const stale = await order('PENDING_PAYMENT');  // expired and never claimed: nothing to confirm
+  await pool.query("update purchase_orders set expires_at = now() - interval '1 second' where id=$1", [stale.o.orderId]);
+  await svc.expireDue();
+  assert.equal(await code(await api(`/orders/${stale.o.orderId}/confirm`, { method: 'POST' })), 'ORDER_STATE_INVALID'); assert.equal(await rights(stale.device), 0);
   for (const id of [randomUUID(), 'not-a-uuid']) {
     const u = await api(`/orders/${id}/confirm`, { method: 'POST' });
     assert.equal(u.status, 404); assert.equal(await code(u), 'ORDER_NOT_FOUND');

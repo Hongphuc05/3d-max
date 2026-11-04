@@ -66,8 +66,8 @@ test('first publish: models, files, categories tree, previews (sm+lg, primary), 
   const { jobId, out } = await cycle(entries);
   assert.deepEqual(out, { version: 1, changed: true, created: 3, updated: 0 });
   assert.deepEqual(await counts(), { models: 3, model_files: 3, model_previews: 6, review_items: 1, categories: 4 });
-  const m = (await pool.query("select status, price_vnd, published_at is not null as pub, primary_file_id is not null as pf from models order by name")).rows;
-  assert.deepEqual(m, Array(3).fill({ status: 'PUBLISHED', price_vnd: 15000, pub: true, pf: true }));
+  const m = (await pool.query("select status, published_at is not null as pub, primary_file_id is not null as pf from models order by name")).rows;
+  assert.deepEqual(m, Array(3).fill({ status: 'PUBLISHED', pub: true, pf: true }));
   assert.equal((await pool.query("select count(*)::int n from model_previews where is_primary")).rows[0].n, 6);
   assert.deepEqual((await pool.query('select full_path from categories order by full_path')).rows.map(r => r.full_path), ['Furniture', 'Furniture / Desk', 'Lighting', 'Lighting / Lamp']);
   const st = await pool.query('select active_version, manifest_checksum, published_by_job from catalog_state');
@@ -91,7 +91,7 @@ test('ATOMIC: a failure half way leaves the catalog exactly as it was (no model,
   assert.equal(plan.models.length, 2);
   // someone else grabs the drive file of the SECOND model after the plan was made -> its insert fails after the first model was written
   const holder = await pool.query("insert into categories(name,slug,full_path) values('X','x','X') returning id");
-  const owner = (await pool.query("insert into models(category_id,name,status,price_vnd) values($1,'Owner','DRAFT',1) returning id", [holder.rows[0].id])).rows[0].id;
+  const owner = (await pool.query("insert into models(category_id,name,status) values($1,'Owner','DRAFT') returning id", [holder.rows[0].id])).rows[0].id;
   await pool.query("insert into model_files(model_id,source_id,drive_file_id,filename,file_type) values($1,$2,$3,'o.rar','rar')", [owner, sourceId, plan.models[1].file.id]);
   const before = await counts(), v = await version();
   await assert.rejects(publishPlan(pool, { sourceId, jobId, plan, results: resultsFor(plan) }), e => e.code === '23505');
@@ -110,7 +110,7 @@ test('a stale plan (the model it points at is gone) is refused with PLAN_STALE a
 
 test('missing and recovered: missing_scans goes up / back to 0; nothing is hidden or deleted; the manifest (and version) are untouched', { skip }, async () => {
   const cat = (await pool.query("insert into categories(name,slug,full_path) values('A','a','A') returning id")).rows[0].id;
-  const mk = async (name, scans) => (await pool.query("insert into models(category_id,name,status,price_vnd,missing_scans) values($1,$2,'PUBLISHED',1,$3) returning id", [cat, name, scans])).rows[0].id;
+  const mk = async (name, scans) => (await pool.query("insert into models(category_id,name,status,missing_scans) values($1,$2,'PUBLISHED',$3) returning id", [cat, name, scans])).rows[0].id;
   const [gone, back, stay] = [await mk('gone', 0), await mk('back', 2), await mk('stay', 0)];
   const out = await publishPlan(pool, { sourceId, plan: { models: [], missing: [gone], recovered: [back], reviews: [] }, results: {} });
   const rows = Object.fromEntries((await pool.query('select name, missing_scans, status from models')).rows.map(r => [r.name, [r.missing_scans, r.status]]));
@@ -121,7 +121,7 @@ test('missing and recovered: missing_scans goes up / back to 0; nothing is hidde
 
 test('reviews: SUGGESTED and REMAP are linked to the new model; payloads hold no ids; a dismissed review is never reopened by a later scan', { skip }, async () => {
   const oldModelCat = (await pool.query("insert into categories(name,slug,full_path) values('Old','old','Old') returning id")).rows[0].id;
-  const oldId = (await pool.query("insert into models(category_id,name,status,price_vnd) values($1,'Old model','PUBLISHED',1) returning id", [oldModelCat])).rows[0].id;
+  const oldId = (await pool.query("insert into models(category_id,name,status) values($1,'Old model','PUBLISHED') returning id", [oldModelCat])).rows[0].id;
   await pool.query("insert into model_files(model_id,source_id,drive_file_id,filename,file_type,size_bytes,md5_checksum) values($1,$2,'OLDFILEID00001','old.rar','rar',4242,$3)", [oldId, sourceId, md5('same')]);
   const entries = [...pair('A/B', 'p'), ...pair('A/B', 'q'), { id: nid(), path: 'A/B/x.jpg' }, { id: nid(), path: 'A/B/y-zz.rar' }, ...pair('C/D', 'moved', { archiveMd5: md5('same'), size: 4242 })];
   const first = await cycle(entries);
@@ -185,14 +185,14 @@ test('MODIFIED previews: a replaced image bumps its version, a removed image dis
   assert.equal((await pool.query("select count(*)::int n from model_previews where is_primary and variant='sm'")).rows[0].n, 1);
 });
 
-test('admin edits survive a sync: price and an overridden name are not touched by a MODIFIED update', { skip }, async () => {
+test('admin edits survive a sync: an overridden name are not touched by a MODIFIED update', { skip }, async () => {
   const [a, i] = [nid(), nid()];
   await cycle([{ id: i, path: 'A/B/x.jpg', md5: md5('i') }, { id: a, path: 'A/B/x.rar', md5: md5('a1'), size: 1 }]);
-  await pool.query("update models set price_vnd = 99000, price_overridden = true, name = 'Admin name', name_overridden = true");
+  await pool.query("update models set name = 'Admin name', name_overridden = true");
   const touched = (await pool.query('select updated_at from models')).rows[0].updated_at;
   await cycle([{ id: i, path: 'A/B/renamed.jpg', md5: md5('i') }, { id: a, path: 'A/B/renamed.rar', md5: md5('a2'), size: 2 }]);
-  const m = (await pool.query('select name, price_vnd from models')).rows[0];
-  assert.deepEqual(m, { name: 'Admin name', price_vnd: 99000 });
+  const m = (await pool.query('select name from models')).rows[0];
+  assert.deepEqual(m, { name: 'Admin name' });
   assert.equal((await pool.query('select filename from model_files')).rows[0].filename, 'renamed.rar');
   assert.deepEqual((await pool.query('select updated_at from models')).rows[0].updated_at, touched, 'a file-only change does not touch the model row');
 });
@@ -215,7 +215,7 @@ test('manifest: public shape only, category counts include children, hidden mode
   const man = await manifest.buildManifest(pool);
   const byPath = Object.fromEntries(man.categories.map(c => [c.fullPath, c.modelCount]));
   assert.deepEqual(byPath, { Furniture: 3, 'Furniture / Chair': 1, 'Furniture / Desk': 2 });
-  assert.deepEqual(Object.keys(man.models[0]).sort(), ['categoryId', 'fileType', 'id', 'name', 'priceVnd', 'sizeBytes', 'status']);
+  assert.deepEqual(Object.keys(man.models[0]).sort(), ['categoryId', 'fileType', 'id', 'name', 'sizeBytes', 'status']);
   assert.deepEqual(Object.keys(man.previews[0]).sort(), ['fileSize', 'height', 'modelId', 'sha256', 'url', 'variant', 'version', 'width']);
   assert.ok(man.previews.every(p => p.url === `/previews/${p.sha256}.webp`));
   const text = JSON.stringify(man);
@@ -230,7 +230,7 @@ test('refreshCatalogState (used by admin edits): a visible change bumps the vers
   assert.equal((await refresh()).changed, false);
   await pool.query("update models set missing_scans = 5");
   assert.equal((await refresh()).changed, false, 'missing_scans is invisible to customers');
-  await pool.query('update models set price_vnd = 20000');
+  await pool.query("update models set name = 'Renamed publicly'");
   const bumped = await refresh();
   assert.deepEqual([bumped.changed, bumped.version], [true, 2]);
   assert.equal((await refresh()).changed, false);
@@ -261,11 +261,4 @@ test('NOTIFY: a visible change announces the new version after COMMIT; an unchan
     await new Promise(r => setTimeout(r, 150));
     assert.deepEqual(got, [['catalog_v1', '1']]);
   } finally { await listener.query('unlisten *'); listener.release(); }
-});
-
-test('input checks: a negative default price is refused before anything is written', { skip }, async () => {
-  const jobId = await scanned(pair('A/B', 'one'));
-  const plan = await computeDiff(pool, { sourceId, jobId });
-  await assert.rejects(publishPlan(pool, { sourceId, jobId, plan, results: {}, defaultPriceVnd: -1 }), /price/i);
-  assert.equal((await counts()).models, 0);
 });

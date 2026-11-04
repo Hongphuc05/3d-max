@@ -9,7 +9,7 @@ const same = (a, b) => timingSafeEqual(createHash('sha256').update(String(a)).di
 const isId = (v) => Number.isSafeInteger(v);
 
 const REPLIES = {
-  CONFIRMED: { answer: 'Đã xác nhận, đã cấp quyền cho khách.', mark: '✅ ĐÃ XÁC NHẬN — đã cấp quyền cho thiết bị.' },
+  CONFIRMED: { answer: 'Đã xác nhận, đã cấp license thư viện cho khách.', mark: '✅ ĐÃ XÁC NHẬN — đã cấp license thư viện cho thiết bị.' },
   REJECTED: { answer: 'Đã từ chối đơn.', mark: '❌ ĐÃ TỪ CHỐI.' },
   EXPIRED: { answer: 'Đơn đã hết hạn, không cấp quyền.', mark: '⌛ Đơn đã hết hạn, không cấp quyền.' },
 };

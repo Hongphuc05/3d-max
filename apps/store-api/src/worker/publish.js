@@ -34,8 +34,7 @@ async function writePreviews(c, modelId, images, results) {
  * @param results anh -> { sourceMd5, sm, lg } tu runPreviewStage
  * @returns { version, changed, created, updated }
  */
-export async function publishPlan(pool, { sourceId, jobId = null, plan, results = {}, defaultPriceVnd = 15000 }) {
-  if (!Number.isInteger(defaultPriceVnd) || defaultPriceVnd < 0) throw new Error('default price must be a non-negative integer');
+export async function publishPlan(pool, { sourceId, jobId = null, plan, results = {} }) {
   const c = await pool.connect();
   try {
     await c.query('begin');
@@ -50,8 +49,8 @@ export async function publishPlan(pool, { sourceId, jobId = null, plan, results 
         const primary = e.images.find((i) => i.primary);
         const status = e.status === 'PUBLISHED' && !usable(results[primary?.id]) ? 'NEEDS_REVIEW' : e.status; // khong cong bo model khong co anh chinh
         const m = await c.query(
-          `insert into models (category_id, name, status, price_vnd, published_at) values ($1, $2, $3, $4, case when $3 = 'PUBLISHED' then now() end) returning id`,
-          [categoryId, e.name, status, defaultPriceVnd]);
+          `insert into models (category_id, name, status, published_at) values ($1, $2, $3, case when $3 = 'PUBLISHED' then now() end) returning id`,
+          [categoryId, e.name, status]);
         const modelId = m.rows[0].id;
         const f = await c.query(
           `insert into model_files (model_id, source_id, drive_file_id, filename, file_type, size_bytes, md5_checksum) values ($1, $2, $3, $4, $5, $6, $7) returning id`,

@@ -37,7 +37,7 @@ beforeEach(async () => {
 async function addModel(name, categoryPath, { status = 'PUBLISHED', price = 15000 } = {}) {
   const parts = categoryPath.split(' / '); let parent = null, p = '';
   for (const part of parts) { p = p ? `${p} / ${part}` : part; parent = (await pool.query('insert into categories(parent_id,name,slug,full_path) values($1,$2,$2,$3) on conflict (full_path) do update set name=excluded.name returning id', [parent, part, p])).rows[0].id; }
-  const id = (await pool.query('insert into models(category_id,name,status,price_vnd) values($1,$2,$3,$4) returning id', [parent, name, status, price])).rows[0].id;
+  const id = (await pool.query('insert into models(category_id,name,status) values($1,$2,$3) returning id', [parent, name, status])).rows[0].id;
   const driveId = `DRIVESECRET${String(++n).padStart(8, '0')}`;
   const f = (await pool.query("insert into model_files(model_id,source_id,drive_file_id,filename,file_type,size_bytes,sha256) values($1,$2,$3,$4,'rar',1234,$5) returning id", [id, sourceId, driveId, `${name}.rar`, SECRET_FILE_HASH])).rows[0].id;
   await pool.query('update models set primary_file_id=$1 where id=$2', [f, id]);
@@ -105,7 +105,7 @@ test('catalog, categories and previews manifest: exact public shape, only PUBLIS
     const cat = await (await fetch(`${s.base}/api/v1/catalog`)).json();
     assert.deepEqual(Object.keys(cat).sort(), ['catalogVersion', 'models']);
     assert.deepEqual(cat.models.map(m => m.name).sort(), ['Chair', 'Desk A']);
-    assert.deepEqual(Object.keys(cat.models[0]).sort(), ['categoryId', 'fileType', 'id', 'name', 'priceVnd', 'sizeBytes', 'status']);
+    assert.deepEqual(Object.keys(cat.models[0]).sort(), ['categoryId', 'fileType', 'id', 'name', 'sizeBytes', 'status']);
     assert.deepEqual([cat.models[0].status, cat.models[0].sizeBytes, cat.models[0].fileType], ['PUBLISHED', 1234, 'rar']);
     const cats = await (await fetch(`${s.base}/api/v1/categories`)).json();
     assert.deepEqual(Object.fromEntries(cats.map(c => [c.fullPath, c.modelCount])), { Furniture: 2, 'Furniture / Chair': 1, 'Furniture / Desk': 1 });

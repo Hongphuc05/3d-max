@@ -19,12 +19,9 @@ const rollbackSql = n => readFileSync(new URL(`../../migrations/rollback/${n}.sq
 const sha = s => createHash('sha256').update(s).digest('hex');
 
 async function source() {
-  const c = (await pool.query(
-    "insert into drive_connections(google_account_email,auth_kind,status,encrypted_refresh_token,token_iv,token_auth_tag) values($1,'OAUTH_USER','CONNECTED',$2,$3,$4) returning id",
-    [`${randomUUID()}@test.invalid`, randomBytes(40), randomBytes(12), randomBytes(16)])).rows[0].id;
   return (await pool.query(
-    "insert into drive_sources(connection_id,root_folder_id,root_folder_name,source_type) values($1,$2,'root','MY_DRIVE') returning id",
-    [c, `root${randomBytes(8).toString('hex')}`])).rows[0].id;
+    "insert into drive_sources(access_mode,root_folder_id,root_folder_name,source_type) values('API_KEY',$1,'root','MY_DRIVE') returning id",
+    [`root${randomBytes(8).toString('hex')}`])).rows[0].id;
 }
 const job = (sourceId, status = 'QUEUED', extra = '') =>
   pool.query(`insert into drive_sync_jobs(source_id,mode,status${extra ? ',' + extra.split('=')[0] : ''}) values($1,'FULL',$2${extra ? ',' + extra.split('=')[1] : ''}) returning id`, [sourceId, status]);
@@ -75,15 +72,14 @@ test('015 inventory + items: unique per source/file and per job/file/action; del
 const category = (path, parent = null) => pool.query(
   'insert into categories(parent_id,name,slug,full_path) values($1,$2,$3,$4) returning id', [parent, path.split(' / ').pop(), path.toLowerCase().replace(/\W+/g, '-'), path]);
 const model = (cat, over = {}) => pool.query(
-  'insert into models(category_id,name,status,price_vnd,legacy_id) values($1,$2,$3,$4,$5) returning id',
-  [cat, over.name ?? 'Model', over.status ?? 'DRAFT', over.price ?? 15000, over.legacy ?? null]);
+  'insert into models(category_id,name,status,legacy_id) values($1,$2,$3,$4) returning id',
+  [cat, over.name ?? 'Model', over.status ?? 'DRAFT', over.legacy ?? null]);
 
-test('016 catalog: category path unique, model status/price/legacy_id constrained, singleton catalog_state exists', { skip }, async () => {
+test('016 catalog: category path unique, model status/legacy_id constrained, singleton catalog_state exists', { skip }, async () => {
   const parent = (await category('Furniture')).rows[0].id;
   const child = (await category('Furniture / Desk', parent)).rows[0].id;
   await assert.rejects(category('Furniture / Desk', parent), /unique|duplicate/i);
   await assert.rejects(model(child, { status: 'LIVE' }), /check/i);
-  await assert.rejects(model(child, { price: -1 }), /check/i);
   await assert.rejects(model(child, { name: '' }), /check/i);
   await model(child, { legacy: '036-bbq' });
   await assert.rejects(model(child, { legacy: '036-bbq' }), /unique|duplicate/i);
@@ -130,7 +126,7 @@ test('016 files/previews: hash format, one primary preview per model+variant, pr
   const tx = await pool.connect();
   try {
     await tx.query('begin');
-    await tx.query("insert into models(id,category_id,name,status,price_vnd,primary_file_id) values($1,$2,'Both','DRAFT',1,$3)", [newModel, cat, newFile]);
+    await tx.query("insert into models(id,category_id,name,status,primary_file_id) values($1,$2,'Both','DRAFT',$3)", [newModel, cat, newFile]);
     await tx.query("insert into model_files(id,model_id,source_id,drive_file_id,filename,file_type) values($1,$2,$3,'driveFile0099','b.zip','zip')", [newFile, newModel, s]);
     await tx.query('commit');
   } catch (e) { await tx.query('rollback'); throw e; } finally { tx.release(); }
@@ -168,62 +164,10 @@ test('020 shared preview files: several rows may point at one content-addressed 
   } finally { c.release(); }
 });
 
-test('rollbacks 020 -> 018 -> 016 -> 015: refuse while data exists, succeed (in dependency order) when empty, migrations re-apply', { skip }, async () => {
-  const c = await pool.connect();
-  const refuses = async name => {
-    await assert.rejects(c.query(rollbackSql(name)), /Rollback refused/, name);
-    await c.query('rollback');
-  };
-  try {
-    // data exists in every table from the tests above
-    await refuses('018_download_audit');
-    await refuses('016_catalog');
-    await refuses('015_drive_sync_jobs');
-
-    // wrong order is impossible: 015 cannot go while 016 still references jobs
-    await c.query('delete from audit_events');
-    await c.query(rollbackSql('022_model_downloads'));
-    await c.query(rollbackSql('021_devices_entitlements_orders')); // 021 tham chieu models cua 016 nen phai di truoc
-    await c.query(rollbackSql('020_preview_shared_files')); // 020 changes model_previews, so it must go before 016
-    await c.query(rollbackSql('018_download_audit'));
-    await assert.rejects(c.query(rollbackSql('015_drive_sync_jobs')), /./);
-    await c.query('rollback');
-
-    for (const t of ['review_items', 'model_previews', 'model_files', 'models', 'categories']) await c.query(`delete from ${t}`);
-    await c.query(rollbackSql('016_catalog'));
-    for (const t of ['drive_sync_job_items', 'drive_inventory', 'drive_sync_jobs']) await c.query(`delete from ${t}`);
-    await c.query(rollbackSql('015_drive_sync_jobs'));
-    for (const t of ['catalog_state', 'models', 'drive_sync_jobs', 'audit_events']) {
-      assert.equal((await c.query('select to_regclass($1) is null as gone', [t])).rows[0].gone, true, t);
-    }
-    assert.equal((await c.query("select to_regclass('drive_sources') is not null as kept")).rows[0].kept, true, '014 untouched');
-  } finally { c.release(); }
-  assert.deepEqual(await migrate(), ['015_drive_sync_jobs.sql', '016_catalog.sql', '018_download_audit.sql', '020_preview_shared_files.sql', '021_devices_entitlements_orders.sql', '022_model_downloads.sql']);
-});
-
-test('019 API-key sources: need no OAuth connection, OAuth sources still need one, one API-key source per root folder', { skip }, async () => {
-  const apiSource = (root, mode = 'API_KEY', connectionId = null) => pool.query(
-    "insert into drive_sources(connection_id,access_mode,root_folder_id,root_folder_name,source_type) values($1,$2,$3,'root','MY_DRIVE') returning id", [connectionId, mode, root]);
+test('019 API-key sources: one source per root folder; access_mode constrained', { skip }, async () => {
+  const apiSource = (root, mode = 'API_KEY') => pool.query(
+    "insert into drive_sources(access_mode,root_folder_id,root_folder_name,source_type) values($1,$2,'root','MY_DRIVE') returning id", [mode, root]);
   await apiSource('apiKeyRootFolder01');
   await assert.rejects(apiSource('apiKeyRootFolder01'), /unique|duplicate/i, 'same root twice');
-  await assert.rejects(apiSource('apiKeyRootFolder02', 'OAUTH'), /check/i, 'OAUTH source without a connection');
-  const conn = (await pool.query(
-    "insert into drive_connections(google_account_email,auth_kind,status,encrypted_refresh_token,token_iv,token_auth_tag) values($1,'OAUTH_USER','CONNECTED',$2,$3,$4) returning id",
-    [`${randomUUID()}@test.invalid`, randomBytes(40), randomBytes(12), randomBytes(16)])).rows[0].id;
-  await assert.rejects(apiSource('apiKeyRootFolder03', 'API_KEY', conn), /check/i, 'API_KEY source bound to a connection');
   await assert.rejects(apiSource('apiKeyRootFolder04', 'FTP'), /check/i);
-  await apiSource('apiKeyRootFolder05', 'OAUTH', conn); // classic P1 source keeps working
-  assert.equal((await pool.query('select access_mode from drive_sources where connection_id=$1', [conn])).rows[0].access_mode, 'OAUTH');
-});
-
-test('rollback 019 refuses while an API-key source exists, succeeds once none does, and the migration re-applies', { skip }, async () => {
-  const c = await pool.connect();
-  try {
-    await assert.rejects(c.query(rollbackSql('019_drive_source_api_key')), /Rollback refused/);
-    await c.query('rollback');
-    await c.query("delete from drive_sources where access_mode='API_KEY'");
-    await c.query(rollbackSql('019_drive_source_api_key'));
-    assert.equal((await c.query("select count(*)::int n from information_schema.columns where table_name='drive_sources' and column_name='access_mode' and table_schema=current_schema()")).rows[0].n, 0);
-  } finally { c.release(); }
-  assert.deepEqual(await migrate(), ['019_drive_source_api_key.sql']);
 });

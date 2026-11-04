@@ -23,7 +23,7 @@ const machine = () => `MAX-${randomBytes(32).toString('hex').toUpperCase()}`;
 const device = async () => (await pool.query(
   "insert into devices(device_uuid,public_key,public_key_hash,key_protection,machine_code,device_name) values ($1,'{}',$2,'TPM',$3,'PC') returning id",
   [randomUUID(), sha(randomUUID()), machine()])).rows[0].id;
-const model = async () => (await pool.query("insert into models(category_id,name,status,price_vnd) values($1,$2,'PUBLISHED',15000) returning id", [catId, `m-${randomUUID()}`])).rows[0].id;
+const model = async () => (await pool.query("insert into models(category_id,name,status) values($1,$2,'PUBLISHED') returning id", [catId, `m-${randomUUID()}`])).rows[0].id;
 const session = async (deviceId, modelId, over = {}) => (await pool.query(
   `insert into model_download_sessions(token_hash, model_id, device_id, entitlement_id, status, expires_at, started_at, finished_at)
    values ($1,$2,$3,$4,$5, now() + ($6 * interval '1 second'), $7, $8) returning *`,
@@ -51,7 +51,7 @@ test('022 sessions: references are enforced; a model with sessions cannot be del
   const d = await device(), m = await model();
   await assert.rejects(session(randomUUID(), m), (e) => code(e) === '23503');
   await assert.rejects(session(d, randomUUID()), (e) => code(e) === '23503');
-  const ent = (await pool.query("insert into entitlements(device_id,scope,model_id,source) values ($1,'MODEL',$2,'ADMIN') returning id", [d, m])).rows[0].id;
+  const ent = (await pool.query("insert into entitlements(device_id,source) values ($1,'ADMIN') returning id", [d])).rows[0].id;
   const s = await session(d, m, { entitlement: ent });
   await pool.query('delete from entitlements where id=$1', [ent]);
   assert.equal((await pool.query('select entitlement_id from model_download_sessions where id=$1', [s.id])).rows[0].entitlement_id, null);
