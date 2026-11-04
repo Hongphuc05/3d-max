@@ -1,12 +1,11 @@
 import test, { after, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { isolatedTestDatabase } from '../test-database.js';
 
 const configured = Boolean(process.env.TEST_DATABASE_URL);
 const skip = !configured;
-let dispose, pool, q, computeDiff, publishPlan, seedLegacyCatalog, manifest, sourceId;
+let dispose, pool, q, computeDiff, publishPlan, manifest, sourceId;
 let n = 0;
 const nid = () => `U${String(++n).padStart(11, '0')}`;
 const sha = s => createHash('sha256').update(s).digest('hex');
@@ -20,7 +19,6 @@ before(async () => {
   q = await import('./queue.js');
   ({ computeDiff } = await import('./diff.js'));
   ({ publishPlan } = await import('./publish.js'));
-  ({ seedLegacyCatalog } = await import('./seed.js'));
   manifest = await import('../catalog-v1/manifest.js');
   sourceId = (await pool.query(
     "insert into drive_sources(access_mode,root_folder_id,root_folder_name,source_type) values('API_KEY','pubRootFolder001','root','MY_DRIVE') returning id")).rows[0].id;
@@ -85,25 +83,6 @@ test('publishing the same Drive state again changes NOTHING: same version, no ne
   assert.deepEqual(await counts(), snapshot);
   assert.equal(second.plan.counters.unchangedCount, 2);
   assert.ok(first.out.changed);
-});
-
-test('REAL legacy catalog: seed 360, publish adds previews and md5/size without a new model; republishing is quiet', { skip }, async () => {
-  const { items } = JSON.parse(readFileSync(new URL('../../../../library/public/catalog.json', import.meta.url), 'utf8'));
-  await seedLegacyCatalog(pool, { sourceId, items, defaultPriceVnd: 15000 });
-  const entries = items.flatMap((it, i) => {
-    const dir = it.category.replace(/ \/ /g, '/'), stem = it.fileName.replace(/\.[^.]+$/, '');
-    return [{ id: `IMG${String(i).padStart(9, '0')}`, path: `${dir}/${stem}.jpg`, md5: md5(`img${i}`) }, { id: it.driveFileId, path: `${dir}/${it.fileName}`, md5: md5(it.fileName), size: 1000 + i }];
-  });
-  const before = await counts();
-  const first = await cycle(entries);
-  assert.deepEqual([first.out.created, first.out.version, first.out.changed], [0, 1, true]);
-  const after = await counts();
-  assert.deepEqual([after.models, after.model_files, after.categories, after.model_previews], [360, 360, before.categories, 720]);
-  assert.equal((await pool.query('select count(*)::int n from model_files where md5_checksum is not null and size_bytes is not null')).rows[0].n, 360);
-  assert.equal((await pool.query("select count(*)::int n from models where status='PUBLISHED'")).rows[0].n, 360);
-  assert.equal((await pool.query('select count(*)::int n from models where name_overridden or price_overridden')).rows[0].n, 0);
-  const again = await cycle(entries);
-  assert.deepEqual([again.out.changed, again.out.version, again.plan.counters.unchangedCount], [false, 1, 360]);
 });
 
 test('ATOMIC: a failure half way leaves the catalog exactly as it was (no model, no preview, no review, version 0)', { skip }, async () => {

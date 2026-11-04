@@ -105,12 +105,6 @@ test('021 purchase orders: status/code rules, one item per model per order, snap
   assert.equal((await pool.query('select count(*)::int n from purchase_order_items')).rows[0].n, 0);
 });
 
-test('021 does not disturb the legacy tables that share a name in the plan (orders, device_challenges keep their old shape)', { skip }, async () => {
-  const cols = async (t) => (await pool.query('select column_name from information_schema.columns where table_name=$1', [t])).rows.map((r) => r.column_name);
-  assert.ok((await cols('orders')).includes('user_id'), 'legacy payOS orders table untouched');
-  assert.ok((await cols('device_challenges')).includes('auth_session_id'), 'legacy challenge table untouched');
-});
-
 test('rollback 021 refuses while an entitlement or a CONFIRMED order exists, then succeeds, and the migration re-applies', { skip }, async () => {
   await pool.query('delete from entitlements'); await pool.query('delete from purchase_orders'); // cac test truoc de lai quyen/don: rollback se (dung) tu choi
   const d = await device(), m = await model('r');
@@ -125,6 +119,5 @@ test('rollback 021 refuses while an entitlement or a CONFIRMED order exists, the
   await pool.query(rollbackSql);
   for (const t of ['devices', 'device_auth_challenges', 'device_tokens', 'entitlements', 'purchase_orders', 'purchase_order_items'])
     assert.equal((await pool.query('select to_regclass($1) as t', [t])).rows[0].t, null, t);
-  assert.ok((await pool.query("select to_regclass('orders') as t")).rows[0].t, 'legacy orders still there');
   assert.deepEqual(await migrate(), ['021_devices_entitlements_orders.sql', '022_model_downloads.sql']);
 });

@@ -18,6 +18,15 @@ before(async () => {
   ({ rollbackMigration } = await import('./rollback.js'));
 });
 after(async () => { if (dispose) await dispose(pool); });
+// 023 chi xoa bang cu va khong the rollback: de cac test duoi day van thu rollback 022, ta tam coi 023 la chua ap dung.
+const hide023 = () => pool.query("delete from schema_migrations where name = '023_drop_legacy_tables.sql'");
+
+test('023 (drop legacy tables) is irreversible: rollback refuses and stays applied', { skip }, async () => {
+  assert.equal((await applied())[0], '023_drop_legacy_tables.sql');
+  await assert.rejects(rollbackMigration(pool, '023_drop_legacy_tables.sql'), (e) => e.code === 'ROLLBACK_REFUSED' && /irreversibly/.test(e.message));
+  assert.equal((await applied())[0], '023_drop_legacy_tables.sql');
+  await hide023();
+});
 
 test('bad names are refused before anything is read or run (path traversal, wrong shape, unknown)', { skip }, async () => {
   const latest = (await applied())[0];
@@ -40,7 +49,8 @@ test('rolling back the latest migration drops its tables and forgets it; the nex
   assert.equal((await applied())[0], '021_devices_entitlements_orders.sql');
   await assert.rejects(rollbackMigration(pool, '022_model_downloads.sql'), (e) => e.code === 'NOT_LATEST', 'already rolled back');
   const { migrate } = await import('./db.js');
-  assert.deepEqual(await migrate(), ['022_model_downloads.sql']);
+  assert.deepEqual(await migrate(), ['022_model_downloads.sql', '023_drop_legacy_tables.sql']);
+  await hide023();
   assert.ok((await tables()).includes('model_download_logs'));
 });
 

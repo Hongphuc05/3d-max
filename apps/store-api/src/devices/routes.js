@@ -5,8 +5,7 @@ import express from 'express';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { apiError, requestId, v3ErrorHandler } from '../drive/errors.js';
 import { bad, inTransaction, UUID } from '../catalog-admin/shared.js';
-import { validatedPublicKey, validSignature } from '../licensing/device-crypto.js';
-import { verifyLegacyLicense } from './mxl1.js';
+import { validatedPublicKey, validSignature } from './crypto.js';
 
 const MACHINE = /^MAX-[A-F0-9]{64}$/;
 const TOKEN = /^Device ([A-Za-z0-9_-]{43})$/;
@@ -50,7 +49,7 @@ export const requireDevice = (pool) => async (req, _res, next) => {
   next();
 };
 
-export function createDeviceRouter({ pool, rateLimit, legacyPublicKey = null }) {
+export function createDeviceRouter({ pool, rateLimit }) {
   const router = express.Router();
   const pre = [requestId, ...(rateLimit ? [rateLimit] : [])];
 
@@ -72,9 +71,8 @@ export function createDeviceRouter({ pool, rateLimit, legacyPublicKey = null }) 
   });
 
   router.post('/device/verify', ...pre, async (req, res) => {
-    const { challengeId, signature, legacyLicense } = exactKeys(req.body, ['challengeId', 'signature'], ['legacyLicense']);
-    if (typeof challengeId !== 'string' || !UUID.test(challengeId) || typeof signature !== 'string'
-      || (legacyLicense !== undefined && typeof legacyLicense !== 'string')) throw bad();
+    const { challengeId, signature } = exactKeys(req.body, ['challengeId', 'signature']);
+    if (typeof challengeId !== 'string' || !UUID.test(challengeId) || typeof signature !== 'string') throw bad();
     // Tieu thu thu thach TRUOC khi kiem chu ky: ky sai cung dot thu thach (khong thu lai tren cung thu thach).
     const ch = (await pool.query(
       `update device_auth_challenges set consumed_at = now() where id = $1 and consumed_at is null and expires_at > now() returning *`, [challengeId.toLowerCase()])).rows[0];
@@ -102,20 +100,6 @@ export function createDeviceRouter({ pool, rateLimit, legacyPublicKey = null }) 
       if (registered) await db.query(
         "insert into audit_events (actor_kind, action, target_type, target_id, details) values ('SYSTEM', 'DEVICE_REGISTERED', 'device', $1, $2)",
         [ch.device_uuid, JSON.stringify({ keyProtection: ch.key_protection })]);
-
-      // License MXL1 sai/khong khop may/chua cau hinh khoa: bo qua im lang, khong bao gio chan dang ky.
-      const licenseId = typeof legacyLicense === 'string' ? verifyLegacyLicense(legacyLicense, legacyPublicKey, ch.machine_code) : null;
-      if (licenseId) {
-        // Quyen MXL1 da tung cap (ke ca da thu hoi) cho license nay thi khong cap lai.
-        const granted = await db.query(
-          `insert into entitlements (device_id, scope, source, mxl1_license_id)
-           select $1, 'ALL_MODELS', 'MXL1', $2
-            where not exists (select 1 from entitlements where device_id = $1 and source = 'MXL1' and mxl1_license_id = $2)
-           on conflict do nothing`, [deviceId, licenseId]);
-        if (granted.rowCount) await db.query(
-          "insert into audit_events (actor_kind, action, target_type, target_id, details) values ('SYSTEM', 'MXL1_GRANTED', 'device', $1, $2)",
-          [ch.device_uuid, JSON.stringify({ licenseId })]);
-      }
 
       const token = randomBytes(32).toString('base64url');
       await db.query("delete from device_tokens where device_id = $1 and expires_at < now()", [deviceId]);

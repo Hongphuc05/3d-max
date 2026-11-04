@@ -1,12 +1,11 @@
 import test, { after, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { isolatedTestDatabase } from '../test-database.js';
 
 const configured = Boolean(process.env.TEST_DATABASE_URL);
 const skip = !configured;
-let dispose, pool, q, computeDiff, seedLegacyCatalog, sourceId;
+let dispose, pool, q, computeDiff, sourceId;
 let n = 0;
 const nid = () => `D${String(++n).padStart(11, '0')}`;
 const md5 = s => createHash('md5').update(s).digest('hex');
@@ -18,7 +17,6 @@ before(async () => {
   pool = db.pool; await db.migrate();
   q = await import('./queue.js');
   ({ computeDiff } = await import('./diff.js'));
-  ({ seedLegacyCatalog } = await import('./seed.js'));
   sourceId = (await pool.query(
     "insert into drive_sources(access_mode,root_folder_id,root_folder_name,source_type) values('API_KEY','diffRootFolder01','root','MY_DRIVE') returning id")).rows[0].id;
 });
@@ -92,37 +90,6 @@ test('a suggested pair is a NEW model held in NEEDS_REVIEW with its review; file
   assert.deepEqual([sug.status, sug.action], ['NEEDS_REVIEW', 'NEW']);
   assert.equal(plan.reviews.filter(r => r.kind === 'SUGGESTED_PAIR').length, 1);
   assert.equal(plan.models.find(m => m.name === 'rootfile').categoryPath, 'Uncategorized');
-});
-
-test('REAL legacy catalog: after seeding 360 models, the first scan matches every one by drive_file_id — 0 new, 0 duplicates, 0 missing', { skip }, async () => {
-  const { items } = JSON.parse(readFileSync(new URL('../../../../library/public/catalog.json', import.meta.url), 'utf8'));
-  await seedLegacyCatalog(pool, { sourceId, items, defaultPriceVnd: 15000 });
-  const entries = items.flatMap((it, i) => {
-    const dir = it.category.replace(/ \/ /g, '/'), stem = it.fileName.replace(/\.[^.]+$/, '');
-    return [{ id: `IMG${String(i).padStart(9, '0')}`, path: `${dir}/${stem}.jpg`, md5: md5(`img${i}`) }, { id: it.driveFileId, path: `${dir}/${it.fileName}`, md5: md5(it.fileName), size: 1000 + i }];
-  });
-  const before = await tableCounts();
-  const { jobId } = await scanned(entries);
-  const plan = await diff(jobId);
-  assert.deepEqual([plan.counters.newCount, plan.counters.missingCount, plan.counters.reviewCount], [0, 0, 0]);
-  assert.equal(plan.models.length, 360);
-  assert.ok(plan.models.every(m => m.modelId && m.action === 'MODIFIED'), 'models gain their previews');
-  assert.ok(plan.models.every(m => m.changes.previews && m.changes.enrich && !m.changes.file && !m.changes.name && !m.changes.category && !m.changes.filename),
-    'seeded NULL md5/size are only filled in; names, categories and files are NOT reported as changed');
-  assert.equal(plan.previews.length, 360);
-  assert.deepEqual(await tableCounts(), { ...before, drive_inventory: before.drive_inventory + 720 }, 'computeDiff writes nothing');
-
-  // pretend publish ran: md5/size filled, previews stored. A second comparison must be completely quiet.
-  for (const m of plan.models) {
-    await pool.query('update model_files set md5_checksum=$2, size_bytes=$3 where drive_file_id=$1', [m.file.id, m.file.md5, m.file.size]);
-    for (const img of m.images) {
-      await pool.query("insert into model_previews(model_id,source,source_drive_file_id,source_md5,local_path,sha256,file_size,width,height,variant,is_primary) values($1,'DRIVE_IMAGE',$2,$3,$4,$5,1,1,1,'sm',$6)",
-        [m.modelId, img.id, img.md5, `${randomUUID()}.webp`, randomBytes(32).toString('hex'), img.primary]);
-    }
-  }
-  const again = await diff((await scanned(entries)).jobId);
-  assert.deepEqual(again.counters, { newCount: 0, updatedCount: 0, unchangedCount: 360, missingCount: 0, reviewCount: 0, skippedCount: 0 });
-  assert.deepEqual(again.previews, []);
 });
 
 test('rename: same archive id with a new file name updates the model name; an admin-edited name is never overwritten', { skip }, async () => {

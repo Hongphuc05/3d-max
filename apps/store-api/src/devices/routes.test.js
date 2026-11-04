@@ -1,4 +1,4 @@
-// P4.1: dang ky thiet bi (challenge/verify), token thiet bi, quyen so huu, MXL1. PostgreSQL that, khoa RSA that.
+// P4.1: dang ky thiet bi (challenge/verify), token thiet bi, quyen so huu. PostgreSQL that, khoa RSA that.
 import test, { after, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
@@ -8,20 +8,13 @@ import { isolatedTestDatabase } from '../test-database.js';
 const configured = Boolean(process.env.TEST_DATABASE_URL);
 const skip = !configured;
 const MACHINE = `MAX-${'A1'.repeat(32)}`;
-const OTHER_MACHINE = `MAX-${'B2'.repeat(32)}`;
-const licenseKeys = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const newKey = () => generateKeyPairSync('rsa', { modulusLength: 2048 });
-let dispose, pool, server, base, catId, sourceId, build, requireDevice, loadLegacyPublicKey;
-let legacyKey = null;
+let dispose, pool, server, base, catId, sourceId, build, requireDevice;
 let fileSeq = 0;
 
 const jwkOf = (k) => { const { kty, n, e } = k.publicKey.export({ format: 'jwk' }); return { kty, n, e }; };
 const signMessage = (k, message) => sign('RSA-SHA256', Buffer.from(message, 'utf8'), { key: k.privateKey, padding: constants.RSA_PKCS1_PADDING }).toString('base64');
 const hashOf = (k) => createHash('sha256').update(k.publicKey.export({ type: 'spki', format: 'der' })).digest();
-const license = (machineCode = MACHINE, licenseId = 'lic-001', key = licenseKeys.privateKey) => {
-  const bytes = Buffer.from(JSON.stringify({ version: 1, product: '3dsmood-library', machineCode, licenseId }));
-  return `MXL1.${bytes.toString('base64url')}.${sign('RSA-SHA256', bytes, { key, padding: constants.RSA_PKCS1_PADDING }).toString('base64url')}`;
-};
 const call = (path, { method = 'POST', body, headers = {} } = {}) => fetch(base + path, { method,
   headers: { 'content-type': 'application/json', ...headers }, body: body === undefined ? undefined : JSON.stringify(body) });
 const challengeBody = (k, over = {}) => ({ deviceUuid: randomUUID(), publicKey: jwkOf(k), keyProtection: 'SOFTWARE', machineCode: MACHINE, deviceName: 'PC-Test', ...over });
@@ -51,17 +44,15 @@ before(async () => {
   pool = db.pool; await db.migrate();
   catId = (await pool.query("insert into categories(name,slug,full_path) values('Living','living','Living') returning id")).rows[0].id;
   sourceId = (await pool.query("insert into drive_sources(access_mode,root_folder_id,root_folder_name,source_type) values('API_KEY','devRootFolder0001','root','MY_DRIVE') returning id")).rows[0].id;
-  ({ loadLegacyPublicKey } = await import('./mxl1.js'));
   const mod = await import('./routes.js');
   requireDevice = mod.requireDevice;
-  build = (legacy) => {
+  build = () => {
     const app = express();
     app.use(express.json({ limit: '10kb' }));
-    app.use('/api/v1', mod.createDeviceRouter({ pool, legacyPublicKey: legacy }));
+    app.use('/api/v1', mod.createDeviceRouter({ pool }));
     return app;
   };
-  legacyKey = loadLegacyPublicKey(licenseKeys.publicKey.export({ type: 'spki', format: 'der' }).toString('base64'));
-  await new Promise((r) => { server = build(legacyKey).listen(0, '127.0.0.1', r); });
+  await new Promise((r) => { server = build().listen(0, '127.0.0.1', r); });
   base = `http://127.0.0.1:${server.address().port}`;
 });
 after(async () => { if (server) { server.closeAllConnections?.(); await new Promise((r) => server.close(r)); } if (dispose) await dispose(pool); });
@@ -189,11 +180,6 @@ test('key identity: uuid with another key, and key under another uuid, are refus
   assert.equal(v3.status, 403); assert.equal(await code(v3), 'DEVICE_KEY_MISMATCH');
 });
 
-test('verify: legacyLicense must be a string when present (malformed request, unlike a bad licence which is ignored)', { skip }, async () => {
-  const k = newKey(), { j } = await challenge(challengeBody(k));
-  assert.equal(await code(await verifyCall({ challengeId: j.challengeId, signature: signMessage(k, j.message), legacyLicense: 5 })), 'INVALID_PARAMS');
-});
-
 test('blocked device: refused at challenge, and between challenge and verify; its tokens stop working', { skip }, async () => {
   const k = newKey(), first = await register(k);
   const mid = await challenge(challengeBody(k, { deviceUuid: first.body.deviceUuid }));
@@ -213,43 +199,6 @@ test('registration race: the same device registering twice in parallel yields on
   assert.deepEqual(results.map((r) => r.status), [200, 200]);
   assert.equal((await pool.query('select count(*)::int n from devices where device_uuid=$1', [body.deviceUuid])).rows[0].n, 1);
   assert.equal((await pool.query("select count(*)::int n from audit_events where action='DEVICE_REGISTERED'")).rows[0].n, 1);
-});
-
-test('MXL1: a valid licence for this machine grants ALL_MODELS (idempotent, audited); anything else is silently ignored', { skip }, async () => {
-  const k = newKey();
-  const first = await register(k, {}, { legacyLicense: license() });
-  assert.equal(first.r.status, 200);
-  assert.deepEqual(first.j.entitlements, { allModels: true, modelIds: [] });
-  const row = (await pool.query("select * from entitlements where source='MXL1'")).rows;
-  assert.equal(row.length, 1); assert.equal(row[0].scope, 'ALL_MODELS'); assert.equal(row[0].mxl1_license_id, 'lic-001'); assert.equal(row[0].model_id, null);
-  const again = await register(k, { deviceUuid: first.body.deviceUuid }, { legacyLicense: license() });
-  assert.equal(again.j.entitlements.allModels, true);
-  assert.equal((await pool.query("select count(*)::int n from entitlements where source='MXL1'")).rows[0].n, 1, 'idempotent');
-  assert.equal((await pool.query("select count(*)::int n from audit_events where action='MXL1_GRANTED'")).rows[0].n, 1);
-  // Admin da thu hoi quyen MXL1: dang nhap lai voi cung license khong cap lai.
-  await pool.query("update entitlements set revoked_at = now() where source = 'MXL1'");
-  const revoked = await register(k, { deviceUuid: first.body.deviceUuid }, { legacyLicense: license() });
-  assert.equal(revoked.j.entitlements.allModels, false, 'a revoked MXL1 right is not re-granted by the same licence');
-  assert.equal((await pool.query("select count(*)::int n from entitlements where source='MXL1'")).rows[0].n, 1);
-  await pool.query("update entitlements set revoked_at = null where source = 'MXL1'");
-  const wrong = { 'other machine': license(OTHER_MACHINE), 'foreign signer': license(MACHINE, 'x', newKey().privateKey), 'junk': 'MXL1.a.b', 'empty': '' };
-  for (const [name, legacyLicense] of Object.entries(wrong)) {
-    const x = await register(newKey(), {}, { legacyLicense });
-    assert.equal(x.r.status, 200, name);
-    assert.equal(x.j.entitlements.allModels, false, name);
-  }
-  assert.equal((await pool.query("select count(*)::int n from entitlements where source='MXL1'")).rows[0].n, 1);
-});
-
-test('MXL1: with no licence key configured the field is ignored and registration still works', { skip }, async () => {
-  const s = build(null).listen(0, '127.0.0.1'); await new Promise((r) => s.once('listening', r));
-  try {
-    const k = newKey(), url = `http://127.0.0.1:${s.address().port}/api/v1/device`;
-    const post = (p, body) => fetch(url + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json());
-    const c = await post('/challenge', challengeBody(k));
-    const v = await post('/verify', { challengeId: c.challengeId, signature: signMessage(k, c.message), legacyLicense: license() });
-    assert.equal(v.entitlements.allModels, false);
-  } finally { s.closeAllConnections?.(); await new Promise((r) => s.close(r)); }
 });
 
 test('requireDevice: only a live token of an active device passes; every other case is a v3 401', { skip }, async () => {

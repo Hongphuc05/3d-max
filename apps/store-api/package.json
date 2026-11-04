@@ -3,20 +3,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "ingest": "node --env-file-if-exists=.env scripts/ingest.js",
-    "dev": "node --env-file-if-exists=.env --env-file-if-exists=../../storage/license-dev.env --watch src/server.js",
+    "dev": "node --env-file-if-exists=.env --watch src/server.js",
     "start": "node --env-file-if-exists=.env src/server.js",
-    "test": "node --env-file-if-exists=.env --env-file-if-exists=../../storage/license-dev.env --test --test-concurrency=1",
-    "check:r2": "node --env-file-if-exists=.env scripts/check-r2.js",
-    "sync:r2": "node --env-file-if-exists=.env --env-file-if-exists=../../storage/license-dev.env scripts/sync-r2.js",
-    "seed:legacy": "node --env-file-if-exists=.env scripts/seed-legacy-catalog.js",
+    "test": "node --env-file-if-exists=.env --test --test-concurrency=1",
     "worker": "node --env-file-if-exists=.env src/worker.js",
     "migrate": "node --env-file-if-exists=.env scripts/migrate.js",
     "monitor": "node --env-file-if-exists=.env scripts/monitor.js",
-    "sync:drive": "node --env-file-if-exists=.env scripts/drive-sync.js"
+    "sync:drive": "node --env-file-if-exists=.env scripts/drive-sync.js",
+    "create-admin": "node --env-file-if-exists=.env scripts/create-admin.js"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1156.0",
     "express": "^5.1.0",
     "jose": "^6.2.13",
     "pg": "^8.23.1",

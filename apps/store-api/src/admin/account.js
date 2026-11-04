@@ -1,6 +1,7 @@
 import { createSession, setSessionCookie, hashPassword, verifyPassword } from '../auth.js';
-import { audit, inTransaction } from '../licensing/service.js';
-import { objectBody, licenseError } from '../licensing/errors.js';
+import { pool } from '../db.js';
+import { audit, inTransaction } from '../catalog-admin/shared.js';
+import { objectBody, licenseError } from '../errors.js';
 import { isAdminUser, publicUser } from './access.js';
 
 function credentials(body) {
@@ -23,7 +24,7 @@ export async function updateAdminAccount(req, res) {
   const input = credentials(req.body);
   let result;
   try {
-    result = await inTransaction(async db => {
+    result = await inTransaction(pool, async db => {
       const row = (await db.query('select * from users where id=$1 for update', [req.user.id])).rows[0];
       if (!isAdminUser(row)) throw licenseError('FORBIDDEN', 403);
       const session = await db.query('select id from sessions where id=$1 and user_id=$2 and expires_at>now()',
@@ -38,7 +39,7 @@ export async function updateAdminAccount(req, res) {
         where id=$1 returning *`, [row.id, input.username, hash])).rows[0];
       await db.query('delete from sessions where user_id=$1', [row.id]);
       const renewed = await createSession(req, row.id, db);
-      await audit(db, row.id, null, 'ADMIN_CREDENTIALS_CHANGED', {
+      await audit(db, row.id, 'ADMIN_CREDENTIALS_CHANGED', 'user', row.id, {
         usernameChanged: row.username !== changed.username, passwordChanged: Boolean(input.newPassword),
       });
       return { user: publicUser(changed), session: renewed };

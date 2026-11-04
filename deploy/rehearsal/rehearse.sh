@@ -25,9 +25,7 @@ if [ ! -f .state/store.env ]; then
   cat > .state/store.env <<EOF
 DATABASE_URL=postgres://store:$pw@postgres:5432/store
 JWT_SECRET=$(b64)
-DRIVE_TOKEN_KEY=$(b64)
 DRIVE_API_KEY=$(openssl rand -hex 20)
-LICENSE_ADMIN_USER_IDS=$(node -p "crypto.randomUUID()")
 CORS_ORIGINS=https://api.example.com
 EOF
   openssl req -x509 -nodes -newkey rsa:2048 -days 7 -subj /CN=api.example.com -keyout .state/tls/privkey.pem -out .state/tls/fullchain.pem 2>/dev/null
@@ -49,7 +47,6 @@ check "health"                           200 "$(code $BASE/api/health)"
 body="$(curl -sk $BASE/api/health)"; echo "     health body: $body"
 case "$body" in *'"db":true'*) ok "database reachable";; *) bad "database not reachable";; esac
 check "admin orders needs login"         401 "$(code $BASE/api/admin/orders)"
-check "legacy admin list needs login"    401 "$(code $BASE/api/admin/legacy-orders)"
 check "device endpoint needs token"      401 "$(code $BASE/api/v1/me/entitlements)"
 check "orders need token"                401 "$(code -X POST -H 'content-type: application/json' -d '{}' $BASE/api/v1/orders)"
 check "telegram webhook absent (bot off)" 404 "$(code -X POST $BASE/api/telegram/webhook/anything_at_all_1234567)"

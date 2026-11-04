@@ -5,11 +5,10 @@ import { pool } from './db.js';
 import { requireJson } from './security.js';
 import { SESSION_SECONDS, signSessionJwt, verifySessionJwt, validateJwtConfiguration } from './auth-jwt.js';
 import { publicUser } from './admin/access.js';
-import { inTransaction } from './licensing/service.js';
+import { inTransaction as tx } from './catalog-admin/shared.js';
 
 const scryptAsync = promisify(scrypt);
 const COOKIE = 'sid';
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // ---- mat khau: scrypt cua Node (khong them dependency). Dinh dang: scrypt$N$r$p$salt$hash ----
 const N = 16384, R = 8, P = 1;
@@ -93,38 +92,13 @@ export async function requireAuth(req, res, next) {
 }
 
 // ---- routes ----
+// Tai khoan chi la admin (tao bang scripts/create-admin.js); truong `email` cua body giu nguyen hop dong cu nhung la ten dang nhap.
 const clean = (b) => ({ email: String(b?.email ?? '').trim().toLowerCase(), password: String(b?.password ?? '') });
-function validate({ email, password }) {
-  if (email.length > 254 || !EMAIL_RE.test(email)) return 'INVALID_EMAIL';
-  if (password.length < 8) return 'PASSWORD_TOO_SHORT';
-  if (password.length > 128) return 'PASSWORD_TOO_LONG';
-  return null;
-}
-
 export const authRouter = Router();
 
 function requireAuthConfiguration(_req, _res, next) {
   try { validateJwtConfiguration(); next(); } catch (error) { next(error); }
 }
-
-authRouter.post('/register', requireJson, requireAuthConfiguration, async (req, res, next) => {
-  try {
-    const { email, password } = clean(req.body);
-    const bad = validate({ email, password });
-    if (bad) return res.status(400).json({ error: bad });
-    let user;
-    try {
-      user = (await pool.query(
-        'insert into users (email, password_hash) values ($1, $2) returning id, email',
-        [email, await hashPassword(password)])).rows[0];
-    } catch (e) {
-      if (e.code === '23505') return res.status(409).json({ error: 'EMAIL_TAKEN' });
-      throw e;
-    }
-    setSessionCookie(res, await createSession(req, user.id));
-    res.status(201).json({ user });
-  } catch (e) { next(e); }
-});
 
 authRouter.post('/login', requireJson, requireAuthConfiguration, async (req, res, next) => {
   try {
@@ -134,11 +108,11 @@ authRouter.post('/login', requireJson, requireAuthConfiguration, async (req, res
       addFail(email, req.ip);
       return res.status(401).json({ error: 'INVALID_CREDENTIALS' });
     }
-    const result = await inTransaction(async db => {
+    const result = await tx(pool, async db => {
       // Serialize session issuance with account credential changes. A login that
       // checked the old password cannot create a session after a password reset.
       const row = (await db.query(`select id,email,password_hash,role,username,must_change_credentials
-        from users where (role='USER' and email=$1) or username=$1 for share`, [email])).rows[0];
+        from users where username=$1 and role='ADMIN' for share`, [email])).rows[0];
       const ok = await verifyPassword(password, row ? row.password_hash : await dummyHash);
       return row && ok ? { user: publicUser(row), session: await createSession(req, row.id, db) } : null;
     });

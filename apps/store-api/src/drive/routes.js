@@ -1,4 +1,4 @@
-// Admin API for the Drive connection (docs/v3-implementation-plan.md §2.2, P1 subset).
+// Admin API cho nguon Drive (quet bang API key, D26).
 // Guards are injected so tests can run without the full auth stack; production passes requireAuth + requireAdmin.
 // Nothing here returns tokens, ciphertext, or Drive file IDs of customer-facing models.
 import { Router } from 'express';
@@ -59,53 +59,23 @@ export function parseFolderRef(input, explicitKey) {
   return { id, resourceKey: key || null };
 }
 
-// `apiKey` !== undefined bat che do API key (D26, plan 2.1 "P3.1 doi thanh cau hinh API key"): null = chua cau hinh DRIVE_API_KEY.
-// Key chi di tu env cua server toi Google; khong bao gio nhan tu request hay tra ra response.
-// Bo qua `apiKey` thi router giu nguyen hanh vi OAuth cua P1 (ma OAuth duoc giu lai theo plan).
-export function createDriveRouter({ pool, oauth, config, guards = [], rateLimit, fetchImpl, driveBase, apiKey }) {
+// Quet bang API key (D26): key chi di tu env cua server toi Google; khong bao gio nhan tu request hay tra ra response.
+// `apiKey` null = chua cau hinh DRIVE_API_KEY.
+export function createDriveRouter({ pool, guards = [], rateLimit, fetchImpl, driveBase, apiKey }) {
   const repo = createDriveRepository(pool);
-  const apiMode = apiKey !== undefined;
   const apiClient = () => {
     if (!apiKey) throw apiError('DRIVE_NOT_CONNECTED');
     return createDriveClient({ apiKey, ...(driveBase ? { baseUrl: driveBase } : {}), ...(fetchImpl ? { fetchImpl } : {}) });
   };
   const router = Router();
   router.use(requestId, ...(rateLimit ? [rateLimit] : []));
-
-  // Public by design: Google redirects the browser here. Protected by the single-use `state` row, not a session.
-  router.get('/oauth/callback', async (req, res) => {
-    const back = result => res.redirect(302, `${config.adminUiUrl}/admin?drive=${result}`);
-    try {
-      if (typeof req.query.error === 'string') return back('error&reason=consent_denied');
-      await oauth.callback({ code: req.query.code, state: req.query.state });
-      back('connected');
-    } catch (error) {
-      const reason = { OAUTH_STATE_INVALID: 'state', OAUTH_NO_REFRESH_TOKEN: 'no_refresh_token', DRIVE_SCOPE_MISSING: 'scope',
-        DRIVE_OAUTH_NOT_CONFIGURED: 'not_configured' }[error?.code] ?? 'failed';
-      if (!error?.code) console.error('[drive] oauth callback failed');
-      back(`error&reason=${reason}`);
-    }
-  });
-
   router.use(...guards);
   router.use(express.json({ limit: '4kb' }));
 
-  const clientFor = async connectionId => createDriveClient({ getAccessToken: oauth.tokenProvider(connectionId), ...(driveBase ? { baseUrl: driveBase } : {}), ...(fetchImpl ? { fetchImpl } : {}) });
-  const connectedOrThrow = async () => {
-    const connection = await repo.latestConnection();
-    if (!connection) throw apiError('DRIVE_NOT_CONNECTED');
-    return connection;
-  };
-
   router.get('/status', async (_req, res, next) => {
     try {
-      if (apiMode) return res.json({ configured: Boolean(apiKey), missingConfig: apiKey ? [] : ['DRIVE_API_KEY'], connection: null, sources: await repo.listSources() });
-      res.json({ configured: config.configured, missingConfig: config.errors, connection: await repo.latestConnection(), sources: await repo.listSources() });
+      res.json({ configured: Boolean(apiKey), missingConfig: apiKey ? [] : ['DRIVE_API_KEY'], connection: null, sources: await repo.listSources() });
     } catch (e) { next(e); }
-  });
-
-  router.get('/oauth/start', async (req, res, next) => {
-    try { res.redirect(302, await oauth.start(req.user.id)); } catch (e) { next(e); }
   });
 
   router.get('/sources', async (_req, res, next) => { try { res.json(await repo.listSources()); } catch (e) { next(e); } });
@@ -114,17 +84,8 @@ export function createDriveRouter({ pool, oauth, config, guards = [], rateLimit,
     try {
       bodyKeys(req.body, ['rootFolderUrlOrId', 'resourceKey']);
       const ref = parseFolderRef(req.body.rootFolderUrlOrId, req.body.resourceKey);
-      if (apiMode) {
-        const source = await ensureApiKeySource({ pool, client: apiClient(), rootFolderId: ref.id, resourceKey: ref.resourceKey });
-        return res.status(201).json(source);
-      }
-      const connection = await connectedOrThrow();
-      const meta = await (await clientFor(connection.id)).getFile(ref.id, { resourceKey: ref.resourceKey });
-      if (meta.mimeType !== FOLDER) throw apiError('DRIVE_NOT_A_FOLDER');
-      const sourceType = meta.driveId ? 'SHARED_DRIVE' : meta.ownedByMe ? 'MY_DRIVE' : 'SHARED_WITH_ME';
-      const source = await repo.insertSource({ connectionId: connection.id, folderId: ref.id, name: meta.name || 'Drive folder',
-        resourceKey: ref.resourceKey ?? meta.resourceKey, sourceType, driveId: meta.driveId });
-      res.status(201).json({ id: source.id, rootFolderName: source.rootFolderName, sourceType: source.sourceType });
+      const source = await ensureApiKeySource({ pool, client: apiClient(), rootFolderId: ref.id, resourceKey: ref.resourceKey });
+      res.status(201).json(source);
     } catch (e) { next(e); }
   });
 
@@ -134,10 +95,9 @@ export function createDriveRouter({ pool, oauth, config, guards = [], rateLimit,
     try {
       const { sourceId } = bodyKeys(req.body ?? {}, ['sourceId']);
       if (sourceId !== undefined && !UUID.test(sourceId)) throw apiError('INVALID_PARAMS'); // neu khong, Postgres bao loi kieu uuid -> 500
-      const connection = apiMode ? null : await connectedOrThrow();
       const source = sourceId ? await repo.getSourceInternal(sourceId) : await repo.firstEnabledSourceInternal();
       if (!source) throw apiError('INVALID_PARAMS');
-      const client = source.access_mode === 'API_KEY' ? apiClient() : await clientFor(source.connection_id);
+      const client = apiClient();
       const details = [];
       const page = await client.listChildren(source.root_folder_id, { resourceKey: source.root_resource_key, driveId: source.drive_id, pageSize: 100 });
       details.push({ check: 'list', ok: true, count: page.files.length });
@@ -154,7 +114,7 @@ export function createDriveRouter({ pool, oauth, config, guards = [], rateLimit,
           details.push({ check: 'download', ok: false, code: error.code, reason: error.reason });
         } finally { ac.abort(); }
       } else details.push({ check: 'download', ok: false, code: 'NO_SAMPLE_FILE' });
-      res.json({ canList: true, sampleCount: page.files.length, canDownloadSample, account: connection?.email ?? null, details });
+      res.json({ canList: true, sampleCount: page.files.length, canDownloadSample, account: null, details });
     } catch (e) { next(e); }
   });
 

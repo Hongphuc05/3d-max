@@ -1,11 +1,7 @@
-import { licenseError } from '../licensing/errors.js';
+import { licenseError } from '../errors.js';
 
-export function isAdminUser(user, env = process.env) {
-  if (!user?.id) return false;
-  if (user.role === 'ADMIN') return true;
-  // Preserve explicitly provisioned administrators from existing deployments.
-  return (env.LICENSE_ADMIN_USER_IDS || '').split(',')
-    .some(id => id.trim().toLowerCase() === user.id.toLowerCase());
+export function isAdminUser(user) {
+  return Boolean(user?.id) && user.role === 'ADMIN';
 }
 
 export function publicUser(row) {
