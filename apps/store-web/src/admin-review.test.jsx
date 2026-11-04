@@ -9,9 +9,7 @@ Object.assign(globalThis, { window: dom.window, document: dom.window.document, l
   sessionStorage: dom.window.sessionStorage, HTMLElement: dom.window.HTMLElement, IS_REACT_ACT_ENVIRONMENT: true });
 const { createRoot } = await import('react-dom/client');
 const { default: AdminReview } = await import('./AdminReview.jsx');
-const { AuthProvider } = await import('./auth.jsx');
-const { LicenseProvider } = await import('./license.jsx');
-const { default: App } = await import('./App.jsx');
+const { default: App } = await import('./AdminEntry.jsx');
 const container = document.getElementById('root');
 const originalFetch = globalThis.fetch;
 let root, fixture;
@@ -156,15 +154,12 @@ test('the dashboard has a lazy "Cần duyệt" section', async () => {
   globalThis.fetch = async (url) => {
     const path = String(url).split('?')[0]; requests.push(path);
     if (path === '/api/auth/me') return response({ user: { id: 'admin-id', email: 'a@a.invalid', role: 'ADMIN', username: 'owner', mustChangeCredentials: false } });
-    if (path === '/api/licenses/me') return response({ license: null });
-    if (path === '/api/licenses/devices') return response({ devices: [] });
-    if (path === '/api/admin/overview') return response({ stats: { users: 1, activeLicenses: 0, paidOrders: 0, revenueVnd: 0 }, catalog: { state: 'empty', syncing: false } });
     if (path === '/api/admin/catalog/sync/permission') return response({ allowed: true });
     if (path === '/api/admin/catalog/review') return response([item('s1', 'SUGGESTED_PAIR')]);
     throw new Error(`Unhandled ${path}`);
   };
   root = createRoot(container);
-  await act(async () => root.render(<AuthProvider><LicenseProvider><App /></LicenseProvider></AuthProvider>));
+  await act(async () => root.render(<App />));
   const nav = [...container.querySelectorAll('nav button')].find((b) => b.textContent === 'Cần duyệt');
   assert.ok(nav, 'nav entry exists');
   assert.equal(requests.includes('/api/admin/catalog/review'), false, 'lazy');

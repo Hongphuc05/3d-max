@@ -58,7 +58,6 @@ export function AuthProvider({ children }) {
     restoreError,
     retrySession,
     login: (email, password) => mutateSession(() => api.login(email, password)),
-    register: (email, password) => mutateSession(() => api.register(email, password)),
     changeAdminAccount: body => mutateSession(() => api.updateAdminAccount(body)),
     logout: () => mutateSession(() => api.logout().catch(() => null), true),
   };

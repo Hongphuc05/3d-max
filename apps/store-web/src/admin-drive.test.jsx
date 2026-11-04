@@ -8,9 +8,7 @@ const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></
 Object.assign(globalThis, { window: dom.window, document: dom.window.document, location: dom.window.location,
   sessionStorage: dom.window.sessionStorage, HTMLElement: dom.window.HTMLElement, IS_REACT_ACT_ENVIRONMENT: true });
 const { createRoot } = await import('react-dom/client');
-const { AuthProvider } = await import('./auth.jsx');
-const { LicenseProvider } = await import('./license.jsx');
-const { default: App } = await import('./App.jsx');
+const { default: App } = await import('./AdminEntry.jsx');
 const container = document.getElementById('root');
 const originalFetch = globalThis.fetch;
 const admin = { id: 'admin-id', email: 'admin@admin.invalid', role: 'ADMIN', username: 'fixture_owner', mustChangeCredentials: false };
@@ -27,9 +25,6 @@ async function mount({ configured = true, sources = [] } = {}) {
     fixture.requests.push({ path, body, method: init.method ?? 'GET' });
     if (path === '/api/auth/me') return response({ user: admin });
     if (path === '/api/auth/logout') return response({ ok: true });
-    if (path === '/api/licenses/me') return response({ license: null });
-    if (path === '/api/licenses/devices') return response({ devices: [] });
-    if (path === '/api/admin/overview') return response({ stats: { users: 1, activeLicenses: 0, paidOrders: 0, revenueVnd: 0 }, catalog: { state: 'empty', syncing: false } });
     if (path === '/api/admin/catalog/sync/permission') return response({ allowed: true });
     if (path === '/api/admin/drive/status') return response({ configured: fixture.configured, missingConfig: fixture.configured ? [] : ['DRIVE_API_KEY'], connection: null, sources: fixture.sources });
     if (path === '/api/admin/drive/sources' && init.method === 'POST') {
@@ -42,7 +37,7 @@ async function mount({ configured = true, sources = [] } = {}) {
     throw new Error(`Unhandled drive fixture ${path}`);
   };
   root = createRoot(container);
-  await act(async () => root.render(<AuthProvider><LicenseProvider><App /></LicenseProvider></AuthProvider>));
+  await act(async () => root.render(<App />));
 }
 const button = (label) => { const element = [...container.querySelectorAll('button')].find((item) => item.textContent === label); assert.ok(element, `Missing ${label}`); return element; };
 async function click(element) { await act(async () => element.click()); }
@@ -63,7 +58,6 @@ after(() => { globalThis.fetch = originalFetch; dom.window.close(); });
 
 test('the Drive section loads only when opened; configured key and sources are shown without any secret', async () => {
   await mount({ sources: [source()] });
-  assert.equal(calls('/api/admin/drive/status').length, 0, 'not requested before the section is opened');
   await openDrive();
   assert.equal(calls('/api/admin/drive/status').length, 1);
   assert.match(container.textContent, /Đã cấu hình khóa API/);

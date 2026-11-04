@@ -8,8 +8,7 @@ Object.assign(globalThis, { window: dom.window, document: dom.window.document, l
   sessionStorage: dom.window.sessionStorage, HTMLElement: dom.window.HTMLElement, IS_REACT_ACT_ENVIRONMENT: true });
 const { createRoot } = await import('react-dom/client');
 const { AuthProvider, useAuth } = await import('./auth.jsx');
-const { LicenseProvider } = await import('./license.jsx');
-const { default: App } = await import('./App.jsx');
+const { Gate } = await import('./AdminEntry.jsx');
 const originalFetch = globalThis.fetch;
 const container = document.getElementById('root');
 const customer = { id: 'persisted-account', email: 'persistent@example.test' };
@@ -24,27 +23,19 @@ async function mount(me) {
     if (url === '/api/auth/me') return me();
     if (url === '/api/auth/login') return response({ user: customer });
     if (url === '/api/auth/logout') return response({ ok: true });
-    if (url === '/api/admin/overview') return response({ stats: {}, catalog: {} });
-    if (url === '/api/licenses/me') return response({ license: null });
-    if (url === '/api/licenses/devices') return response({ devices: [] });
-    if (url === '/api/admin/catalog/sync/permission') return response({ allowed: false });
-    if (url === '/api/health') return response({ ok: true });
-    if (url === '/api/categories') return response([]);
-    if (url === '/api/catalog/version') return response({ provider: 'r2', state: 'empty', version: 0 });
-    if (String(url).startsWith('/api/products')) return response({ items: [], total: 0 });
+    if (String(url).startsWith('/api/admin/')) return response({ sources: [], items: [], configured: true, missingConfig: [] });
     throw new Error(`Unexpected request ${url}`);
   };
   root = createRoot(container);
-  await act(async () => root.render(<AuthProvider><Control /><LicenseProvider><App /></LicenseProvider></AuthProvider>));
+  await act(async () => root.render(<AuthProvider><Control /><Gate /></AuthProvider>));
 }
 afterEach(async () => { if (root) await act(async () => root.unmount()); root = null; });
 after(() => { globalThis.fetch = originalFetch; dom.window.close(); });
 
-test('temporary startup network error keeps the persisted session unresolved and blocks the storefront', async () => {
+test('temporary startup network error keeps the persisted session unresolved and blocks the login form', async () => {
   await mount(async () => { throw new TypeError('Failed to fetch'); });
   assert.equal(auth.user, undefined, 'network loss must not be treated as an expired login');
   assert.match(container.textContent, /kết nối Internet/i);
-  assert.equal(container.textContent.includes('My License'), false);
   assert.equal(container.textContent.includes('Đăng nhập'), false);
   assert.ok([...container.querySelectorAll('button')].some(button => button.textContent === 'Thử lại'));
   assert.equal(requests[0].credentials, 'include');

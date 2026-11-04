@@ -1,4 +1,4 @@
-// P5 (plan §2.7): admin xu ly don tu web, GET/POST /api/admin/orders. Danh sach payOS cu da doi sang /api/admin/legacy-orders (don o P7).
+// P5 (plan §2.7): admin xu ly don tu web, GET/POST /api/admin/orders.
 // Giong Telegram, chi quyet duoc don AWAITING_OWNER (plan P5.6). Guard gan tung route.
 import express from 'express';
 import { apiError, requestId, v3ErrorHandler } from '../drive/errors.js';

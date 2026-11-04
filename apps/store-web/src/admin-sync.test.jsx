@@ -21,9 +21,7 @@ globalThis.EventSource = FakeEventSource;
 
 const { createRoot } = await import('react-dom/client');
 const { default: AdminSync } = await import('./AdminSync.jsx');
-const { AuthProvider } = await import('./auth.jsx');
-const { LicenseProvider } = await import('./license.jsx');
-const { default: App } = await import('./App.jsx');
+const { default: App } = await import('./AdminEntry.jsx');
 const container = document.getElementById('root');
 const originalFetch = globalThis.fetch;
 let root, fixture;
@@ -40,9 +38,6 @@ function installFetch() {
     const path = String(url).split('?')[0], method = init.method ?? 'GET', body = init.body ? JSON.parse(init.body) : null;
     fixture.requests.push({ path, method, body, search: String(url).split('?')[1] ?? '' });
     if (path === '/api/auth/me') return response({ user: { id: 'admin-id', email: 'a@a.invalid', role: 'ADMIN', username: 'owner', mustChangeCredentials: false } });
-    if (path === '/api/licenses/me') return response({ license: null });
-    if (path === '/api/licenses/devices') return response({ devices: [] });
-    if (path === '/api/admin/overview') return response({ stats: { users: 1, activeLicenses: 0, paidOrders: 0, revenueVnd: 0 }, catalog: { state: 'empty', syncing: false } });
     if (path === '/api/admin/catalog/sync/permission') return response({ allowed: true });
     if (path === '/api/admin/drive/status') return response({ configured: fixture.configured, missingConfig: fixture.configured ? [] : ['DRIVE_API_KEY'], connection: null, sources: fixture.sources });
     if (path === '/api/admin/drive/sync-jobs' && method === 'GET') {
@@ -259,7 +254,7 @@ test('the admin dashboard has a "Quét đồng bộ" section that loads the late
   FakeEventSource.instances.length = 0;
   installFetch();
   root = createRoot(container);
-  await act(async () => root.render(<AuthProvider><LicenseProvider><App /></LicenseProvider></AuthProvider>));
+  await act(async () => root.render(<App />));
   const nav = [...container.querySelectorAll('nav button')].find((b) => b.textContent === 'Quét đồng bộ');
   assert.ok(nav, 'nav entry exists');
   assert.equal(calls('/api/admin/drive/sync-jobs', 'GET').length, 0, 'lazy: nothing requested before opening');
