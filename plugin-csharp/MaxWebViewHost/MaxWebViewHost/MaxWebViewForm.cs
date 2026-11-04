@@ -264,7 +264,7 @@ namespace MaxWebViewHost
                         var licenseDir = Path.Combine(local, "MaxWebViewHost", "OfflineLibrary", "License");
                         if (!string.IsNullOrWhiteSpace(configuration.LicensePublicKeyXml))
                             _offlineLicense = new OfflineLicenseService(configuration.LicensePublicKeyXml, licenseDir);
-                        _v3 = V3Library.Create(configuration, _deviceIdentity, OfflineLicenseService.ReadMachineCode(), Path.Combine(local, "3dMood"),
+                        _v3 = V3Library.Create(configuration, _deviceIdentity, OfflineLicenseService.ReadMachineCode(), Path.Combine(local, "3dMood", "Cache"),
                             Path.Combine(licenseDir, "license.txt"));
                         _v3.HostEvent += PostHostEvent;
                     }

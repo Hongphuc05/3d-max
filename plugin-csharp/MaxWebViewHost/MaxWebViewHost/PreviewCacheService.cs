@@ -47,6 +47,13 @@ namespace MaxWebViewHost
         private string PathOf(string sha) { return Path.Combine(cacheDirectory, sha + ".webp"); }
         public static bool IsHash(string value) { return value != null && Hex64.IsMatch(value); }
 
+        public PreviewSyncSummary GetSummary(IEnumerable<PreviewEntry> wanted)
+        {
+            var unique = new HashSet<string>((wanted ?? new PreviewEntry[0]).Where(e => e != null && IsHash(e.Sha256)).Select(e => e.Sha256));
+            var done = unique.Count(sha => File.Exists(PathOf(sha)));
+            return new PreviewSyncSummary { Total = unique.Count, Done = done, Failed = 0 };
+        }
+
         public void Prioritize(IEnumerable<string> modelIds) { priority = new HashSet<string>(modelIds ?? new string[0], StringComparer.OrdinalIgnoreCase); }
         public void Pause() { paused = true; }
         public void Resume() { paused = false; }
@@ -155,6 +162,7 @@ namespace MaxWebViewHost
                 }
             }
             await Task.WhenAll(Enumerable.Range(0, Parallel).Select(_ => Task.Run(Worker))).ConfigureAwait(false);
+            Raise(summary.Done, summary.Total);
             return summary;
         }
 

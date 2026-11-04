@@ -65,3 +65,18 @@ test('API-key mode: the HTML 403 block page is a rate limit (not "permission den
   fake.state.failures.push({ status: 403, reason: 'forbidden', media: true });
   assert.equal((await make().openMedia('childFile000001').catch(x => x)).code, 'DRIVE_PERMISSION_DENIED');
 });
+
+test('backup key is used on key rejection or quota, but not file permission errors', async () => {
+  const backup = 'AIzaSyBackup_0123456789-abcdefghijklmn';
+  for (const [status, reason, shouldFallback] of [[400, 'keyInvalid', true], [403, 'quotaExceeded', true], [403, 'forbidden', false]]) {
+    const seen = [];
+    const client = createDriveClient({ apiKey: KEY, backupApiKey: backup, retry: { retries: 0 }, fetchImpl: async url => {
+      seen.push(url.searchParams.get('key'));
+      if (seen.length === 1) return Response.json({ error: { errors: [{ reason }] } }, { status });
+      return Response.json({ files: [] });
+    }});
+    if (shouldFallback) await client.listChildren(ROOT);
+    else await assert.rejects(client.listChildren(ROOT), { code: 'DRIVE_PERMISSION_DENIED' });
+    assert.deepEqual(seen, shouldFallback ? [KEY, backup] : [KEY]);
+  }
+});

@@ -44,12 +44,14 @@ export function classifyDriveError(status, body, headers) {
 // Two auth modes: OAuth/service account (getAccessToken, P1) or a plain API key for publicly shared folders (D26).
 // The API key travels in the URL query, so it must never reach logs or errors: errors are built from status codes only.
 export function createDriveClient({
-  getAccessToken, apiKey, baseUrl = DRIVE_BASE, fetchImpl = globalThis.fetch,
+  getAccessToken, apiKey, backupApiKey, baseUrl = DRIVE_BASE, fetchImpl = globalThis.fetch,
   retry = {}, metadataTimeoutMs = 30_000, mediaHeadersTimeoutMs = 60_000,
 }) {
   if (apiKey !== undefined) {
     if (typeof apiKey !== 'string' || !API_KEY_RE.test(apiKey)) throw new TypeError('apiKey is malformed');
   } else if (typeof getAccessToken !== 'function') throw new TypeError('getAccessToken or apiKey is required');
+
+  if (backupApiKey !== undefined && (typeof backupApiKey !== 'string' || !API_KEY_RE.test(backupApiKey) || !apiKey)) throw new TypeError('backupApiKey is malformed or missing primary key');
 
   const resourceKeyHeader = (id, key) => (key ? { 'X-Goog-Drive-Resource-Keys': `${id}/${key}` } : {});
 
@@ -59,27 +61,37 @@ export function createDriveClient({
     for (const [k, v] of Object.entries(params ?? {})) if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
     if (apiKey) url.searchParams.set('key', apiKey);
     let refreshed = false;
+    let activeKey = apiKey;
     return withRetry(async () => {
-      const token = apiKey ? null : await getAccessToken({ force: refreshed });
-      const timer = new AbortController();
-      const timeout = setTimeout(() => timer.abort(new DOMException('Timeout', 'TimeoutError')), media ? mediaHeadersTimeoutMs : metadataTimeoutMs);
-      const link = signal ? AbortSignal.any([signal, timer.signal]) : timer.signal;
-      let response;
-      try {
-        response = await fetchImpl(url, { headers: { ...(apiKey ? {} : { Authorization: `Bearer ${token}` }), ...headers }, signal: link });
-      } catch (error) {
-        clearTimeout(timeout);
-        if (signal?.aborted) throw error; // caller cancelled: not a Drive failure
-        throw apiError('DRIVE_UPSTREAM_ERROR', { retryable: true }); // network/timeout
+      for (;;) {
+        if (activeKey) url.searchParams.set('key', activeKey);
+        const token = apiKey ? null : await getAccessToken({ force: refreshed });
+        const timer = new AbortController();
+        const timeout = setTimeout(() => timer.abort(new DOMException('Timeout', 'TimeoutError')), media ? mediaHeadersTimeoutMs : metadataTimeoutMs);
+        const link = signal ? AbortSignal.any([signal, timer.signal]) : timer.signal;
+        let response;
+        try {
+          response = await fetchImpl(url, { headers: { ...(apiKey ? {} : { Authorization: `Bearer ${token}` }), ...headers }, signal: link });
+        } catch (error) {
+          clearTimeout(timeout);
+          if (signal?.aborted) throw error; // caller cancelled: not a Drive failure
+          throw apiError('DRIVE_UPSTREAM_ERROR', { retryable: true }); // network/timeout
+        }
+        clearTimeout(timeout); // headers arrived; the body may stream for as long as the caller allows
+        if (response.ok) return response;
+        const body = await response.json().catch(() => null); // error bodies are small JSON, also for alt=media
+        response.body?.cancel?.().catch(() => {});
+        const reason = body?.error?.errors?.[0]?.reason ?? body?.error?.status;
+        const keyReasons = new Set(['keyInvalid', 'apiKeyInvalid', 'API_KEY_INVALID', 'API_KEY_SERVICE_BLOCKED', 'accessNotConfigured', 'ipRefererBlocked']);
+        if (backupApiKey && activeKey !== backupApiKey && (response.status === 401 || response.status === 429 || RATE_REASONS.has(reason) || keyReasons.has(reason))) {
+          activeKey = backupApiKey;
+          continue;
+        }
+        const error = classifyDriveError(response.status, body, response.headers);
+        // A 401 may only mean the cached access token expired: refresh once, then retry immediately.
+        if (response.status === 401 && !apiKey && !refreshed) { refreshed = true; error.retryable = true; error.retryAfterMs = 0; }
+        throw error;
       }
-      clearTimeout(timeout); // headers arrived; the body may stream for as long as the caller allows
-      if (response.ok) return response;
-      const body = await response.json().catch(() => null); // error bodies are small JSON, also for alt=media
-      response.body?.cancel?.().catch(() => {});
-      const error = classifyDriveError(response.status, body, response.headers);
-      // A 401 may only mean the cached access token expired: refresh once, then retry immediately.
-      if (response.status === 401 && !apiKey && !refreshed) { refreshed = true; error.retryable = true; error.retryAfterMs = 0; }
-      throw error;
     }, { ...retry, signal });
   }
 

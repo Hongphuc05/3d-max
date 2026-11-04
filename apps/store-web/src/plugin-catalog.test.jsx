@@ -6,7 +6,9 @@ import { JSDOM } from 'jsdom';
 const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/' });
 Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });
 const listeners = new Set();
-dom.window.chrome = { webview: { addEventListener: (_t, f) => listeners.add(f), postMessage() {} } };
+dom.window.chrome = { webview: { addEventListener: (_t, f) => listeners.add(f), postMessage({ id, method }) {
+  if (method === 'library.status') setTimeout(() => listeners.forEach((f) => f({ data: { id, ok: true, result: { previewsSynced: true } } })), 0);
+} } };
 const emit = (event, data) => listeners.forEach((f) => f({ data: { event, data } }));
 const { createRoot } = await import('react-dom/client');
 const { usePluginCatalog } = await import('./usePluginCatalog.js');
@@ -85,6 +87,17 @@ test('offline and preview progress events are reflected; progress clears when fi
 test('a rejected rights call (401) means "unknown", not "owns everything"', async () => {
   server(); state.entitlementsStatus = 401; const root = await mount();
   assert.equal(snap.entitlements, null);
+  await act(() => root.unmount());
+});
+
+test('rights are checked again when the host reconnects', async () => {
+  server(); state.entitlementsStatus = 401; const root = await mount();
+  assert.equal(snap.entitlements, null);
+  await act(async () => { emit('library.offline', { offline: true }); await flush(); });
+  state.entitlementsStatus = 200;
+  await act(async () => { emit('library.offline', { offline: false }); await flush(); });
+  await act(flush);
+  assert.deepEqual(snap.entitlements, state.entitlements);
   await act(() => root.unmount());
 });
 

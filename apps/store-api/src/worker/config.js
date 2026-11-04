@@ -12,6 +12,8 @@ export function loadWorkerConfig(env = process.env) {
   if (!['api_key', 'oauth'].includes(authMode)) errors.push('DRIVE_AUTH_MODE');
   const apiKey = API_KEY.test(env.DRIVE_API_KEY ?? '') ? env.DRIVE_API_KEY : undefined;
   if ((authMode === 'api_key' || env.DRIVE_API_KEY) && !apiKey) errors.push('DRIVE_API_KEY');
+  const backupApiKey = API_KEY.test(env.DRIVE_API_KEY_BACKUP ?? '') ? env.DRIVE_API_KEY_BACKUP : undefined;
+  if (env.DRIVE_API_KEY_BACKUP && !backupApiKey) errors.push('DRIVE_API_KEY_BACKUP');
   const minFreeDiskBytes = nonNegativeInt(env.MIN_FREE_DISK_BYTES, 2 * 1024 ** 3);
   if (!Number.isSafeInteger(minFreeDiskBytes)) errors.push('MIN_FREE_DISK_BYTES');
   const previewDelayMs = nonNegativeInt(env.PREVIEW_DELAY_MS, 1500);
@@ -23,5 +25,5 @@ export function loadWorkerConfig(env = process.env) {
   const defaultPriceVnd = nonNegativeInt(env.DEFAULT_MODEL_PRICE_VND, 15000);
   if (!Number.isSafeInteger(defaultPriceVnd)) errors.push('DEFAULT_MODEL_PRICE_VND');
   const previewDir = path.resolve(env.PREVIEW_DIR || path.join(env.STORAGE_DIR || DEFAULT_STORAGE, 'previews-v3'));
-  return { authMode, apiKey, previewDir, minFreeDiskBytes, defaultPriceVnd, previewDelayMs, previewConcurrency, previewCooldownMs, errors };
+  return { authMode, apiKey, backupApiKey, previewDir, minFreeDiskBytes, defaultPriceVnd, previewDelayMs, previewConcurrency, previewCooldownMs, errors };
 }

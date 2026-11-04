@@ -39,8 +39,10 @@ if ($TestBuild) { $out = Join-Path $PSScriptRoot 'PlatformSetup-Test.exe' }
 Write-Host '==> Build bundled app'
 Push-Location (Join-Path $root 'apps\store-web')
 try {
-    & npm.cmd ci --no-audit --no-fund
-    if ($LASTEXITCODE -ne 0) { throw 'Frontend dependency restore failed.' }
+    if (-not (Test-Path 'node_modules')) {
+        & npm.cmd ci --no-audit --no-fund
+        if ($LASTEXITCODE -ne 0) { throw 'Frontend dependency restore failed.' }
+    }
     & npm.cmd run build
     if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed.' }
 } finally { Pop-Location }

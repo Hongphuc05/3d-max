@@ -124,6 +124,10 @@ test('unknown rights: every card says it cannot verify instead of offering Downl
   const before = calls.filter((c) => c.method === 'asset.import').length;
   await act(async () => { actions[0].click(); await flush(); });
   assert.equal(calls.filter((c) => c.method === 'asset.import').length, before, 'clicking an unverified card downloads nothing');
+  assert.match(text(), /Kiểm tra kết nối hoặc kích hoạt lại thư viện/);
+  await act(async () => { button('Mở kích hoạt').click(); await flush(); });
+  assert.match(document.querySelector('[role=dialog]').textContent, /Gửi mã máy/);
+  await act(async () => { button('Đóng').click(); await flush(); });
   emit('library.offline', { offline: true });
   await act(flush);
   assert.match(cards()[0], /Cần Internet để xác minh quyền/);

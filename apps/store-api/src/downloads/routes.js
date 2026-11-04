@@ -9,6 +9,7 @@ import { apiError, requestId, v3ErrorHandler } from '../drive/errors.js';
 import { inTransaction, UUID } from '../catalog-admin/shared.js';
 import { requireDevice } from '../devices/routes.js';
 import { createArchiveSender } from '../download-stream.js';
+import { createDriveClient } from '../drive/client.js';
 
 const SESSION = /^[A-Za-z0-9_-]{43}$/;
 const sha256 = (value) => createHash('sha256').update(value).digest();
@@ -68,7 +69,7 @@ export function createDownloadRouter({ pool, cache, driveProvider, rateLimit, se
         await db.query('insert into model_download_logs (session_id, model_id, device_id, bytes_sent, status, error_code) values ($1, $2, $3, $4, $5, $6)',
           [sessionId, modelId, deviceId, bytes, status, errorCode]);
       });
-    } catch { console.error('[v3] download log failed'); }
+    } catch (err) { console.error('[v3] download log failed:', err.message); }
   }
 
   router.post('/models/:modelId/import-session', ...pre, requireDevice(pool), async (req, res) => {
@@ -89,6 +90,22 @@ export function createDownloadRouter({ pool, cache, driveProvider, rateLimit, se
          values ($1, $2, $3, $4, now() + interval '5 minutes') returning expires_at`, [sha256(token), modelId, req.device.id, ent.id])).rows[0];
       return { token, expiresAt, row };
     });
+
+    if (out.row.size_bytes == null && out.row.drive_file_id && process.env.DRIVE_API_KEY) {
+      try {
+        const client = createDriveClient({ apiKey: process.env.DRIVE_API_KEY, backupApiKey: process.env.DRIVE_API_KEY_BACKUP || undefined });
+        const meta = await client.getFile(out.row.drive_file_id);
+        if (meta?.size) {
+          out.row.size_bytes = Number(meta.size);
+          if (meta.md5Checksum && !out.row.md5_checksum) out.row.md5_checksum = meta.md5Checksum;
+          await pool.query('update model_files set size_bytes = $1, md5_checksum = coalesce(md5_checksum, $2) where id = $3',
+            [out.row.size_bytes, out.row.md5_checksum, out.row.file_id]);
+        }
+      } catch (err) {
+        console.warn('[import-session] drive metadata fetch failed:', err?.message);
+      }
+    }
+
     if (!driveProvider) warm(out.row);
     const { row } = out;
     res.status(201).json({ sessionId: out.token, expiresAt: out.expiresAt, sizeBytes: row.size_bytes == null ? null : Number(row.size_bytes),
@@ -118,6 +135,7 @@ export function createDownloadRouter({ pool, cache, driveProvider, rateLimit, se
 
       const ctx = { stream: null, bytes: 0 };
       const model = { id: s.model_id, archiveExtension: `.${row.file_type}`, canDownload: true, size: row.size_bytes, record: cacheRecord(row), onVerified: learnSha(row.file_id), ctx };
+
       try {
         try { await sender(req, res, model); } finally { freeSlot(); }
       } catch (e) {
@@ -125,7 +143,7 @@ export function createDownloadRouter({ pool, cache, driveProvider, rateLimit, se
         if (res.headersSent || res.destroyed) { res.destroy(); return; }
         throw (STORAGE_CODES.has(e?.code) || e?.code?.startsWith('DRIVE_')) ? apiError('STORAGE_DOWNLOAD_FAILED') : e?.code === 'DOWNLOAD_BUSY' ? apiError('DOWNLOAD_BUSY') : e;
       }
-      // createArchiveSender khong nem khi khach ngat giua chung (no huy luong va tra ve): phan biet bang trang thai gui.
+      // The sender returns without throwing on a broken stream. Only a finished response is success.
       if (res.writableFinished) await finish(s.id, req.device.id, s.model_id, 'COMPLETED', null, ctx.stream?.bytesRead ?? ctx.bytes);
       else await finish(s.id, req.device.id, s.model_id, 'FAILED', 'CLIENT_ABORTED', ctx.stream?.bytesRead ?? ctx.bytes);
     } finally { freeSlot(); }

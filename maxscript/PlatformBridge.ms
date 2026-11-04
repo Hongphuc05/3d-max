@@ -253,11 +253,9 @@ fn pbOnRequest sender args = (
 
 -- ---------- khởi động ----------
 
--- Ưu tiên DLL đã cài trong thư mục user của Max, không có thì rơi về layout dev.
+-- DLL nằm trong thư mục plugin đã cài của người dùng.
 fn pbDllPath = (
-    local installed = (getDir #userScripts) + "\\Platform\\MaxWebViewHost.dll"
-    if doesFileExist installed then installed
-    else @"D:\Project\3d-max\plugin-csharp\MaxWebViewHost\MaxWebViewHost\bin\Debug\MaxWebViewHost.dll"
+    (getDir #userScripts) + "\\Platform\\MaxWebViewHost.dll"
 )
 
 -- Giao diện được đóng gói trong app/. Native đọc máy chủ từ plugin-config.json.

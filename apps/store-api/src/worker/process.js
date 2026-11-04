@@ -38,10 +38,10 @@ const planCounters = (plan, scanSkipped) => ({
   missingCount: plan.counters.missingCount, reviewCount: plan.counters.reviewCount, skippedCount: scanSkipped + plan.counters.skippedCount,
 });
 
-export function createSyncHandler({ pool, previewDir, minFreeDiskBytes, defaultPriceVnd, previewDelayMs, previewConcurrency, previewCooldownMs, apiKey, oauth, createClient, freeDiskBytes }) {
+export function createSyncHandler({ pool, previewDir, minFreeDiskBytes, defaultPriceVnd, previewDelayMs, previewConcurrency, previewCooldownMs, apiKey, backupApiKey, oauth, createClient, freeDiskBytes }) {
   const makeClient = createClient ?? ((source) => source.access_mode === 'OAUTH'
     ? createDriveClient({ getAccessToken: oauth.tokenProvider(source.connection_id) })
-    : createDriveClient({ apiKey }));
+    : createDriveClient({ apiKey, backupApiKey }));
   const reload = async (id) => (await pool.query('select * from drive_sync_jobs where id = $1', [id])).rows[0];
 
   async function run(job, ctx) {

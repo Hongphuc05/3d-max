@@ -6,6 +6,8 @@
     "node": "24.x"
   },
   "scripts": {
+    "start": "node server.mjs",
+    "dev": "node --watch server.mjs",
     "test": "node --test server/*.test.mjs"
   },
   "dependencies": {

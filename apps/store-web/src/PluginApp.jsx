@@ -40,7 +40,7 @@ export default function PluginApp() {
   const [drawer, setDrawer] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [activating, setActivating] = useState(false);
-  const { products, tree, state, error, offline, progress, entitlements } = usePluginCatalog(reloadKey);
+  const { products, tree, state, error, offline, progress, entitlements, enterLibrary } = usePluginCatalog(reloadKey);
   const jobs = useJobs();
   const max = isMaxHost();
   const ctx = useMemo(() => ({ max, entitlements, offline, onActivate: () => setActivating(true) }), [max, entitlements, offline]);
@@ -66,10 +66,63 @@ export default function PluginApp() {
       className={`rounded-md px-4 py-1.5 font-mono text-xs font-bold ${tab === k ? 'bg-accent text-accent-ink' : 'border border-line text-mute hover:text-fg'}`}>{label}</button>
   );
 
+  if (state === 'syncing_previews' && progress) {
+    const percent = progress.total > 0 ? Math.min(100, Math.round((progress.done / progress.total) * 100)) : 0;
+    return (
+      <div className="flex h-screen flex-col bg-surface text-fg select-none">
+        <HostBar reloadKey={reloadKey} onRefresh={() => setReloadKey((k) => k + 1)} apiStatus={max ? (offline ? 'down' : 'ok') : null} />
+        <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
+          <div className="w-full max-w-md rounded-2xl border border-line bg-panel p-8 shadow-2xl">
+            <div className="mx-auto mb-5 flex size-16 items-center justify-center rounded-2xl bg-accent/15 text-accent shadow-inner">
+              <Icon name="cube" className="size-9 animate-pulse" />
+            </div>
+            <h2 className="text-lg font-bold tracking-tight text-fg">Đang đồng bộ ảnh thư viện</h2>
+            <p className="mt-2 text-xs text-mute leading-relaxed">
+              Lần đầu mở plugin: đang tải thumbnail preview về máy khách để duyệt mượt mà và lưu cache offline.
+            </p>
+
+            <div className="mt-6">
+              <div className="flex justify-between font-mono text-xs mb-2">
+                <span className="text-mute">Tiến độ tải ảnh</span>
+                <span className="font-bold text-accent">{progress.done} / {progress.total} ({percent}%)</span>
+              </div>
+              <div className="h-2.5 w-full overflow-hidden rounded-full bg-raised">
+                <div
+                  className="h-full bg-accent transition-all duration-300 ease-out"
+                  style={{ width: `${percent}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="mt-7 flex justify-center gap-3">
+              <button
+                onClick={() => setReloadKey((k) => k + 1)}
+                className="rounded-lg border border-line px-4 py-2 font-mono text-xs font-semibold text-mute hover:bg-raised hover:text-fg transition-colors"
+              >
+                Thử lại
+              </button>
+              <button
+                onClick={() => enterLibrary()}
+                className="rounded-lg bg-accent px-4 py-2 font-mono text-xs font-bold text-accent-ink hover:opacity-90 transition-opacity"
+              >
+                Vào thư viện ngay
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen flex-col">
       <HostBar reloadKey={reloadKey} onRefresh={() => setReloadKey((k) => k + 1)} apiStatus={max ? (offline ? 'down' : 'ok') : null} />
       {offline && <div role="status" className="border-b border-warn/40 bg-warn/10 px-3 py-1 font-mono text-[11px] text-warn">Đang offline — hiển thị catalog đã lưu trên máy. Cần Internet để tải model.</div>}
+      {max && entitlements === null && <div role="status" className="flex flex-wrap items-center gap-2 border-b border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn">
+        <span>Chưa xác minh được quyền. Kiểm tra kết nối hoặc kích hoạt lại thư viện nếu license không hợp lệ.</span>
+        <button type="button" className="underline" onClick={() => setReloadKey((k) => k + 1)}>Thử xác minh lại</button>
+        <button type="button" className="underline" onClick={() => setActivating(true)}>Mở kích hoạt</button>
+      </div>}
       {progress && <div role="status" className="border-b border-line px-3 py-1 font-mono text-[11px] text-mute">Đang tải ảnh xem trước {progress.done}/{progress.total}…</div>}
 
       <div className="flex min-h-0 flex-1">

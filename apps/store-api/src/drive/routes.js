@@ -62,12 +62,12 @@ export function parseFolderRef(input, explicitKey) {
 // `apiKey` !== undefined bat che do API key (D26, plan 2.1 "P3.1 doi thanh cau hinh API key"): null = chua cau hinh DRIVE_API_KEY.
 // Key chi di tu env cua server toi Google; khong bao gio nhan tu request hay tra ra response.
 // Bo qua `apiKey` thi router giu nguyen hanh vi OAuth cua P1 (ma OAuth duoc giu lai theo plan).
-export function createDriveRouter({ pool, oauth, config, guards = [], rateLimit, fetchImpl, driveBase, apiKey }) {
+export function createDriveRouter({ pool, oauth, config, guards = [], rateLimit, fetchImpl, driveBase, apiKey, backupApiKey }) {
   const repo = createDriveRepository(pool);
   const apiMode = apiKey !== undefined;
   const apiClient = () => {
     if (!apiKey) throw apiError('DRIVE_NOT_CONNECTED');
-    return createDriveClient({ apiKey, ...(driveBase ? { baseUrl: driveBase } : {}), ...(fetchImpl ? { fetchImpl } : {}) });
+    return createDriveClient({ apiKey, backupApiKey, ...(driveBase ? { baseUrl: driveBase } : {}), ...(fetchImpl ? { fetchImpl } : {}) });
   };
   const router = Router();
   router.use(requestId, ...(rateLimit ? [rateLimit] : []));

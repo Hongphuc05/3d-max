@@ -59,7 +59,7 @@ namespace MaxWebViewHost
                     if (done < total && DateTime.UtcNow - library.lastProgress < ProgressInterval) return;
                     library.lastProgress = DateTime.UtcNow;
                 }
-                library.Raise("library.previewProgress", new Dictionary<string, object> { { "done", done }, { "total", total } });
+                library.Raise("library.previewProgress", new Dictionary<string, object> { { "done", done }, { "total", total }, { "previewsSynced", done >= total } });
             };
             return library;
         }
@@ -112,16 +112,27 @@ namespace MaxWebViewHost
         public static string EntitlementsJson(Entitlements e)
         { return new JavaScriptSerializer().Serialize(new Dictionary<string, object> { { "allModels", e.AllModels }, { "modelIds", e.ModelIds } }); }
 
+        public PreviewSyncSummary GetPreviewSummary()
+        {
+            var cached = GetCached();
+            if (cached == null) return null;
+            return Previews.GetSummary(cached.Previews);
+        }
+
         public object Status()
         {
             var cached = GetCached();
             var session = Session.Current;
+            var previewSummary = GetPreviewSummary();
             return new Dictionary<string, object>
             {
                 { "mode", "online" }, { "machineCode", MachineCode }, { "offline", Offline },
                 { "catalogVersion", cached == null ? (object)null : cached.CatalogVersion },
                 { "allModels", session != null && session.Entitlements.AllModels },
                 { "modelIds", session == null ? new string[0] : session.Entitlements.ModelIds },
+                { "previewDone", previewSummary == null ? 0 : previewSummary.Done },
+                { "previewTotal", previewSummary == null ? 0 : previewSummary.Total },
+                { "previewsSynced", previewSummary != null && previewSummary.Total > 0 && previewSummary.Done >= previewSummary.Total },
             };
         }
 

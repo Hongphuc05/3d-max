@@ -61,7 +61,7 @@ const driveConfig = loadDriveConfig();
 const driveOAuth = createOAuth({ pool, config: driveConfig });
 const workerConfig = loadWorkerConfig(process.env);
 // OAuth is required for private Drive sources; API-key mode remains available for public sources.
-app.use('/api/admin/drive', createDriveRouter({ pool, oauth: driveOAuth, config: driveConfig, ...(workerConfig.authMode === 'oauth' ? {} : { apiKey: workerConfig.apiKey ?? null }),
+app.use('/api/admin/drive', createDriveRouter({ pool, oauth: driveOAuth, config: driveConfig, ...(workerConfig.authMode === 'oauth' ? {} : { apiKey: workerConfig.apiKey ?? null, backupApiKey: workerConfig.backupApiKey }),
   guards: [requireAuth, requireAdmin], rateLimit: rateLimit({ limit: 60 }) }));
 // v3 P5: don hang + Telegram. Khong dat bien TELEGRAM_* = tat bot (khach van mua, admin xac nhan tren web); dat thieu/sai = dung ngay, chi neu TEN bien.
 const telegramConfig = loadTelegramConfig(process.env);
@@ -92,7 +92,7 @@ if (telegramClient) app.use('/api/telegram', rateLimit({ limit: 120 }), createTe
 // Model sessions stream from Drive through the server; invalid configuration fails at startup.
 const downloadConfig = loadDownloadConfig(process.env);
 if (downloadConfig.errors.length) throw new Error(`Invalid download configuration: ${downloadConfig.errors.join(', ')}`);
-const driveProvider = createDriveMediaProvider({ oauth: driveOAuth, apiKey: workerConfig.apiKey });
+const driveProvider = createDriveMediaProvider({ oauth: driveOAuth, apiKey: workerConfig.apiKey, backupApiKey: workerConfig.backupApiKey });
 app.use('/api/v1', createDownloadRouter({ pool, driveProvider, rateLimit: rateLimit({ limit: 120 }),
   sessionsPerHour: downloadConfig.sessionsPerHour, maxConcurrent: downloadConfig.maxConcurrent }));
 // v3 catalog cong khai cho plugin: gan TRUOC route catalog cu de /api/v1 khong bi route cu bat.
