@@ -211,3 +211,6 @@ Mỗi bước code: viết test trước (PostgreSQL thật) → code → **đ�
 9. **Build installer với URL HTTPS thật:** mới chạy `-ApiBaseUrl http://127.0.0.1:4000 -TestBuild`; chưa ký/phát hành.
 10. **Bí mật lộ trong log phiên:** `DRIVE_API_KEY` từng in ra màn hình ở phiên P4.5 — tạo lại khóa trước khi deploy.
 Lỗi môi trường hay gặp: `AUTH_CONFIGURATION_REQUIRED` = thiếu `JWT_SECRET`; `/admin` không vào được = chưa có tài khoản admin (`npm run create-admin`); `installer\stage` bị `Access denied` = `takeown`/`icacls` rồi xóa; script test C# tìm `csc.exe` qua `plugin-csharp/tests/find-csc.ps1`.
+
+## D29 (2026-11-05): ảnh tải lên thay cho ảnh Drive
+Đã làm: migration 025, API tải/xóa ảnh, ghép theo stem, UI admin (tải theo danh mục / cả thư mục, lọc Đủ / Thiếu zip / Thiếu ảnh / Lệch danh mục). Chưa kiểm: tải thật ~320 ảnh qua nginx trên VPS; dọn tay ~46 file .webp cũ nguồn Drive trong `previews-v3`.

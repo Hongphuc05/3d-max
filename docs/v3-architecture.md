@@ -576,3 +576,7 @@ Phụ thuộc cứng: **B1 (thử Drive thật) quyết định cả nhánh stre
 | D23 | Bộ cài mang sẵn preview (seed từ VPS lúc build), sau đó plugin tự đồng bộ chênh lệch | D16 |
 | D24 | Giao diện plugin v3 = UI-1 tối (commit `13ad8f4`) | — |
 | D25 | Thông tin nhận tiền + giá cấu hình trong admin (`app_settings`) | — |
+
+## 13. Luồng ảnh preview (D29)
+
+Drive chỉ cho danh sách file nén; ảnh do admin tải lên (`POST /api/admin/previews?category=A/B&filename=x.jpg[&replace=1]`, body là bytes ảnh). Ghép cặp theo `models.stem` (`worker/stem.js`). Catalog công khai (`catalog-v1/manifest.js`) chỉ gồm model có đủ preview chính và `primary_file_id`. Xóa ảnh: `DELETE /api/admin/models/:id/preview`. Danh mục: `GET /api/admin/categories`; danh sách model có `?state=FULL|PREVIEW_ONLY|ARCHIVE_ONLY|MISMATCH` và `counts`.

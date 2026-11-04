@@ -2,16 +2,19 @@
 // Dong duoc cap nhat tai cho sau khi luu (khong tai lai ca danh sach). Chi mot dong o che do sua tai mot thoi diem.
 import { useEffect, useState } from 'react';
 import * as api from './api.js';
+import AdminUpload from './AdminUpload.jsx';
 import { adminError, inputClass, panel, Pagination, primary, ResourceState, secondary } from './AdminShared.jsx';
 
 const PAGE = 20;
 const statusLabels = { PUBLISHED: 'Đang bán', HIDDEN: 'Đã ẩn', NEEDS_REVIEW: 'Cần duyệt', DRAFT: 'Nháp' };
 const EDITABLE = ['PUBLISHED', 'HIDDEN'];
+const stateLabels = { FULL: 'Đủ', PREVIEW_ONLY: 'Thiếu zip', ARCHIVE_ONLY: 'Thiếu ảnh', MISMATCH: 'Lệch danh mục' };
 const th = 'px-3 py-3 text-left text-xs font-medium text-mute';
 const td = 'border-t border-line px-3 py-3 align-top text-sm';
 
-function Row({ model, editing, onEdit, onSaved, onCancel }) {
+function Row({ model, editing, onEdit, onSaved, onCancel, onPreviewDeleted }) {
   const [state, setState] = useState({ name: model.name, status: model.status, busy: false, error: '' });
+  const [confirmDelete, setConfirmDelete] = useState(false), [delError, setDelError] = useState('');
   const set = (patch) => setState((s) => ({ ...s, ...patch, error: '' }));
   useEffect(() => { if (editing) setState({ name: model.name, status: model.status, busy: false, error: '' }); }, [editing]); // mo lai = bat dau tu gia tri da luu
 
@@ -29,6 +32,11 @@ function Row({ model, editing, onEdit, onSaved, onCancel }) {
     catch (e) { setState((s) => ({ ...s, busy: false, error: adminError(e) })); }
   }
 
+  async function deletePreview() {
+    try { await api.adminDeletePreview(model.id); onPreviewDeleted(); }
+    catch (e) { setConfirmDelete(false); setDelError(adminError(e)); }
+  }
+
   return <tr data-model={model.id}>
     <td className={`${td} w-20`}>{model.thumbUrl
       ? <img src={model.thumbUrl} alt="" loading="lazy" className="h-14 w-14 rounded object-cover" />
@@ -37,6 +45,7 @@ function Row({ model, editing, onEdit, onSaved, onCancel }) {
       ? <input className={inputClass} name="editName" maxLength={300} value={state.name} onChange={(event) => set({ name: event.target.value })} />
       : model.name}</td>
     <td className={`${td} text-mute`}>{model.categoryPath}</td>
+    <td className={td}><span data-state={model.state}>{stateLabels[model.state]}</span>{model.categoryMismatch && <span className="ml-1 text-xs text-danger" data-flag="mismatch">{stateLabels.MISMATCH}</span>}</td>
     <td className={td}>{editing
       ? <select className={`${inputClass} w-auto`} name="editStatus" value={state.status} onChange={(event) => set({ status: event.target.value })}>
         {!EDITABLE.includes(model.status) && <option value={model.status} disabled>{statusLabels[model.status] || model.status}</option>}
@@ -46,46 +55,53 @@ function Row({ model, editing, onEdit, onSaved, onCancel }) {
     <td className={td}>
       {editing
         ? <div className="flex flex-wrap gap-2"><button className={primary} disabled={state.busy} onClick={save}>Lưu</button><button className={secondary} disabled={state.busy} onClick={onCancel}>Hủy</button></div>
-        : <button className={secondary} onClick={onEdit}>Sửa</button>}
+        : <div className="flex flex-wrap gap-2"><button className={secondary} onClick={onEdit}>Sửa</button>
+          {model.state !== 'ARCHIVE_ONLY' && (confirmDelete
+            ? <><button className={primary} onClick={deletePreview}>Xác nhận xóa ảnh</button><button className={secondary} onClick={() => setConfirmDelete(false)}>Không</button></>
+            : <button className={secondary} onClick={() => setConfirmDelete(true)}>Xóa ảnh</button>)}</div>}
+      {!editing && delError && <p role="alert" className="mt-2 text-xs text-danger">{delError}</p>}
       {editing && state.error && <p role="alert" className="mt-2 text-xs text-danger">{state.error}</p>}
     </td>
   </tr>;
 }
 
 export default function AdminModels() {
-  const [query, setQuery] = useState(''), [status, setStatus] = useState(''), [page, setPage] = useState(1), [version, setVersion] = useState(0);
-  const [draft, setDraft] = useState({ q: '', status: '' });
+  const [query, setQuery] = useState(''), [status, setStatus] = useState(''), [stateF, setStateF] = useState(''), [page, setPage] = useState(1), [version, setVersion] = useState(0);
+  const [draft, setDraft] = useState({ q: '', status: '', state: '' });
   const [state, setState] = useState({ data: null, loading: true, error: '' });
   const [editingId, setEditingId] = useState(null);
 
   useEffect(() => {
     let stale = false;
     setState((s) => ({ ...s, loading: true, error: '' }));
-    api.adminModels({ q: query, status, page, limit: PAGE }).then(
+    api.adminModels({ q: query, status, state: stateF, page, limit: PAGE }).then(
       (data) => { if (!stale) setState({ data, loading: false, error: '' }); },
       (error) => { if (!stale) setState({ data: null, loading: false, error: adminError(error) }); });
     return () => { stale = true; };
-  }, [query, status, page, version]);
+  }, [query, status, stateF, page, version]);
 
-  const search = (event) => { event.preventDefault(); setQuery(draft.q.trim()); setStatus(draft.status); setPage(1); setEditingId(null); };
+  const search = (event) => { event.preventDefault(); setQuery(draft.q.trim()); setStatus(draft.status); setStateF(draft.state); setPage(1); setEditingId(null); };
   const replace = (updated) => { setState((s) => ({ ...s, data: { ...s.data, items: s.data.items.map((item) => (item.id === updated.id ? updated : item)) } })); setEditingId(null); };
   const data = state.data;
 
   return <section className={`${panel} space-y-4`}>
-    <div><h3 className="font-bold">Model</h3><p className="mt-1 text-sm text-mute">Sửa tên hoặc ẩn model. Tên đã sửa tay sẽ không bị lần đồng bộ Drive sau ghi đè.</p></div>
+    <div><h3 className="font-bold">Model</h3><p className="mt-1 text-sm text-mute">Model chỉ hiện trên thư viện khi có đủ ảnh và file zip. Sửa tên hoặc ẩn model; tên đã sửa tay không bị ghi đè.</p></div>
+    <AdminUpload onChanged={() => setVersion((value) => value + 1)} />
     <form role="search" className="flex flex-wrap gap-2" onSubmit={search}>
       <input className={`${inputClass} min-w-40 flex-1`} name="q" aria-label="Tìm model" placeholder="Tên model…" maxLength={100} value={draft.q} onChange={(event) => setDraft({ ...draft, q: event.target.value })} />
       <select className={`${inputClass} w-auto`} name="statusFilter" aria-label="Lọc theo trạng thái" value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value })}>
         <option value="">Tất cả trạng thái</option>{Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+      <select className={`${inputClass} w-auto`} name="stateFilter2" aria-label="Lọc theo ghép cặp" value={draft.state} onChange={(event) => setDraft({ ...draft, state: event.target.value })}>
+        <option value="">Mọi ghép cặp</option>{Object.entries(stateLabels).map(([value, label]) => <option key={value} value={value}>{label}{data?.counts ? ` (${data.counts[value]})` : ''}</option>)}</select>
       <button className={secondary}>Tìm kiếm</button>
       <button type="button" className={secondary} onClick={() => setVersion((value) => value + 1)}>Làm mới</button>
     </form>
     <ResourceState loading={state.loading && !data} error={state.error} retry={() => setVersion((value) => value + 1)} />
     {data && data.items.length === 0 && <p className="py-4 text-sm text-mute">Không có model nào.</p>}
     {data && data.items.length > 0 && <div className="overflow-x-auto"><table className="w-full">
-      <thead><tr><th className={th}>Ảnh</th><th className={th}>Tên</th><th className={th}>Danh mục</th><th className={th}>Trạng thái</th><th className={th}>Đã sửa tay</th><th className={th}>Thao tác</th></tr></thead>
+      <thead><tr><th className={th}>Ảnh</th><th className={th}>Tên</th><th className={th}>Danh mục</th><th className={th}>Ghép cặp</th><th className={th}>Trạng thái</th><th className={th}>Đã sửa tay</th><th className={th}>Thao tác</th></tr></thead>
       <tbody>{data.items.map((model) => <Row key={model.id} model={model} editing={editingId === model.id}
-        onEdit={() => setEditingId(model.id)} onSaved={replace} onCancel={() => setEditingId(null)} />)}</tbody></table></div>}
+        onEdit={() => setEditingId(model.id)} onSaved={replace} onCancel={() => setEditingId(null)} onPreviewDeleted={() => setVersion((value) => value + 1)} />)}</tbody></table></div>}
     {data && <Pagination page={data.page} total={data.total} limit={data.limit} onPage={(next) => { setPage(next); setEditingId(null); }} />}
   </section>;
 }

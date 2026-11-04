@@ -43,6 +43,18 @@ export const adminReviewAction = (id, action) => request('POST', `/admin/catalog
 export const adminSettings = (signal) => get('/admin/settings', null, signal);
 export const adminSaveSettings = (body) => request('PUT', '/admin/settings', { body });
 export const adminModels = (params, signal) => get('/admin/models', params, signal);
+export const adminCategories = (signal) => get('/admin/categories', null, signal);
+export const adminDeletePreview = (id) => request('DELETE', `/admin/models/${encodeURIComponent(id)}/preview`);
+const MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+/** D29: gui MOT anh (raw body) vao danh muc `category` ("A/B"). replace=true sau khi admin xac nhan thay anh cu. */
+export async function adminUploadPreview(category, file, { replace = false, signal } = {}) {
+  const qs = new URLSearchParams({ category, filename: file.name, ...(replace ? { replace: '1' } : {}) });
+  const r = await fetch(`/api/admin/previews?${qs}`, { method: 'POST', signal, credentials: 'include',
+    headers: { 'Content-Type': file.type || MIME[file.name.split('.').pop().toLowerCase()] || 'application/octet-stream' }, body: file });
+  const data = await r.json().catch(() => null);
+  if (!r.ok) { const e = data?.error; throw typeof e === 'object' && e ? new ApiError(r.status, e.code, e.message) : new ApiError(r.status, e); }
+  return data;
+}
 export const adminPatchModel = (id, body) => request('PATCH', `/admin/models/${encodeURIComponent(id)}`, { body });
 export const adminOrders = (params, signal) => get('/admin/orders', params, signal);
 export const adminDecideOrder = (id, action) => request('POST', `/admin/orders/${encodeURIComponent(id)}/${action}`, { body: {} });

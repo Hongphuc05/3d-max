@@ -306,3 +306,18 @@ Chủ dự án chốt, **thay D18 (license từng model), D24 (seed ảnh trong 
 | D28.4 | File model giữ nguyên D26: VPS tải hộ từ Drive, khách không thấy link |
 | D28.5 | Gỡ hết code của hướng đã bỏ: R2/Cloudflare, payOS còn sót, đăng ký khách/StoreApp, `apps/license-admin`, MXL1, `licensing/` cũ, OAuth Drive, chế độ đóng gói (`library/`, `GoogleDriveDownloader.cs`, `StaticCatalogService.cs`), tài liệu lỗi thời. Admin đầu tiên tạo bằng script |
 | D28.6 | Deploy lên VPS Vietnix `14.225.224.169`, domain `3dsmood.io.vn` |
+
+## D29 — Ảnh preview do admin tải lên VPS, ghép cặp theo tên file (locked 2026-11-05)
+
+Google Drive giới hạn tải ảnh nên **worker không còn tải ảnh từ Drive** (bỏ giai đoạn `DOWNLOADING_PREVIEWS`; code sharp dùng chung giữ lại trong `worker/previews.js`). Drive chỉ cung cấp file nén `.zip/.rar/.7z`.
+
+| Mục | Quyết định |
+|---|---|
+| D29.1 | Admin tải ảnh ở mục Model: nút "Tải ảnh lên" theo từng danh mục, hoặc "Tải cả thư mục" (`Danh mục/Con/ảnh.jpg`, bỏ tên thư mục đã chọn, tự tạo danh mục thiếu). VPS lưu `sha256.webp` (sm 480 / lg 1400), ≤ 15 MB, jpeg/png/webp, `POST /api/admin/previews` |
+| D29.2 | Khóa ghép = tên file chuẩn hóa (`models.stem`): chữ thường, bỏ khoảng trắng cuối và đuôi ảnh/nén lặp lại (`x .jpg`, `x.rar.rar`), **không phụ thuộc thư mục**. Hai ảnh hoặc hai zip cùng stem = mục "Cần duyệt", không tự ghép |
+| D29.3 | Trạng thái suy ra, không lưu: **Đủ** (ảnh + zip) là loại duy nhất vào catalog công khai (gallery và plugin); **Thiếu zip** / **Thiếu ảnh** chỉ hiện ở admin |
+| D29.4 | Danh mục của model = danh mục nơi ảnh được tải lên. Zip nằm thư mục Drive khác: giữ danh mục của ảnh, cờ "Lệch danh mục" (`drive_category_id`), không chặn. Tên model = stem file ảnh, admin sửa được (PATCH cũ) |
+| D29.5 | Mọi thay đổi (tải ảnh, xóa ảnh, quét Drive) tính lại ghép cặp và `refreshCatalogState` trong cùng transaction; chỉ tăng phiên bản khi tập công khai đổi |
+| D29.6 | Migration 025: xóa các hàng `model_previews` nguồn `DRIVE_IMAGE` (file .webp trên đĩa giữ nguyên, dọn tay). Model cũ (stem NULL) được lần quét sau nhận lại theo `drive_file_id` |
+
+Số liệu kiểm trên dữ liệu thật: 320 ảnh cục bộ / 360 zip Drive → 318 khớp theo stem, danh mục trùng cả 318.

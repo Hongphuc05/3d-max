@@ -15,16 +15,17 @@ let root, fixture;
 
 const response = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
 const v3Error = (status, code, message) => response({ error: { code, message, requestId: 'req-1' } }, status);
-const m = (id, over = {}) => ({ id, name: `Model ${id}`, categoryPath: 'Living / Sofa', status: 'PUBLISHED', nameOverridden: false, updatedAt: '2026-11-01T08:00:00Z', ...over });
+const m = (id, over = {}) => ({ id, name: `Model ${id}`, categoryPath: 'Living / Sofa', status: 'PUBLISHED', state: 'FULL', categoryMismatch: false, nameOverridden: false, updatedAt: '2026-11-01T08:00:00Z', ...over });
 
 async function mount({ items = [m('a'), m('b')], total = items.length } = {}) {
   fixture = { items, total, requests: [], patchError: null, listError: null };
   globalThis.fetch = async (url, init = {}) => {
     const u = new URL(String(url), 'http://x'), path = u.pathname, method = init.method ?? 'GET', body = init.body ? JSON.parse(init.body) : null;
-    fixture.requests.push({ path, method, body, q: u.searchParams.get('q'), status: u.searchParams.get('status'), page: u.searchParams.get('page'), limit: u.searchParams.get('limit') });
+    fixture.requests.push({ path, method, body, q: u.searchParams.get('q'), status: u.searchParams.get('status'), state: u.searchParams.get('state'), page: u.searchParams.get('page'), limit: u.searchParams.get('limit') });
+    if (path === '/api/admin/categories') return response({ items: [] });
     if (path === '/api/admin/models' && method === 'GET') {
       if (fixture.listError) return fixture.listError;
-      const snapshot = { items: fixture.items, total: fixture.total, page: Number(u.searchParams.get('page') ?? 1), limit: 20 };
+      const snapshot = { items: fixture.items, total: fixture.total, page: Number(u.searchParams.get('page') ?? 1), limit: 20, counts: { FULL: 1, PREVIEW_ONLY: 2, ARCHIVE_ONLY: 3, MISMATCH: 0 } };
       if (fixture.holdNext) { const hold = fixture.holdNext; fixture.holdNext = null; await hold; }
       return response(snapshot);
     }
@@ -226,4 +227,22 @@ test('an error belongs to the editor: after Cancel (or reopening) the old error 
   assert.equal(row('a').querySelector('[role="alert"]'), null, 'no stale error in the read-only row');
   await click(mustButton('Sửa', row('a')));
   assert.equal(row('a').querySelector('[role="alert"]'), null, 'a reopened editor starts clean');
+});
+
+test('D29: pairing state column + filter (with counts) go to the server; mismatch flag is shown; delete preview needs a confirm and reloads', async () => {
+  await mount({ items: [m('a', { state: 'PREVIEW_ONLY' }), m('b', { state: 'ARCHIVE_ONLY' }), m('c', { categoryMismatch: true })] });
+  assert.match(row('a').textContent, /Thiếu zip/); assert.match(row('b').textContent, /Thiếu ảnh/); assert.match(row('c').textContent, /Lệch danh mục/);
+  assert.equal(button('Xóa ảnh', row('b')), null, 'nothing to delete on an archive-only model');
+  assert.match(container.querySelector('[name="stateFilter2"]').textContent, /Thiếu zip \(2\)/);
+  await type('stateFilter2', 'PREVIEW_ONLY'); await submitSearch();
+  assert.equal(lists().at(-1).state, 'PREVIEW_ONLY');
+  const calls = [];
+  const inner = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => { if (init.method === 'DELETE') { calls.push(String(url)); return response({ deleted: 'PREVIEW' }); } return inner(url, init); };
+  await click(mustButton('Xóa ảnh', row('a')));
+  assert.equal(calls.length, 0, 'first click only asks to confirm');
+  const before = lists().length;
+  await click(mustButton('Xác nhận xóa ảnh', row('a')));
+  assert.deepEqual(calls, ['/api/admin/models/a/preview']);
+  assert.equal(lists().length, before + 1, 'list reloaded');
 });
