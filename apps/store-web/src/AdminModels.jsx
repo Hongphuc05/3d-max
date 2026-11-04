@@ -30,6 +30,9 @@ function Row({ model, editing, onEdit, onSaved, onCancel }) {
   }
 
   return <tr data-model={model.id}>
+    <td className={`${td} w-20`}>{model.thumbUrl
+      ? <img src={model.thumbUrl} alt="" loading="lazy" className="h-14 w-14 rounded object-cover" />
+      : <div className="h-14 w-14 rounded bg-raised" />}</td>
     <td className={`${td} min-w-48`}>{editing
       ? <input className={inputClass} name="editName" maxLength={300} value={state.name} onChange={(event) => set({ name: event.target.value })} />
       : model.name}</td>
@@ -80,7 +83,7 @@ export default function AdminModels() {
     <ResourceState loading={state.loading && !data} error={state.error} retry={() => setVersion((value) => value + 1)} />
     {data && data.items.length === 0 && <p className="py-4 text-sm text-mute">Không có model nào.</p>}
     {data && data.items.length > 0 && <div className="overflow-x-auto"><table className="w-full">
-      <thead><tr><th className={th}>Tên</th><th className={th}>Danh mục</th><th className={th}>Trạng thái</th><th className={th}>Đã sửa tay</th><th className={th}>Thao tác</th></tr></thead>
+      <thead><tr><th className={th}>Ảnh</th><th className={th}>Tên</th><th className={th}>Danh mục</th><th className={th}>Trạng thái</th><th className={th}>Đã sửa tay</th><th className={th}>Thao tác</th></tr></thead>
       <tbody>{data.items.map((model) => <Row key={model.id} model={model} editing={editingId === model.id}
         onEdit={() => setEditingId(model.id)} onSaved={replace} onCancel={() => setEditingId(null)} />)}</tbody></table></div>}
     {data && <Pagination page={data.page} total={data.total} limit={data.limit} onPage={(next) => { setPage(next); setEditingId(null); }} />}

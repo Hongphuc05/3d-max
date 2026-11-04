@@ -54,7 +54,7 @@ const settingsView = (r) => ({
   updatedAt: r.updated_at,
 });
 const modelView = (r) => ({ id: r.id, name: r.name, categoryPath: r.full_path, status: r.status,
-  nameOverridden: r.name_overridden, updatedAt: r.updated_at });
+  nameOverridden: r.name_overridden, updatedAt: r.updated_at, thumbUrl: r.thumb_path ? `/previews/${r.thumb_path}` : null });
 
 export function createCatalogAdminRouter({ pool, guards = [], rateLimit, envDefaultPrice = 500000 }) {
   const router = express.Router();
@@ -108,8 +108,9 @@ export function createCatalogAdminRouter({ pool, guards = [], rateLimit, envDefa
       const where = `($1::text is null or m.name ilike '%' || $1 || '%' escape '\\') and ($2::text is null or m.status = $2)`;
       const total = Number((await pool.query(`select count(*) from models m where ${where}`, [like, status])).rows[0].count);
       const rows = (await pool.query(
-        `select m.id, m.name, c.full_path, m.status, m.name_overridden, m.updated_at
-           from models m join categories c on c.id = m.category_id where ${where}
+        `select m.id, m.name, c.full_path, m.status, m.name_overridden, m.updated_at, p.local_path as thumb_path
+           from models m join categories c on c.id = m.category_id
+           left join model_previews p on p.model_id = m.id and p.variant = 'sm' and p.is_primary where ${where}
           order by lower(m.name), m.id limit $3 offset $4`, [like, status, limit, (page - 1) * limit])).rows;
       res.json({ items: rows.map(modelView), total, page, limit });
     } catch (e) { next(e); }

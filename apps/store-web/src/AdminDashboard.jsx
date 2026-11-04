@@ -6,11 +6,12 @@ import AdminDrive from './AdminDrive.jsx';
 import AdminSync from './AdminSync.jsx';
 import AdminDevices from './AdminDevices.jsx';
 import AdminOrders from './AdminOrders.jsx';
+import AdminModels from './AdminModels.jsx';
 import AdminReview from './AdminReview.jsx';
 import AdminSettings from './AdminSettings.jsx';
 import { secondary } from './AdminShared.jsx';
 
-const sections = [['overview', 'Tổng quan'], ['drive', 'Kết nối Drive'], ['sync', 'Quét đồng bộ'], ['review', 'Cần duyệt'], ['orders', 'Đơn hàng'], ['devices', 'Thiết bị & license'], ['settings', 'Cài đặt'], ['account', 'Thông tin đăng nhập']];
+const sections = [['overview', 'Tổng quan'], ['drive', 'Kết nối Drive'], ['sync', 'Quét đồng bộ'], ['models', 'Model'], ['review', 'Cần duyệt'], ['orders', 'Đơn hàng'], ['devices', 'Thiết bị & license'], ['settings', 'Cài đặt'], ['account', 'Thông tin đăng nhập']];
 export default function AdminDashboard() {
   const { user, logout } = useAuth();
   const [section, setSection] = useState(user.mustChangeCredentials ? 'account' : 'overview');
@@ -31,6 +32,7 @@ export default function AdminDashboard() {
         {active === 'sync' && <AdminSync />}
         {active === 'review' && <AdminReview />}
         {active === 'orders' && <AdminOrders />}
+        {active === 'models' && <section className="space-y-5"><h2 className="text-xl font-bold">Model</h2><AdminModels /></section>}
         {active === 'devices' && <AdminDevices />}
         {active === 'settings' && <AdminSettings />}
         {active === 'account' && <AdminAccount />}
