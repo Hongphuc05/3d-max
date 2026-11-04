@@ -34,6 +34,18 @@ function validate(form) {
 const labels = { bankName: 'Tên ngân hàng', bankBin: 'Mã BIN ngân hàng (chọn ngân hàng)', accountNo: 'Số tài khoản', accountName: 'Tên chủ tài khoản',
   libraryPriceVnd: 'Giá license thư viện (₫)', orderTtlMinutes: 'Thời hạn đơn (phút)', maxPendingOrdersPerDevice: 'Số đơn chờ tối đa mỗi thiết bị' };
 
+const help = {
+  bankName: 'Tên ngân hàng hiện cho khách trong hộp thoại thanh toán. Chọn ngân hàng ở ô Mã BIN sẽ tự điền nếu ô này trống.',
+  bankBin: 'Mã 6 số định danh ngân hàng theo chuẩn VietQR (không phải mã PIN, không bí mật). Dùng để tạo mã QR chuyển khoản.',
+  accountNo: 'Số tài khoản nhận tiền (6–19 chữ số). Nằm trong mã QR khách quét.',
+  accountName: 'Tên chủ tài khoản, hiện cho khách đối chiếu trước khi chuyển.',
+  libraryPriceVnd: 'Giá một license cả thư viện: mua một lần, dùng vĩnh viễn trên 1 máy, gồm cả model thêm sau. Đơn đã tạo giữ giá cũ.',
+  orderTtlMinutes: 'Đơn chờ khách chuyển khoản được bao lâu (phút) thì tự hết hạn. Ví dụ 1440 = 24 giờ. Khách đã bấm "Tôi đã chuyển khoản" thì bạn vẫn xác nhận được sau khi hết hạn.',
+  maxPendingOrdersPerDevice: 'Mỗi máy được giữ tối đa bao nhiêu đơn đang chờ cùng lúc, chống tạo đơn hàng loạt. Đơn hết hạn không bị tính.',
+};
+const Help = ({ text }) => <span title={text} aria-label={text} tabIndex={0}
+  className="ml-1 inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-line text-[10px] text-mute hover:border-accent hover:text-accent">?</span>;
+
 function Form({ initial }) {
   const [base, setBase] = useState({ form: toForm(initial), updatedAt: initial.updatedAt });
   const [form, setForm] = useState(base.form);
@@ -59,7 +71,7 @@ function Form({ initial }) {
     <div><h3 className="font-bold">Thông tin nhận tiền và đơn hàng</h3>
       <p className="mt-1 text-xs text-mute">{base.updatedAt ? `Lần lưu gần nhất: ${dateTime(base.updatedAt)}` : 'Chưa lưu lần nào: đang dùng giá trị mặc định.'}</p></div>
     <div className="grid gap-3 md:grid-cols-2">
-      {[...TEXT, ...NUMBERS].map((key) => <label key={key} className="block text-sm"><span className="text-mute">{labels[key]}</span>
+      {[...TEXT, ...NUMBERS].map((key) => <label key={key} className="block text-sm"><span className="text-mute">{labels[key]}</span><Help text={help[key]} />
         {key === 'bankBin' ? <select className={`${inputClass} mt-1`} name={key} value={form.bankBin}
           onChange={(event) => { const bin = event.target.value; edit('bankBin', bin);
             const bank = BANKS.find(([b]) => b === bin); if (bank && !form.bankName.trim()) edit('bankName', bank[1]); }}>
