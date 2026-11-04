@@ -211,3 +211,7 @@ Mỗi bước code: viết test trước (PostgreSQL thật) → code → **đ�
 9. **Build installer với URL HTTPS thật:** mới chạy `-ApiBaseUrl http://127.0.0.1:4000 -TestBuild`; chưa ký/phát hành.
 10. **Bí mật lộ trong log phiên:** `DRIVE_API_KEY` từng in ra màn hình ở phiên P4.5 — tạo lại khóa trước khi deploy.
 Lỗi môi trường hay gặp: `AUTH_CONFIGURATION_REQUIRED` = thiếu `JWT_SECRET`; `/admin` không vào được = chưa có tài khoản admin (`npm run create-admin`); `installer\stage` bị `Access denied` = `takeown`/`icacls` rồi xóa; script test C# tìm `csc.exe` qua `plugin-csharp/tests/find-csc.ps1`.
+
+## Gói phát hành `3dsmood-library.zip` (05/11, chưa chạy trên Windows)
+Đã viết: `installer/release/make-release-zip.ps1` (zip = exe + `HUONG-DAN-CAI-DAT.html` + `THONG-TIN-PHIEN-BAN.txt` kèm SHA256 + `Cai-thu-cong\ENU\` dựng từ `installer\stage`), hướng dẫn HTML có mục SmartScreen/cài thủ công/gỡ, README-template. Tham số bắt buộc `-Contact`.
+**Chưa kiểm chứng:** script `.ps1` chưa chạy được (máy viết là Linux, không có PowerShell); mới kiểm bằng mắt + đối chiếu placeholder. Ảnh hướng dẫn (`installer/release/images/`) chưa có. Nội dung zip chưa thử cài thật trên máy sạch; cài thủ công chưa thử.

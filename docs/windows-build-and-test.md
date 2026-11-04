@@ -82,4 +82,4 @@ Ghi kết quả từng dòng (đạt / lỗi + ảnh chụp + MAXScript Listener
 
 ## 5. Đóng gói và phát hành bản tải về trên web
 
-Nút "Tải xuống thư viện" trên https://3dsmood.io.vn/ trỏ tới `/download/3dsmood-library.zip`. Cách đóng gói và đưa lên VPS (GitHub Release -> workflow `release`): xem `installer/release/README-template.md`. Script đóng gói: `installer/release/make-release-zip.ps1`; hướng dẫn cho khách: `installer/release/HUONG-DAN-CAI-DAT.txt`.
+Nút "Tải xuống thư viện" trên https://3dsmood.io.vn/ trỏ tới `/download/3dsmood-library.zip`. Cách đóng gói và đưa lên VPS (GitHub Release -> workflow `release`): xem `installer/release/README-template.md`. Script đóng gói: `installer/release/make-release-zip.ps1`; hướng dẫn cho khách: `installer/release/HUONG-DAN-CAI-DAT.html`.

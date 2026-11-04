@@ -1,0 +1,20 @@
+3DS MOOD - PLUGIN CHO 3DS MAX 2022
+Phiên bản : {{VERSION}}
+Ngày đóng gói: {{DATE}}
+
+PlatformSetup.exe
+SHA256    : {{SHA256}}
+(Kiểm tra: mở PowerShell, chạy  Get-FileHash .\PlatformSetup.exe -Algorithm SHA256  rồi so với dòng trên.)
+
+YÊU CẦU
+- Windows 10/11 64-bit
+- Autodesk 3ds Max 2022 bản tiếng Anh (ENU), đã mở ít nhất một lần
+- Internet (lần mở đầu tải danh mục và ảnh từ máy chủ)
+
+GIỚI HẠN CỦA BẢN NÀY
+- Chỉ hỗ trợ Max 2022 ENU.
+- Chưa có bộ gỡ cài đặt (xem mục "Gỡ cài đặt thủ công" trong HUONG-DAN-CAI-DAT.html).
+- Chưa tự cập nhật plugin: bản mới = tải zip mới và chạy lại PlatformSetup.exe.
+- 1 license = 1 máy.
+
+Hỗ trợ: {{CONTACT}}

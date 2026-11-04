@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hướng dẫn cài đặt plugin 3DS Mood cho 3ds Max 2022</title>
+<style>
+  body { font: 16px/1.6 system-ui, "Segoe UI", sans-serif; max-width: 820px; margin: 0 auto; padding: 24px 16px 64px; color: #1b1b1f; }
+  h1 { font-size: 1.6rem; } h2 { margin-top: 2rem; border-bottom: 1px solid #ccc; padding-bottom: .2rem; }
+  code, kbd { background: #f0f0f3; padding: 1px 6px; border-radius: 4px; font-size: .92em; }
+  .warn { background: #fff4e0; border-left: 4px solid #e69500; padding: 8px 14px; margin: 12px 0; }
+  .ok { background: #e9f7ee; border-left: 4px solid #2e9d57; padding: 8px 14px; margin: 12px 0; }
+  figure { margin: 12px 0; } img { max-width: 100%; border: 1px solid #ccc; border-radius: 6px; min-height: 28px; }
+  figcaption { font-size: .88rem; color: #555; }
+  .meta { color: #555; font-size: .9rem; }
+</style>
+</head>
+<body>
+<h1>Cài plugin 3DS Mood cho 3ds Max 2022</h1>
+<p class="meta">Phiên bản {{VERSION}} · Hỗ trợ: {{CONTACT}}</p>
+
+<h2>1. Yêu cầu</h2>
+<ul>
+  <li>Windows 10/11 64-bit.</li>
+  <li>Autodesk 3ds Max <b>2022 bản tiếng Anh (ENU)</b>. Các phiên bản Max khác và bản ngôn ngữ khác chưa được hỗ trợ.</li>
+  <li><b>Đã mở 3ds Max 2022 ít nhất một lần</b> (để Max tạo thư mục người dùng).</li>
+  <li>Có Internet: lần mở đầu tiên plugin tải danh mục và ảnh từ máy chủ.</li>
+</ul>
+
+<h2>2. Cài tự động (khuyến nghị)</h2>
+<ol>
+  <li><b>Đóng hoàn toàn 3ds Max</b> (kể cả trong Task Manager). Max đang mở thì file bị khóa và bộ cài sẽ báo lỗi.</li>
+  <li>Giải nén file zip ra một thư mục bất kỳ (chuột phải → <i>Extract All…</i>). Không chạy trực tiếp trong cửa sổ zip.</li>
+  <li>Chạy <code>PlatformSetup.exe</code>.</li>
+  <li>Khi xuất hiện thông báo "Cài đặt xong", mở 3ds Max và làm mục 4.</li>
+</ol>
+
+<h3>Windows hiện cảnh báo "Windows protected your PC"</h3>
+<div class="warn">
+  Phần mềm chưa được ký số nên Windows SmartScreen cảnh báo mọi file lạ. Đây <b>không phải là virus hay lỗi</b>.
+  Bạn có thể đối chiếu mã SHA256 của file với dòng trong <code>THONG-TIN-PHIEN-BAN.txt</code> trước khi chạy.
+</div>
+<ol>
+  <li>Trên màn hình xanh <i>Windows protected your PC</i>, bấm chữ <b>More info</b>.</li>
+  <li>Bấm nút <b>Run anyway</b> xuất hiện bên dưới.</li>
+</ol>
+<figure>
+  <img src="images/smartscreen-1.png" alt="[Ảnh sẽ bổ sung: màn hình SmartScreen, vị trí chữ More info]">
+  <figcaption>Bước 1: bấm "More info".</figcaption>
+</figure>
+<figure>
+  <img src="images/smartscreen-2.png" alt="[Ảnh sẽ bổ sung: màn hình SmartScreen, nút Run anyway]">
+  <figcaption>Bước 2: bấm "Run anyway".</figcaption>
+</figure>
+<p>Nếu phần mềm diệt virus xóa hoặc cách ly <code>PlatformSetup.exe</code>, thêm thư mục đã giải nén vào danh sách loại trừ rồi giải nén lại, hoặc dùng mục 7 (cài thủ công) khi vẫn không chạy được.</p>
+
+<h2>3. Lỗi thường gặp khi chạy bộ cài</h2>
+<ul>
+  <li><b>"Không thấy thư mục user của 3ds Max 2022"</b>: mở 3ds Max 2022 (bản ENU) một lần, đóng lại, chạy bộ cài lại.</li>
+  <li><b>"3ds Max đang chạy nên file DLL bị khoá"</b>: đóng 3ds Max rồi chạy lại.</li>
+  <li>Bộ cài không chạy được (bị chặn, báo thiếu quyền…): dùng cách cài thủ công ở mục 7.</li>
+</ul>
+
+<h2>4. Thêm nút vào toolbar</h2>
+<ol>
+  <li>Mở 3ds Max 2022.</li>
+  <li>Vào <code>Customize</code> → <code>Customize User Interface</code> → thẻ <b>Toolbars</b>.</li>
+  <li>Ở ô <b>Category</b> chọn <b>Platform</b>.</li>
+  <li>Kéo mục <b>OpenPlatformPanel</b> ra một thanh toolbar bất kỳ (nút hiện chữ "Platform").</li>
+  <li>Bấm nút này để mở panel thư viện.</li>
+</ol>
+<figure>
+  <img src="images/toolbar.png" alt="[Ảnh sẽ bổ sung: Customize User Interface, category Platform, kéo OpenPlatformPanel]">
+  <figcaption>Kéo OpenPlatformPanel (category Platform) ra toolbar.</figcaption>
+</figure>
+<figure>
+  <img src="images/panel.png" alt="[Ảnh sẽ bổ sung: panel 3DS Mood sau khi mở]">
+  <figcaption>Panel thư viện sau khi mở.</figcaption>
+</figure>
+
+<h2>5. Lần chạy đầu tiên</h2>
+<p>Plugin tải danh mục model và ảnh xem trước từ máy chủ, có thanh tiến độ. Cần Internet; nếu lỗi, bấm <b>Thử lại</b>. Các lần sau chỉ tải phần mới thêm.</p>
+
+<h2>6. Mua thư viện</h2>
+<ol>
+  <li>Trong plugin bấm <b>Mua thư viện</b>, chuyển khoản theo mã QR hiện ra.</li>
+  <li>Bấm <b>Tôi đã chuyển khoản</b> và chờ xác nhận (thường vài phút).</li>
+  <li>Khi được xác nhận, toàn bộ model được mở khóa. Mua một lần, dùng vĩnh viễn, gồm cả model thêm sau.</li>
+</ol>
+<div class="warn"><b>1 license = 1 máy.</b> Đổi máy hoặc cài lại Windows: liên hệ {{CONTACT}} để chuyển license sang máy mới.</div>
+<p>Tải bộ cài và xem catalog không cần đăng nhập và không tốn license.</p>
+
+<h2>7. Cài thủ công (khi không chạy được PlatformSetup.exe)</h2>
+<ol>
+  <li>Đóng 3ds Max.</li>
+  <li>Bấm <kbd>Win</kbd>+<kbd>R</kbd>, dán dòng sau rồi Enter:<br>
+      <code>%LOCALAPPDATA%\Autodesk\3dsMax\2022 - 64bit\ENU</code><br>
+      (Nếu báo không thấy thư mục: mở Max 2022 ENU một lần rồi làm lại.)</li>
+  <li>Mở thư mục <code>Cai-thu-cong\ENU</code> trong zip này. Chọn <b>toàn bộ</b> bên trong (<code>scripts</code>, <code>usermacros</code>), chép đè vào thư mục ở bước 2. Chọn <i>Replace</i> nếu Windows hỏi.</li>
+  <li>Kết quả phải có đủ:
+    <ul>
+      <li><code>ENU\scripts\Platform\</code> (chứa <code>PlatformBridge.ms</code>, các file <code>.dll</code>, thư mục <code>app</code>, <code>plugin-config.json</code>)</li>
+      <li><code>ENU\scripts\Startup\Platform-Agent.ms</code></li>
+      <li><code>ENU\usermacros\Platform-OpenPanel.mcr</code></li>
+    </ul>
+  </li>
+  <li>Mở Max và làm tiếp mục 4.</li>
+</ol>
+
+<h2>8. Gỡ cài đặt thủ công</h2>
+<p>Chưa có bộ gỡ. Đóng Max rồi xóa 3 mục trong <code>%LOCALAPPDATA%\Autodesk\3dsMax\2022 - 64bit\ENU</code>:</p>
+<ul>
+  <li>thư mục <code>scripts\Platform</code></li>
+  <li>file <code>scripts\Startup\Platform-Agent.ms</code></li>
+  <li>file <code>usermacros\Platform-OpenPanel.mcr</code></li>
+</ul>
+
+<h2>9. Cập nhật</h2>
+<p>Plugin chưa tự cập nhật. Có bản mới thì tải zip mới và chạy lại <code>PlatformSetup.exe</code> (ghi đè bản cũ). Danh mục model mới thì tự cập nhật, không cần cài lại.</p>
+
+<div class="ok">Cần hỗ trợ: {{CONTACT}}</div>
+</body>
+</html>
