@@ -263,6 +263,27 @@ class CatalogWatcherTests
                     Check(Directory.GetFiles(dir, "*.webp").Length == 2 && v1.All(f => !File.Exists(Path.Combine(dir, f))), "once everything is present the old previews are pruned");
                 }
             }
+            // 8. FetchCatalogAsync caches the catalog without touching previews; the next check fills them (first run / retry after offline).
+            {
+                using (var rig = new Rig(Path.Combine(root, "t8")))
+                {
+                    var fetched = await rig.Watcher.FetchCatalogAsync(CancellationToken.None);
+                    Check(fetched.Catalog != null && rig.Watcher.Current != null && rig.Updates.SequenceEqual(new[] { 1 }) && rig.Server.PreviewRequests.Count == 0, "fetch-only: catalog available and announced, no preview requested");
+                    await rig.Watcher.CheckNowAsync(CancellationToken.None);
+                    Check(rig.Server.PreviewRequests.Count == 2 && rig.Updates.Count == 1 && Directory.GetFiles(Path.Combine(rig.Root, "Previews"), "*.webp").Length == 2, "the following check downloads the previews without announcing again");
+                }
+                using (var rig = new Rig(Path.Combine(root, "t8b")))
+                {
+                    rig.Server.Down = true;
+                    var offline = await rig.Watcher.FetchCatalogAsync(CancellationToken.None);
+                    Check(offline.Offline && rig.Watcher.Current == null && rig.Offline.SequenceEqual(new[] { true }), "first run with the server down: offline, no catalog, no exception");
+                    rig.Server.Down = false;
+                    await rig.Watcher.FetchCatalogAsync(CancellationToken.None);
+                    rig.Watcher.CheckInBackground();
+                    await Until(() => Directory.Exists(Path.Combine(rig.Root, "Previews")) && Directory.GetFiles(Path.Combine(rig.Root, "Previews"), "*.webp").Length == 2, "background preview sync after a retry");
+                    Check(true, "after retry the previews are downloaded in the background");
+                }
+            }
             // 7. Overlapping CheckNow calls are serialised (never two catalog downloads at once).
             {
                 using (var rig = new Rig(Path.Combine(root, "t7")))

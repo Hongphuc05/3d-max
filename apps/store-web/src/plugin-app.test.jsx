@@ -212,3 +212,25 @@ test('the device popup shows the machine code from the host; category filter nar
   await done(root);
 });
 
+
+test('first run with the VPS down: clear message + "Thử lại" loads the catalog; preview progress shows a bar', async () => {
+  server(); const base = globalThis.fetch; let down = true;
+  globalThis.fetch = async (url) => {
+    if (down && String(url).startsWith('/api/v1/')) return json({ error: { code: 'SERVER_UNAVAILABLE' } }, 503);
+    return base(url);
+  };
+  const root = await mount();
+  assert.match(document.querySelector('[role="alert"]').textContent, /Internet/);
+  assert.equal(cards().length, 0);
+  down = false;
+  await act(async () => { button('Thử lại').click(); await flush(); });
+  await act(flush); await act(flush);
+  assert.equal(cards().length, 3); assert.equal(document.querySelector('[role="alert"]'), null);
+  await act(async () => { emit('library.previewProgress', { done: 3, total: 12 }); await flush(); });
+  const bar = document.querySelector('[role="progressbar"]');
+  assert.equal(bar.getAttribute('aria-valuenow'), '3'); assert.equal(bar.getAttribute('aria-valuemax'), '12');
+  assert.match(text(), /3\/12/);
+  await act(async () => { emit('library.previewProgress', { done: 12, total: 12 }); await flush(); });
+  assert.equal(document.querySelector('[role="progressbar"]'), null);
+  globalThis.fetch = base; await done(root);
+});

@@ -82,7 +82,13 @@ namespace MaxWebViewHost
             using (var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct))
             {
                 deadline.CancelAfter(TimeSpan.FromSeconds(15));
-                try { await Watcher.CheckNowAsync(deadline.Token).ConfigureAwait(false); }
+                try
+                {
+                    // FetchCatalogAsync, not CheckNowAsync: never wait for the preview download; start it in the background instead
+                    // (otherwise it would only begin at the next 5-minute poll after an offline first run).
+                    await Watcher.FetchCatalogAsync(deadline.Token).ConfigureAwait(false);
+                    if (GetCached() != null) Watcher.CheckInBackground();
+                }
                 catch (Exception e) when (e is ApiException || (e is OperationCanceledException && !ct.IsCancellationRequested)) { }
             }
             return GetCached();

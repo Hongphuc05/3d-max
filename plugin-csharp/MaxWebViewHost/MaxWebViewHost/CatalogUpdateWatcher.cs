@@ -63,9 +63,10 @@ namespace MaxWebViewHost
         private readonly TimeSpan pollInterval;
         private readonly Func<TimeSpan, CancellationToken, Task> delay;
         private readonly Func<int, TimeSpan> reconnectBackoff;
-        private readonly SemaphoreSlim gate = new SemaphoreSlim(1, 1);
+        private readonly SemaphoreSlim gate = new SemaphoreSlim(1, 1), previewGate = new SemaphoreSlim(1, 1);
         private readonly object state = new object();
         private CancellationTokenSource loops;
+        private readonly CancellationTokenSource lifetime = new CancellationTokenSource();
         private volatile CachedCatalog current;
         private bool offline, previewsPending = true, disposed;
         private int scheduled;
@@ -100,8 +101,9 @@ namespace MaxWebViewHost
             }
         }
 
-        /// <summary>One serialised check: catalog, then previews. Throws on invalid server data; being offline is not an error.</summary>
-        public async Task CheckNowAsync(CancellationToken ct)
+        /// <summary>Catalog step only (serialised): returns as soon as the catalog is cached, without waiting for preview downloads.
+        /// Previews are synced by the next CheckNowAsync (previewsPending stays true until a sync succeeds).</summary>
+        public async Task<CatalogUpdateResult> FetchCatalogAsync(CancellationToken ct)
         {
             await gate.WaitAsync(ct).ConfigureAwait(false);
             try
@@ -109,15 +111,32 @@ namespace MaxWebViewHost
                 var result = await catalog.UpdateAsync(ct).ConfigureAwait(false);
                 if (result.Catalog != null) current = result.Catalog;
                 SetOffline(result.Offline);
-                if (result.Offline || result.Catalog == null) return;
-                if (result.Changed) Raise(Updated, result.Catalog);
-                if (!result.Changed && !previewsPending) return;
-                var summary = await previews.SyncAsync(result.Catalog.Previews, ct).ConfigureAwait(false);
-                previewsPending = summary.Failed > 0;
-                if (!previewsPending) previews.Prune(result.Catalog.Previews);
+                if (!result.Offline && result.Catalog != null && result.Changed) Raise(Updated, result.Catalog);
+                return result;
             }
             finally { gate.Release(); }
         }
+
+        /// <summary>One check: catalog, then previews. Throws on invalid server data; being offline is not an error.
+        /// The preview sync has its own gate, so a long first-run download never blocks the catalog step.</summary>
+        public async Task CheckNowAsync(CancellationToken ct)
+        {
+            var result = await FetchCatalogAsync(ct).ConfigureAwait(false);
+            if (result.Offline || result.Catalog == null) return;
+            if (!result.Changed && !previewsPending) return;
+            await previewGate.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                var summary = await previews.SyncAsync(result.Catalog.Previews, ct).ConfigureAwait(false);
+                previewsPending = summary.Failed > 0;
+                // Prune only against the newest manifest, and only after a complete sync.
+                if (!previewsPending && ReferenceEquals(current, result.Catalog)) previews.Prune(result.Catalog.Previews);
+            }
+            finally { previewGate.Release(); }
+        }
+
+        /// <summary>Starts a full check (catalog + previews) without waiting; used when the first fetch succeeds off-schedule (retry after offline).</summary>
+        public void CheckInBackground() { Task.Run(() => CheckSafeAsync(lifetime.Token)); }
 
         private async Task CheckSafeAsync(CancellationToken ct)
         {
@@ -190,6 +209,7 @@ namespace MaxWebViewHost
             lock (state)
             {
                 disposed = true;
+                lifetime.Cancel();
                 if (loops != null) { loops.Cancel(); loops = null; }
             }
         }

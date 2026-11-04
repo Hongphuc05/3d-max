@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { categoryKey, categoryKeys } from './catalog-view.js';
 import { Icon } from './icons.jsx';
+import { onHostEvent } from './integrations/3dsmax/bridge.js';
 
 export const rendererLabel = (r) => ({ vray: 'V-Ray', corona: 'Corona' }[r] || r);
 export const subKey = (c, s) => `${c}/${s}`;
@@ -87,6 +88,8 @@ export function Preview({ source, name, lazy = false }) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   useEffect(() => { setLoaded(false); setFailed(false); }, [source]);
+  // Anh chua co trong cache may (dang tai nen lan dau): hien placeholder, thu lai khi host bao them anh.
+  useEffect(() => (failed ? onHostEvent('library.previewProgress', () => setFailed(false)) : undefined), [failed]);
   if (!source || failed) return <div className="grid aspect-square w-full place-items-center bg-raised font-mono text-xs text-mute">Chưa có ảnh preview</div>;
   return <img src={source} alt={name} loading={lazy ? 'lazy' : undefined}
     onLoad={() => setLoaded(true)} onError={() => setFailed(true)}

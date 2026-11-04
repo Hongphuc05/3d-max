@@ -44,6 +44,21 @@ namespace MaxWebViewHost
         }
 
         private string PathOf(string sha) { return Path.Combine(cacheDirectory, sha + ".webp"); }
+        // Present = right name AND the manifest's size. Files only reach this name through verified .part -> rename, so a size mismatch
+        // means damage (disk full, manual edit): drop it and let the sync fetch it again.
+        private bool IsPresent(PreviewEntry entry)
+        {
+            var path = PathOf(entry.Sha256);
+            try
+            {
+                if (!File.Exists(path)) return false;
+                if (new FileInfo(path).Length == entry.FileSize) return true;
+                File.Delete(path);
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { }
+            return false;
+        }
+
         public static bool IsHash(string value) { return value != null && Hex64.IsMatch(value); }
 
         public void Prioritize(IEnumerable<string> modelIds) { priority = new HashSet<string>(modelIds ?? new string[0], StringComparer.OrdinalIgnoreCase); }
@@ -91,8 +106,8 @@ namespace MaxWebViewHost
             var queue = new Queue<PreviewEntry>(unique.OrderBy(e => first.Contains(e.ModelId) ? 0 : 1).ThenBy(e => e.Variant == "sm" ? 0 : 1));
             var summary = new PreviewSyncSummary { Total = unique.Count + invalid, Failed = invalid };
             var gate = new object();
-            summary.Done = unique.Count(e => File.Exists(PathOf(e.Sha256)));
-            var present = new HashSet<string>(unique.Where(e => File.Exists(PathOf(e.Sha256))).Select(e => e.Sha256));
+            var present = new HashSet<string>(unique.Where(IsPresent).Select(e => e.Sha256));
+            summary.Done = present.Count;
             Raise(summary.Done, summary.Total);
 
             async Task Worker()
@@ -130,7 +145,7 @@ namespace MaxWebViewHost
         private async Task DownloadAsync(PreviewEntry entry, CancellationToken ct)
         {
             if (!IsHash(entry.Sha256) || entry.FileSize < 1 || entry.FileSize > MaxPreviewBytes) throw new InvalidDataException();
-            if (File.Exists(PathOf(entry.Sha256))) return;
+            if (IsPresent(entry)) return;
             using (var response = await api.OpenStreamAsync("/previews/" + entry.Sha256 + ".webp", null, ct).ConfigureAwait(false))
             {
                 var type = response.Content != null && response.Content.Headers.ContentType != null ? response.Content.Headers.ContentType.MediaType : null;

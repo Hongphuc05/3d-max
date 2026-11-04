@@ -182,7 +182,7 @@ Hiện có: `library.status | library.activate | library.refresh | asset.import 
 | Method | Mục đích | Ghi chú |
 |---|---|---|
 | `library.refresh` | (giữ) trả catalog từ cache + kích hoạt đồng bộ nền | Thêm trường tiến độ |
-| `library.previewProgress` (event) | % tải preview nền | Event, không phải RPC |
+| `library.previewProgress` (event) | `{done,total}` tải preview nền (lần đầu: toàn bộ; sau đó: phần chênh lệch). Web hiện thanh tiến độ; ảnh chưa có thì hiện placeholder và tự thử lại khi có event | Event, không phải RPC; không thêm method vào allowlist |
 | `order.create` / `order.status` | Tạo đơn, kiểm trạng thái | Web gọi API qua proxy của host; token thiết bị **chỉ ở native**, JS không thấy |
 | `asset.import` | (giữ tên) nhận `{ modelId }` — **không còn `ticket`** | Native tự xin phiên tải |
 | `library.activate` | (giữ) nhập license MXL1 cũ | Tương thích ngược |

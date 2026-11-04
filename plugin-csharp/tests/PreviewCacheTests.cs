@@ -77,6 +77,16 @@ class PreviewCacheTests
                 var again = await rig.Make().SyncAsync(rig.Entries, CancellationToken.None);
                 Check(again.Done == 6 && rig.Has(0) && rig.Fake.Requests.Count == 7, "a second sync fetches only the deleted file");
             }
+            // 2b. Restart: a truncated file (right name, wrong size) is replaced; intact files are not requested again.
+            {
+                var rig = new Rig(Path.Combine(root, "t2b"), 4);
+                await rig.Service.SyncAsync(rig.Entries, CancellationToken.None);
+                File.WriteAllBytes(Path.Combine(rig.Cache, rig.Entries[1].Sha256 + ".webp"), new byte[5]);
+                var requestsBefore = rig.Fake.Requests.Count;
+                var restart = await rig.Make().SyncAsync(rig.Entries, CancellationToken.None);
+                Check(restart.Done == 4 && restart.Failed == 0, "restart: all four end up present and verified");
+                Check(rig.Fake.Requests.Count == requestsBefore + 1 && new FileInfo(Path.Combine(rig.Cache, rig.Entries[1].Sha256 + ".webp")).Length == rig.Data[1].Length, "restart: only the damaged preview is fetched again");
+            }
             // 3. Download: at most 4 in parallel, every file verified, order follows priority then sm-before-lg.
             {
                 var rig = new Rig(Path.Combine(root, "t3"), 12); rig.Fake.DelayMs = 30;

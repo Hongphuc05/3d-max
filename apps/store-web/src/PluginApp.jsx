@@ -80,7 +80,14 @@ export default function PluginApp({ orderPollMs }) {
     <div className="flex h-screen flex-col">
       <HostBar reloadKey={reloadKey} onRefresh={() => setReloadKey((k) => k + 1)} apiStatus={max ? (offline ? 'down' : 'ok') : null} />
       {offline && <div role="status" className="border-b border-warn/40 bg-warn/10 px-3 py-1 font-mono text-[11px] text-warn">Đang offline — hiển thị catalog đã lưu trên máy. Cần Internet để tải model.</div>}
-      {progress && <div role="status" className="border-b border-line px-3 py-1 font-mono text-[11px] text-mute">Đang tải ảnh xem trước {progress.done}/{progress.total}…</div>}
+      {progress && (
+        <div role="status" className="border-b border-line px-3 py-1 font-mono text-[11px] text-mute">
+          Đang tải ảnh xem trước {progress.done}/{progress.total}…
+          <div role="progressbar" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.done} className="mt-1 h-1 overflow-hidden rounded bg-raised">
+            <div className="h-full bg-accent" style={{ width: `${Math.round((progress.done / Math.max(1, progress.total)) * 100)}%` }} />
+          </div>
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1">
         <nav className="flex w-14 shrink-0 flex-col items-center gap-2 border-r border-line bg-panel py-3">
@@ -122,13 +129,19 @@ export default function PluginApp({ orderPollMs }) {
           </div>
 
           <div className="min-h-0 flex-1 overflow-auto px-3 pb-3">
-            {state === 'error' && <p role="alert" className="rounded-md border border-danger/40 bg-danger/10 p-4 font-mono text-xs text-danger">{error}</p>}
+            {state === 'error' && (
+              <div role="alert" className="mx-auto mt-16 max-w-md rounded-md border border-danger/40 bg-danger/10 p-4 text-center font-mono text-xs text-danger">
+                <p>{error}</p>
+                <button onClick={() => setReloadKey((k) => k + 1)} className="mt-3 rounded-md bg-accent px-4 py-1.5 font-bold text-accent-ink">Thử lại</button>
+              </div>
+            )}
             {state === 'ready' && rows.length === 0 && (
               <p className="py-16 text-center font-mono text-xs text-mute">
                 {tab === 'done' ? (entitlements ? 'Thiết bị này chưa sở hữu model nào.' : 'Chưa xác minh được quyền của thiết bị này.')
                   : products.length ? 'Không có model nào khớp bộ lọc.' : 'Catalog hiện đang trống.'}
               </p>
             )}
+            {state === 'loading' && max && <p role="status" className="py-2 text-center font-mono text-xs text-mute">Lần đầu mở: đang tải catalog từ máy chủ (cần Internet)…</p>}
             <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2.5">
               {state === 'loading'
                 ? Array.from({ length: 18 }, (_, i) => <div key={i} className="aspect-[3/4] animate-pulse rounded-lg bg-panel" />)
