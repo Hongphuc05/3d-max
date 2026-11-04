@@ -19,3 +19,6 @@ test-results/
 playwright-report/
 .claude/worktrees/
 installer/release/out/
+
+# Du lieu anh preview cua chu du an (upload qua admin, khong commit)
+data/
