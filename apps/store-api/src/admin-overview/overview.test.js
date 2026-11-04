@@ -62,7 +62,7 @@ before(async () => {
 after(async () => { if (dispose) await dispose(pool); });
 beforeEach(async () => {
   if (!configured) return;
-  for (const t of ['entitlements', 'purchase_order_items', 'purchase_orders', 'devices']) await pool.query(`delete from ${t}`);
+  for (const t of ['entitlements', 'purchase_orders', 'devices']) await pool.query(`delete from ${t}`);
   deviceId = (await pool.query("insert into devices(device_uuid,public_key,public_key_hash,key_protection,machine_code,device_name) values ($1,'{}',$2,'SOFTWARE',$3,'PC') returning id", [randomUUID(), createHash('sha256').update(randomUUID()).digest(), `MAX-${'AB'.repeat(32)}`])).rows[0].id;
 });
 afterEach(async () => { for (const s of servers.splice(0)) { s.closeAllConnections?.(); await new Promise((r) => s.close(r)); } });
@@ -97,7 +97,7 @@ test('overview: revenue counts only CONFIRMED, day boundary is Asia/Ho_Chi_Minh'
 test('overview: licenses count distinct active devices and new devices in 7 days', { skip }, async () => {
   const mk = () => pool.query("insert into devices(device_uuid,public_key,public_key_hash,key_protection,machine_code,device_name,first_seen_at) values ($1,'{}',$2,'SOFTWARE',$3,'PC', now() - interval '30 days') returning id", [randomUUID(), createHash('sha256').update(randomUUID()).digest(), `MAX-${'CD'.repeat(32)}`]).then((x) => x.rows[0].id);
   const old = await mk(), revoked = await mk();
-  await pool.query("insert into entitlements(device_id,scope,source) values ($1,'ALL_MODELS','ADMIN'),($2,'ALL_MODELS','ADMIN')", [old, revoked]);
+  await pool.query("insert into entitlements(device_id,source) values ($1,'ADMIN'),($2,'ADMIN')", [old, revoked]);
   await pool.query('update entitlements set revoked_at = now() where device_id = $1', [revoked]);
   await mount();
   const b = await (await api('/overview')).json();
