@@ -16,8 +16,8 @@ export function installMockHost() {
         case 'library.status':
           return ok({ machineCode: 'DEMO-MACHINE-NOT-A-REAL-CODE', licensed: false });
         case 'library.activate':
-          return params.license === 'demo' ? ok({ machineCode: 'DEMO-MACHINE-NOT-A-REAL-CODE', licensed: true })
-            : fail('LICENSE_INVALID', 'Bản demo: nhập demo để thử giao diện.');
+          return params.license === 'demo' ? ok({ machineCode: 'DEMO-MACHINE-NOT-A-REAL-CODE', allModels: true })
+            : fail('LIBRARY_INVALID', 'Bản demo: nhập demo để thử giao diện.');
         case 'library.refresh':
           return ok({ items: [{ id: 'demo-chair', name: 'Ghế minh họa (DEV)', category: 'Demo' }], offline: false,
             message: 'Dữ liệu minh họa DEV; không phải model thật từ Drive.' });

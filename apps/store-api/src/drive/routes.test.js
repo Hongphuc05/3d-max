@@ -111,7 +111,7 @@ test('error envelope: { error:{code,message(vi),requestId} } and X-Request-Id he
 test('status: unconfigured server reports variable NAMES only', { skip }, async () => {
   await listen(await build({ configured: false, errors: ['GOOGLE_OAUTH_CLIENT_SECRET'] }));
   const body = await (await j('/api/admin/drive/status')).json();
-  assert.deepEqual(body, { configured: false, missingConfig: ['GOOGLE_OAUTH_CLIENT_SECRET'], connection: null, sources: [] });
+  assert.deepEqual(body, { authMode: 'oauth', configured: false, missingConfig: ['GOOGLE_OAUTH_CLIENT_SECRET'], connection: null, sources: [] });
   const r = await j('/api/admin/drive/oauth/start');
   assert.equal(r.status, 503); assert.equal((await r.json()).error.code, 'DRIVE_OAUTH_NOT_CONFIGURED');
 });

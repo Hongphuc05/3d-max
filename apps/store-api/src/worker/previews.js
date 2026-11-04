@@ -42,8 +42,8 @@ export async function cleanStaleParts(dir, { maxAgeMs = HOUR_MS, now = Date.now(
   return removed;
 }
 
-async function download(client, imageId, part, { maxBytes, signal }) {
-  const res = await client.openMedia(imageId, { signal });
+async function download(client, imageId, part, { maxBytes, signal, resourceKey }) {
+  const res = await client.openMedia(imageId, { signal, resourceKey });
   res.data.on('error', () => {}); // loi tre cua undici ('terminated') sau khi ta da huy khong duoc thanh uncaughtException
   const declared = Number(res.headers?.get?.('content-length'));
   if (Number.isFinite(declared) && declared > maxBytes) { res.data.destroy(); throw codeError('PREVIEW_TOO_LARGE'); }
@@ -87,7 +87,7 @@ async function makeVariants(part, dir, maxPixels) {
 }
 
 /**
- * @param images [{ imageId, md5, primary }] (ke hoach cua diff)
+ * @param images [{ imageId, md5, primary, resourceKey? }] (ke hoach cua diff)
  * @returns {done, results, errors} | {status:'CANCELLED'} | {interrupted:true} | {leaseLost:true}; nem DISK_SPACE_LOW.
  */
 export async function runPreviewStage({
@@ -125,7 +125,7 @@ export async function runPreviewStage({
     try {
       let received;
       for (;;) {
-        try { received = await download(client, img.imageId, part, { maxBytes, signal: ctx.signal }); break; }
+        try { received = await download(client, img.imageId, part, { maxBytes, signal: ctx.signal, resourceKey: img.resourceKey }); break; }
         catch (e) {
           if (e?.code !== 'DRIVE_QUOTA_EXCEEDED' || ctx.signal?.aborted) throw e;
           await pause(cooldownMs, ctx.signal); // Google chan tam thoi: nghi roi thu lai chinh anh nay, khong ghi la loi cua anh

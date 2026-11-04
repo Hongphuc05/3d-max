@@ -18,7 +18,7 @@ export function loadDownloadConfig(env = process.env) {
     maxBytes: int('MODEL_CACHE_MAX_BYTES', 20 * GIB, { min: 1 }),
     minFreeBytes: int('MODEL_CACHE_MIN_FREE_BYTES', 2 * GIB),
     maxFileBytes: int('MODEL_MAX_FILE_BYTES', 4 * GIB, { min: 1 }),     // plugin cung gioi han 4 GB
-    sessionsPerHour: int('DOWNLOAD_SESSIONS_PER_HOUR', 10, { min: 1, max: 1000 }),
+    sessionsPerHour: int('DOWNLOAD_SESSIONS_PER_HOUR', 120, { min: 1, max: 1000 }),
     maxConcurrent: int('DOWNLOAD_MAX_CONCURRENT', 3, { min: 1, max: 64 }),
     errors,
   };

@@ -62,6 +62,7 @@ export function onHostEvent(type, handler) {
 export const importModel = (modelId, onProgress) => call("asset.import", { modelId }, 31 * 60 * 1000, onProgress);
 
 export const getLibraryStatus = () => call('library.status', {}, 20000);
+export const activateLibrary = (license) => call('library.activate', { license }, 60000);
 export const refreshLibrary = () => call('library.refresh', {}, 60000);
 
 export const importAsset = (assetId, ticket, onProgress) => call("asset.import", { assetId, ticket }, 31 * 60 * 1000, onProgress);

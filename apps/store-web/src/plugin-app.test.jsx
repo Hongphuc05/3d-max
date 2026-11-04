@@ -7,12 +7,17 @@ const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/' });
 Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });
 const listeners = new Set(); const calls = [];
 let importOutcome = { ok: true };
+let activationOutcome = { ok: true };
 dom.window.chrome = { webview: {
   addEventListener: (_t, f) => listeners.add(f),
   postMessage({ id, method, params }) {
     calls.push({ method, params });
     const reply = (data) => setTimeout(() => listeners.forEach((f) => f({ data })), 5);
     if (method === 'library.status') return reply({ id, ok: true, result: { machineCode: 'MAX-TESTCODE', offline: false } });
+    if (method === 'library.activate') {
+      if (activationOutcome.ok) { rights = { allModels: true, modelIds: [] }; return reply({ id, ok: true, result: { machineCode: 'MAX-TESTCODE', allModels: true } }); }
+      return reply({ id, ok: false, error: { code: activationOutcome.code } });
+    }
     if (method === 'host.getInfo') return reply({ id, ok: true, result: { hostVersion: '3ds Max 2022' } });
     if (method === 'scene.getInfo') return reply({ id, ok: true, result: { objects: 1, renderer: 'Corona' } });
     if (method === 'asset.import') return reply(importOutcome.ok ? { id, ok: true, result: { imported: 1 } } : { id, ok: false, error: { code: 'NOT_ENTITLED', message: 'english' } });
@@ -58,13 +63,13 @@ async function mount() {
 }
 async function done(root) { await act(() => root.unmount()); getJobs().forEach((j) => remove(j.slug)); }
 
-test('cards show Download for owned models and Mua + price for the others; the bridge only ever sees a model id', async () => {
+test('cards show Download for owned models and activation for others', async () => {
   server(); const root = await mount();
   assert.equal(document.querySelectorAll('.group').length, 3);
   const [bed, one, two] = cards(); // A-Z: Bed One, Sofa One, Sofa Two
-  assert.match(bed, /Mua/);
+  assert.match(bed, /Kích hoạt thư viện/);
   assert.match(one, /Sofa One/); assert.match(one, /Download/);
-  assert.match(two, /Sofa Two/); assert.match(two, /Mua/); assert.match(two, /20\.000/);
+  assert.match(two, /Sofa Two/); assert.match(two, /Kích hoạt thư viện/); assert.doesNotMatch(two, /20\.000/);
   const download = [...document.querySelectorAll('.group')][1].querySelectorAll('button')[2];
   await act(async () => { download.click(); await flush(); });
   await act(flush); await act(flush);
@@ -74,38 +79,29 @@ test('cards show Download for owned models and Mua + price for the others; the b
   await done(root);
 });
 
-test('Mua opens the order dialog; after the owner confirms, the card turns into Download without pressing refresh', async () => {
-  server();
-  const base = globalThis.fetch; let status = 'PENDING_PAYMENT'; const orderCalls = [];
-  const bed = id(103);
-  globalThis.fetch = async (url, init = {}) => {
-    const path = String(url), method = init.method || 'GET';
-    if (path.startsWith('/api/v1/orders')) {
-      orderCalls.push(method + ' ' + path);
-      if (method === 'POST' && path === '/api/v1/orders') return json({ orderId: 'o-1', code: '3DMK7Q2XA', amountVnd: 15000, status, expiresAt: new Date(Date.now() + 3600_000).toISOString(),
-        payment: { bankName: 'Test Bank', accountNo: '0123456789012', accountName: 'TEST', transferContent: '3DMK7Q2XA', qrPayload: '000201...' } }, 201);
-      if (path.endsWith('/claim-paid')) { status = 'AWAITING_OWNER'; return json({ status }); }
-      if (method === 'GET') { if (status === 'AWAITING_OWNER') { status = 'CONFIRMED'; rights = { allModels: false, modelIds: [id(101), bed] }; } return json({ orderId: 'o-1', status }); }
-    }
-    return base(url, init);
-  };
-  const r = createRoot(document.getElementById('root'));
-  await act(async () => { r.render(<PluginApp orderPollMs={30} />); await flush(); }); await act(flush); await act(flush);
-  const buy = [...document.querySelectorAll('.group')][0].querySelectorAll('button')[2];
-  assert.match(buy.textContent, /Mua/);
-  const importsBefore = calls.filter((c) => c.method === 'asset.import').length;
-  await act(async () => { buy.click(); await flush(); }); await act(flush);
-  assert.ok(document.querySelector('[role=dialog]'), 'the order dialog is open');
-  assert.match(text(), /Test Bank/); assert.match(text(), /3DMK7Q2XA/);
-  await act(async () => { button('Tôi đã chuyển khoản').click(); await flush(); });
-  await act(() => flush(300)); await act(flush); await act(flush);
-  assert.match(text(), /Đã xác nhận thanh toán/);
-  const card = [...document.querySelectorAll('.group')][0].textContent;
-  assert.match(card, /Download/, 'the bought model is now downloadable');
-  assert.equal(calls.filter((c) => c.method === 'asset.import').length, importsBefore, 'buying never starts a download by itself');
-  assert.deepEqual(orderCalls.filter((c) => c.startsWith('POST /api/v1/orders') && !c.endsWith('claim-paid')), ['POST /api/v1/orders']);
-  globalThis.fetch = base;
-  await act(() => r.unmount()); getJobs().forEach((j) => remove(j.slug));
+test('manual activation sends the key to the host and refreshes rights', async () => {
+  server(); const root = await mount();
+  await act(async () => { [...document.querySelectorAll('.group')][0].querySelectorAll('button')[2].click(); await flush(); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 100)); });
+  assert.match(text(), /MAX-TESTCODE/); assert.match(text(), /Gửi mã máy/);
+  const input = document.querySelector('textarea');
+  await act(async () => { Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, 'value').set.call(input, 'MXL1.test.signature'); input.dispatchEvent(new dom.window.Event('input', { bubbles: true })); await flush(); });
+  await act(async () => { document.querySelector('[role=dialog] form button').click(); await flush(); }); await act(flush); await act(flush);
+  assert.deepEqual(calls.filter((c) => c.method === 'library.activate').at(-1).params, { license: 'MXL1.test.signature' });
+  assert.match(text(), /Đã kích hoạt toàn bộ thư viện/);
+  assert.match(cards()[0], /Download/);
+  await done(root);
+});
+
+test('a conflicting key is explained and never grants access', async () => {
+  server(); activationOutcome = { ok: false, code: 'LEGACY_LICENSE_CONFLICT' }; const root = await mount();
+  await act(async () => { button('Thiết bị').click(); await flush(); });
+  const input = document.querySelector('textarea');
+  await act(async () => { Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, 'value').set.call(input, 'MXL1.test.signature'); input.dispatchEvent(new dom.window.Event('input', { bubbles: true })); await flush(); });
+  await act(async () => { document.querySelector('[role=dialog] form button').click(); await flush(); });
+  assert.match(document.querySelector('[role=alert]').textContent, /thiết bị khác/);
+  assert.match(cards()[0], /Kích hoạt thư viện/);
+  activationOutcome = { ok: true }; await done(root);
 });
 
 test('tab "Đã tải" lists exactly the owned models; unknown rights never list anything', async () => {
@@ -206,6 +202,7 @@ test('changing the search goes back to page 1', async () => {
 test('the device popup shows the machine code from the host; category filter narrows the grid', async () => {
   server(); const root = await mount();
   await act(async () => { button('Thiết bị').click(); await flush(); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 100)); });
   assert.match(text(), /MAX-TESTCODE/);
   await act(async () => { document.querySelector('aside [type=checkbox]').click(); await flush(); });
   assert.ok(document.querySelectorAll('.group').length < 3, 'selecting a category narrows the list');

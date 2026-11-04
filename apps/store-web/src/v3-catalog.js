@@ -57,13 +57,13 @@ export const owns = (entitlements, modelId) => Boolean(entitlements && (entitlem
 
 /** Trang thai nut hanh dong cua mot model (thuan; component chi ve theo ket qua).
  * entitlements: undefined = dang tai, null = khong xac minh duoc, object = quyen cua thiet bi nay. "owned" = owns(entitlements, id). */
-export function actionState({ max, entitlements, owned, offline, job, priceLabel }) {
+export function actionState({ max, entitlements, owned, offline, job }) {
   if (!max) return { kind: 'view', label: 'Trong plugin 3ds Max', disabled: true };
   if (job?.status === 'queued') return { kind: 'queued', label: 'Trong hàng đợi', disabled: true };
   if (job?.status === 'running') return { kind: 'running', label: 'Đang tải…', disabled: true };
   if (entitlements === undefined) return { kind: 'wait', label: 'Đang xác minh quyền…', disabled: true };
   if (entitlements === null) return { kind: 'wait', label: offline ? 'Cần Internet để xác minh quyền' : 'Chưa xác minh được quyền', disabled: true };
-  if (!owned) return { kind: 'buy', label: priceLabel ? `Mua · ${priceLabel}` : 'Mua', disabled: false };
+  if (!owned) return { kind: 'activate', label: 'Kích hoạt thư viện', disabled: false };
   if (job?.status === 'failed') return { kind: 'failed', label: 'Lỗi · Thử lại', disabled: false };
   if (job?.status === 'done') return { kind: 'done', label: '✓ Đã import · Lại', disabled: false };
   return { kind: 'download', label: 'Download', disabled: false };

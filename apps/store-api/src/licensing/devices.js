@@ -72,12 +72,22 @@ async function bindDevice(db, license, proof, allowNew) {
     return (await db.query('update license_devices set last_seen_at=now() where id=$1 returning *', [existing.id])).rows[0];
   }
   if (!allowNew) throw licenseError('DEVICE_NOT_ACTIVATED', 403);
-  if (devices.length >= 2) throw licenseError('DEVICE_LIMIT_REACHED', 409);
-  const slot = devices.some(row => row.slot_number === 1) ? 2 : 1;
-  const row = (await db.query(`insert into license_devices
+  const alreadyBound = await db.query('select 1 from license_devices where device_id=$1 or public_key_hash=$2 limit 1',
+    [proof.device_id, proof.public_key_hash]);
+  if (alreadyBound.rowCount) throw licenseError('DEVICE_IDENTITY_ALREADY_BOUND', 409);
+  if (devices.length >= 1) throw licenseError('DEVICE_LIMIT_REACHED', 409);
+  const slot = 1;
+  let row;
+  try {
+    row = (await db.query(`insert into license_devices
     (license_id,slot_number,device_id,device_public_key,public_key_hash,device_name,key_protection)
     values ($1,$2,$3,$4,$5,$6,$7) on conflict do nothing returning *`,
-  [license.id, slot, proof.device_id, proof.device_public_key, proof.public_key_hash, proof.device_name, proof.key_protection])).rows[0];
+    [license.id, slot, proof.device_id, proof.device_public_key, proof.public_key_hash, proof.device_name, proof.key_protection])).rows[0];
+  } catch (error) {
+    if (error.constraint === 'single_device_identity') throw licenseError('DEVICE_IDENTITY_ALREADY_BOUND', 409);
+    if (error.constraint === 'single_device_per_license') throw licenseError('DEVICE_LIMIT_REACHED', 409);
+    throw error;
+  }
   if (!row) throw licenseError('DEVICE_IDENTITY_ALREADY_BOUND', 409);
   await audit(db, proof.user_id, license.id, 'DEVICE_ACTIVATED', { deviceId: row.device_id, slot });
   return row;

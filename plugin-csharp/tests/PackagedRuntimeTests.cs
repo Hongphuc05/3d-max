@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Threading.Tasks;
 using MaxWebViewHost;
 
@@ -26,6 +27,16 @@ internal static class PackagedRuntimeTests
             File.WriteAllText(Path.Combine(root, "plugin-config.json"), "{\"apiBaseUrl\":\"https://backend.example.com\"}");
             var config = PluginConfiguration.Load(root);
             Assert(config.ApiBaseUri.AbsoluteUri == "https://backend.example.com/", "HTTPS backend accepted");
+            using (var rsa = new RSACryptoServiceProvider(2048))
+            {
+                rsa.PersistKeyInCsp = false;
+                var publicXml = rsa.ToXmlString(false);
+                File.WriteAllText(Path.Combine(root, "plugin-config.json"), "{\"apiBaseUrl\":\"https://backend.example.com\",\"licensePublicKeyXml\":\"" + publicXml + "\"}");
+                var online = PluginConfiguration.Load(root);
+                Assert(online.IsV3Online && online.LicensePublicKeyXml == publicXml, "online configuration accepts the MXL1 public key without requiring an offline catalog");
+                File.WriteAllText(Path.Combine(root, "plugin-config.json"), "{\"apiBaseUrl\":\"https://backend.example.com\",\"licensePublicKeyXml\":\"" + rsa.ToXmlString(true) + "\"}");
+                Reject(() => PluginConfiguration.Load(root), "online configuration rejects private signing key");
+            }
             Assert(PackagedAppRuntime.IsProxyRequest(PackagedAppRuntime.AppOrigin + "/api/auth/me", "GET"), "fixed app API route accepted");
             Assert(!PackagedAppRuntime.IsProxyRequest("https://evil.test/api/auth/me", "GET"), "foreign proxy origin rejected");
             Assert(!PackagedAppRuntime.IsProxyRequest(PackagedAppRuntime.AppOrigin + "/api-evil", "GET"), "path prefix confusion rejected");

@@ -19,8 +19,7 @@ import { createCatalogEvents, createCatalogV1Router, createPreviewRouter } from 
 import { createDeviceRouter } from './devices/routes.js';
 import { loadLegacyPublicKey } from './devices/mxl1.js';
 import { loadDownloadConfig } from './downloads/config.js';
-import { createModelCache } from './downloads/cache.js';
-import { createPublicLinkFetcher } from './downloads/public-link.js';
+import { createDriveMediaProvider } from './downloads/drive-media.js';
 import { createDownloadRouter } from './downloads/routes.js';
 import { createOrderService } from './orders/service.js';
 import { createOrderRouter } from './orders/routes.js';
@@ -30,8 +29,6 @@ import { loadTelegramConfig } from './telegram/config.js';
 import { createTelegramClient } from './telegram/client.js';
 import { createTelegramNotifier } from './telegram/notifier.js';
 import { createTelegramRouter } from './telegram/routes.js';
-
-const publicLink = createPublicLinkFetcher();
 
 const STORAGE = process.env.STORAGE_DIR || path.resolve(import.meta.dirname, '../../../storage');
 // Preview v3 (ten = sha256 noi dung) o thu muc RIENG: route cu express.static('/previews') khong the phuc vu tmp/*.part.
@@ -61,8 +58,10 @@ app.use('/api/admin/licenses', requireLicenseConfiguration, adminLicenseRouter);
 // v3 P1: Google Drive connection. Mounted BEFORE adminRouter so its public OAuth callback is not caught by
 // adminRouter's blanket requireAuth (the callback is protected by a single-use state instead).
 const driveConfig = loadDriveConfig();
-// v3 P3.1: quet Drive bang API key (D26); null = chua dat DRIVE_API_KEY (status bao `missingConfig`). Ma OAuth P1 van gan nhung khong la luong chinh.
-app.use('/api/admin/drive', createDriveRouter({ pool, oauth: createOAuth({ pool, config: driveConfig }), config: driveConfig, apiKey: loadWorkerConfig(process.env).apiKey ?? null,
+const driveOAuth = createOAuth({ pool, config: driveConfig });
+const workerConfig = loadWorkerConfig(process.env);
+// OAuth is required for private Drive sources; API-key mode remains available for public sources.
+app.use('/api/admin/drive', createDriveRouter({ pool, oauth: driveOAuth, config: driveConfig, ...(workerConfig.authMode === 'oauth' ? {} : { apiKey: workerConfig.apiKey ?? null }),
   guards: [requireAuth, requireAdmin], rateLimit: rateLimit({ limit: 60 }) }));
 // v3 P5: don hang + Telegram. Khong dat bien TELEGRAM_* = tat bot (khach van mua, admin xac nhan tren web); dat thieu/sai = dung ngay, chi neu TEN bien.
 const telegramConfig = loadTelegramConfig(process.env);
@@ -90,12 +89,11 @@ app.use('/api/v1', createDeviceRouter({ pool, legacyPublicKey, rateLimit: rateLi
 app.use('/api/v1', createOrderRouter({ pool, service: orders, rateLimit: rateLimit({ limit: 60 }),
   notifier: telegramClient ? createTelegramNotifier({ client: telegramClient, service: orders, ownerChatIds: telegramConfig.ownerChatIds }) : null }));
 if (telegramClient) app.use('/api/telegram', rateLimit({ limit: 120 }), createTelegramRouter({ config: telegramConfig, client: telegramClient, service: orders }));
-// v3 P4.2: phien tai model (D26: VPS tai ho tu link cong khai, luu ban sao tren dia). Cau hinh sai -> dung ngay, chi neu TEN bien.
+// Model sessions stream from Drive through the server; invalid configuration fails at startup.
 const downloadConfig = loadDownloadConfig(process.env);
 if (downloadConfig.errors.length) throw new Error(`Invalid download configuration: ${downloadConfig.errors.join(', ')}`);
-const modelCache = createModelCache({ dir: downloadConfig.cacheDir, open: (fileId, o) => publicLink.open(fileId, o),
-  maxBytes: downloadConfig.maxBytes, minFreeBytes: downloadConfig.minFreeBytes, maxFileBytes: downloadConfig.maxFileBytes });
-app.use('/api/v1', createDownloadRouter({ pool, cache: modelCache, rateLimit: rateLimit({ limit: 120 }),
+const driveProvider = createDriveMediaProvider({ oauth: driveOAuth, apiKey: workerConfig.apiKey });
+app.use('/api/v1', createDownloadRouter({ pool, driveProvider, rateLimit: rateLimit({ limit: 120 }),
   sessionsPerHour: downloadConfig.sessionsPerHour, maxConcurrent: downloadConfig.maxConcurrent }));
 // v3 catalog cong khai cho plugin: gan TRUOC route catalog cu de /api/v1 khong bi route cu bat.
 app.use('/api/v1', createCatalogV1Router({ pool, events: catalogEvents, rateLimit: rateLimit({ limit: 240 }) }));

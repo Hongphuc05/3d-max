@@ -6,6 +6,7 @@ import { loadWorkerConfig } from './worker/config.js';
 import { createSyncHandler } from './worker/process.js';
 import { cleanStaleParts } from './worker/previews.js';
 import { runWorker } from './worker/runner.js';
+import { createOAuth, loadDriveConfig } from './drive/oauth.js';
 
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
 const config = loadWorkerConfig(process.env);
@@ -24,7 +25,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => { console
 console.log('store-worker started');
 await runWorker({
   pool, signal: stop.signal, pollMs: Number(process.env.WORKER_POLL_MS) || 5000,
-  handler: createSyncHandler({ pool, ...config }),
+  handler: createSyncHandler({ pool, ...config, oauth: createOAuth({ pool, config: loadDriveConfig() }) }),
 });
 await pool.end();
 console.log('store-worker stopped');

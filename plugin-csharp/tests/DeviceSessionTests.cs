@@ -169,6 +169,39 @@ class DeviceSessionTests
         }
         // 5. Entitlement refresh with a rejected token re-authenticates once.
         {
+            var server = new Server(); var fake = new Fake { Reply = server.Handle }; var saved = "previous";
+            using (var svc = new DeviceSessionService(Api, new Signer(), Machine, () => null, new HttpClient(fake), () => DateTime.UtcNow))
+            {
+                var granted = await svc.ActivateLicenseAsync("MXL1.rejected.key", () => saved = "rejected", CancellationToken.None);
+                Check(!granted && saved == "previous", "server declining all-model rights does not persist the candidate");
+                fake.Reply = (r, b) => r.RequestUri.AbsolutePath == "/api/v1/device/verify" ? Err(409, "LEGACY_LICENSE_CONFLICT") : server.Handle(r, b);
+                Check(await CodeOf(() => svc.ActivateLicenseAsync("MXL1.conflict.key", () => saved = "conflict", CancellationToken.None)) == "LEGACY_LICENSE_CONFLICT" && saved == "previous", "conflict keeps previous license and allows retry");
+                server.AllModels = true; fake.Reply = server.Handle;
+                granted = await svc.ActivateLicenseAsync("MXL1.accepted.key", () => saved = "accepted", CancellationToken.None);
+                Check(granted && saved == "accepted" && server.LastLegacy == "MXL1.accepted.key" && svc.Current.Entitlements.AllModels, "server confirmation saves the candidate and exposes all-model rights");
+            }
+        }
+        // 5. Entitlement refresh with a rejected token re-authenticates once.
+        {
+            var server = new Server(); var entered = new ManualResetEventSlim(); var release = new ManualResetEventSlim();
+            var license = (string)null;
+            var fake = new Fake { Reply = (r, b) => {
+                var response = server.Handle(r, b);
+                if (r.RequestUri.AbsolutePath == "/api/v1/device/verify" && server.Verifies == 1) { entered.Set(); release.Wait(); }
+                return response;
+            } };
+            using (var svc = new DeviceSessionService(Api, new Signer(), Machine, () => license, new HttpClient(fake), () => DateTime.UtcNow))
+            {
+                var pending = svc.GetTokenAsync(CancellationToken.None);
+                Check(entered.Wait(TimeSpan.FromSeconds(10)), "first authentication reached server");
+                license = "MXL1.abc.def"; svc.Invalidate(); release.Set();
+                await pending;
+                Check(server.Verifies == 2 && server.LastLegacy == license, "activation during authentication forces a fresh verification with the saved license");
+            }
+            entered.Dispose(); release.Dispose();
+        }
+        // 5. Entitlement refresh with a rejected token re-authenticates once.
+        {
             var server = new Server(); var fake = new Fake(); int meCalls = 0;
             fake.Reply = (r, b) => { if (r.RequestUri.AbsolutePath == "/api/v1/me/entitlements" && ++meCalls == 1) return Err(401, "UNAUTHENTICATED"); return server.Handle(r, b); };
             using (var svc = new DeviceSessionService(Api, new Signer(), Machine, () => null, new HttpClient(fake), () => DateTime.UtcNow))

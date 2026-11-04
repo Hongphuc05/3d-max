@@ -5,9 +5,9 @@ import { Filters } from './components.jsx';
 import { matchesCategory } from './catalog-view.js';
 import { HostBar } from './HostBar.jsx';
 import { Icon } from './icons.jsx';
-import { getLibraryStatus, isMaxHost } from './integrations/3dsmax/bridge.js';
+import { isMaxHost } from './integrations/3dsmax/bridge.js';
 import { PluginCard, PluginDetail } from './plugin-components.jsx';
-import OrderDialog from './OrderDialog.jsx';
+import LibraryActivation from './LibraryActivation.jsx';
 import { Queue } from './Queue.jsx';
 import { useJobs } from './queue.js';
 import { owns } from './v3-catalog.js';
@@ -20,27 +20,17 @@ const SORTS = {
   big: ['Nặng → nhẹ', (a, b) => (b.info.sizeMB ?? 0) - (a.info.sizeMB ?? 0)],
 };
 
-function Device({ max }) {
-  const [machineCode, setMachineCode] = useState(null);
-  const [open, setOpen] = useState(false);
-  useEffect(() => { if (max) getLibraryStatus().then((s) => setMachineCode(s?.machineCode ?? null), () => setMachineCode(null)); }, [max]);
+function Device({ open }) {
   return (
     <div className="relative">
-      <button onClick={() => setOpen(!open)} title="Thiết bị" className="flex flex-col items-center gap-1 rounded-md p-2 text-[10px] text-mute hover:bg-raised hover:text-fg">
+      <button onClick={open} title="Thiết bị" className="flex flex-col items-center gap-1 rounded-md p-2 text-[10px] text-mute hover:bg-raised hover:text-fg">
         <Icon name="user" className="size-5" />Thiết bị
       </button>
-      {open && (
-        <div className="absolute bottom-0 left-12 z-50 w-72 rounded-md border border-line bg-raised p-3 text-sm shadow-xl">
-          <div className="font-mono text-[10px] tracking-wider text-mute">MÃ MÁY</div>
-          <div className="mt-1 break-all font-mono text-xs">{machineCode || (max ? 'Đang đọc…' : 'Chỉ có trong plugin 3ds Max')}</div>
-          <p className="mt-2 font-mono text-[10px] text-mute">Quyền tải gắn với thiết bị này. Không cần tài khoản.</p>
-        </div>
-      )}
     </div>
   );
 }
 
-export default function PluginApp({ orderPollMs }) {
+export default function PluginApp() {
   const [subs, setSubs] = useState(() => new Set());
   const [text, setText] = useState('');
   const [sort, setSort] = useState('name');
@@ -49,11 +39,11 @@ export default function PluginApp({ orderPollMs }) {
   const [activeId, setActiveId] = useState(null);
   const [drawer, setDrawer] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const [buying, setBuying] = useState(null);
+  const [activating, setActivating] = useState(false);
   const { products, tree, state, error, offline, progress, entitlements } = usePluginCatalog(reloadKey);
   const jobs = useJobs();
   const max = isMaxHost();
-  const ctx = useMemo(() => ({ max, entitlements, offline, onBuy: (p) => setBuying(p) }), [max, entitlements, offline]);
+  const ctx = useMemo(() => ({ max, entitlements, offline, onActivate: () => setActivating(true) }), [max, entitlements, offline]);
 
   // Chon model theo id (khong giu doi tuong cu): khi catalog tu lam moi, panel chi tiet cap nhat theo ban moi hoac dong neu model da bi go.
   const active = useMemo(() => products.find((p) => p.id === activeId) || null, [products, activeId]);
@@ -85,7 +75,7 @@ export default function PluginApp({ orderPollMs }) {
       <div className="flex min-h-0 flex-1">
         <nav className="flex w-14 shrink-0 flex-col items-center gap-2 border-r border-line bg-panel py-3">
           <div className="flex flex-col items-center gap-1 rounded-md bg-raised p-2 text-[10px] text-accent" title="Models"><Icon name="cube" className="size-5" />Models</div>
-          <div className="mt-auto"><Device max={max} /></div>
+          <div className="mt-auto"><Device open={() => setActivating(true)} /></div>
         </nav>
 
         <div className={`${drawer ? 'fixed inset-0 z-30 bg-black/60' : 'hidden'} lg:static lg:z-auto lg:block lg:bg-transparent`} onClick={() => setDrawer(false)}>
@@ -147,8 +137,7 @@ export default function PluginApp({ orderPollMs }) {
 
         <PluginDetail p={active} onClose={() => setActiveId(null)} ctx={ctx} />
       </div>
-      {/* Thanh toan xong (chu xac nhan) -> tai lai catalog + quyen: nut chuyen sang Download khong can bam Lam moi. */}
-      {buying && <OrderDialog model={buying} pollMs={orderPollMs} onClose={() => setBuying(null)} onConfirmed={() => setReloadKey((k) => k + 1)} />}
+      {activating && <LibraryActivation max={max} onClose={() => setActivating(false)} onActivated={() => setReloadKey((k) => k + 1)} />}
     </div>
   );
 }

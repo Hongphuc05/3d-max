@@ -17,18 +17,23 @@ const STORAGE_CODES = new Set(['STORAGE_DOWNLOAD_FAILED', 'DOWNLOAD_SIZE_MISMATC
 const logCode = (e) => (/^[A-Z][A-Z0-9_]{1,60}$/.test(e?.code ?? '') ? e.code : 'INTERNAL');
 
 const FILE_SQL = `select m.status as model_status, f.id as file_id, f.drive_file_id, f.file_type, f.size_bytes, f.md5_checksum, f.sha256, f.entry_file,
-                         f.can_download, f.download_status
-                    from models m left join model_files f on f.id = m.primary_file_id where m.id = $1`;
+                         f.can_download, f.download_status, s.access_mode, s.connection_id, s.enabled as source_enabled,
+                         i.resource_key
+                    from models m left join model_files f on f.id = m.primary_file_id
+                    left join drive_sources s on s.id = f.source_id
+                    left join drive_inventory i on i.source_id = f.source_id and i.drive_file_id = f.drive_file_id
+                   where m.id = $1`;
 const ENTITLEMENT_SQL = `select id from entitlements where device_id = $1 and revoked_at is null
                           and (scope = 'ALL_MODELS' or (scope = 'MODEL' and model_id = $2)) limit 1`;
 
 function checkOfferable(row) {
-  if (!row || row.model_status !== 'PUBLISHED' || !row.file_id || row.download_status === 'MISSING' || row.download_status === 'ERROR') throw apiError('MODEL_NOT_AVAILABLE');
+  if (!row || row.model_status !== 'PUBLISHED' || !row.file_id || row.source_enabled === false || row.download_status === 'MISSING' || row.download_status === 'ERROR') throw apiError('MODEL_NOT_AVAILABLE');
   if (row.can_download === false || row.download_status === 'RESTRICTED') throw apiError('MODEL_DOWNLOAD_RESTRICTED');
 }
-const cacheRecord = (row) => ({ id: row.file_id, driveFileId: row.drive_file_id, sizeBytes: row.size_bytes, md5: row.md5_checksum, sha256: row.sha256 });
+const cacheRecord = (row) => ({ id: row.file_id, driveFileId: row.drive_file_id, sizeBytes: row.size_bytes, md5: row.md5_checksum, sha256: row.sha256,
+  sourceMode: row.access_mode, connectionId: row.connection_id, resourceKey: row.resource_key });
 
-export function createDownloadRouter({ pool, cache, rateLimit, sessionsPerHour = 10, maxConcurrent = 3 }) {
+export function createDownloadRouter({ pool, cache, driveProvider, rateLimit, sessionsPerHour = 120, maxConcurrent = 3 }) {
   if (!Number.isSafeInteger(sessionsPerHour) || sessionsPerHour < 1 || !Number.isSafeInteger(maxConcurrent) || maxConcurrent < 1) throw new Error('Invalid download config');
   const router = express.Router();
   const pre = [requestId, ...(rateLimit ? [rateLimit] : [])];
@@ -41,6 +46,11 @@ export function createDownloadRouter({ pool, cache, rateLimit, sessionsPerHour =
   // Cung hinh dang provider cua createArchiveSender: nguon la ban sao trong cache, khong phai Google.
   const sender = createArchiveSender({
     async openDownload(model, { signal }) {
+      if (driveProvider) {
+        const result = await driveProvider.openDownload(model, { signal });
+        result.data.on('data', chunk => { model.ctx.bytes += chunk.length; });
+        return result;
+      }
       const handle = await cache.acquire(model.record, { signal, onVerified: model.onVerified });
       try {
         const data = createReadStream(handle.path);
@@ -79,7 +89,7 @@ export function createDownloadRouter({ pool, cache, rateLimit, sessionsPerHour =
          values ($1, $2, $3, $4, now() + interval '5 minutes') returning expires_at`, [sha256(token), modelId, req.device.id, ent.id])).rows[0];
       return { token, expiresAt, row };
     });
-    warm(out.row);
+    if (!driveProvider) warm(out.row);
     const { row } = out;
     res.status(201).json({ sessionId: out.token, expiresAt: out.expiresAt, sizeBytes: row.size_bytes == null ? null : Number(row.size_bytes),
       md5: row.md5_checksum, sha256: row.sha256, fileType: row.file_type, entryFile: row.entry_file });
@@ -106,18 +116,18 @@ export function createDownloadRouter({ pool, cache, rateLimit, sessionsPerHour =
       const row = (await pool.query(FILE_SQL, [s.model_id])).rows[0];
       try { checkOfferable(row); } catch (e) { await fail(e.code); }
 
-      const ctx = { stream: null };
+      const ctx = { stream: null, bytes: 0 };
       const model = { id: s.model_id, archiveExtension: `.${row.file_type}`, canDownload: true, size: row.size_bytes, record: cacheRecord(row), onVerified: learnSha(row.file_id), ctx };
       try {
         try { await sender(req, res, model); } finally { freeSlot(); }
       } catch (e) {
-        await finish(s.id, req.device.id, s.model_id, 'FAILED', res.destroyed ? 'CLIENT_ABORTED' : logCode(e), ctx.stream?.bytesRead ?? 0);
+        await finish(s.id, req.device.id, s.model_id, 'FAILED', res.destroyed ? 'CLIENT_ABORTED' : logCode(e), ctx.stream?.bytesRead ?? ctx.bytes);
         if (res.headersSent || res.destroyed) { res.destroy(); return; }
-        throw STORAGE_CODES.has(e?.code) ? apiError('STORAGE_DOWNLOAD_FAILED') : e?.code === 'DOWNLOAD_BUSY' ? apiError('DOWNLOAD_BUSY') : e;
+        throw (STORAGE_CODES.has(e?.code) || e?.code?.startsWith('DRIVE_')) ? apiError('STORAGE_DOWNLOAD_FAILED') : e?.code === 'DOWNLOAD_BUSY' ? apiError('DOWNLOAD_BUSY') : e;
       }
       // createArchiveSender khong nem khi khach ngat giua chung (no huy luong va tra ve): phan biet bang trang thai gui.
-      if (res.writableFinished) await finish(s.id, req.device.id, s.model_id, 'COMPLETED', null, ctx.stream?.bytesRead ?? 0);
-      else await finish(s.id, req.device.id, s.model_id, 'FAILED', 'CLIENT_ABORTED', ctx.stream?.bytesRead ?? 0);
+      if (res.writableFinished) await finish(s.id, req.device.id, s.model_id, 'COMPLETED', null, ctx.stream?.bytesRead ?? ctx.bytes);
+      else await finish(s.id, req.device.id, s.model_id, 'FAILED', 'CLIENT_ABORTED', ctx.stream?.bytesRead ?? ctx.bytes);
     } finally { freeSlot(); }
   });
 

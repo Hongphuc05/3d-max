@@ -20,10 +20,10 @@ const rollback = name => readFileSync(new URL(`../migrations/rollback/${name}.sq
 test('empty license/payment schema rolls back then reapplies; real records block destructive rollback', { skip: !configured }, async () => {
   const client = await pool.connect();
   try {
-    for (const name of ['007_payment_checkout', '006_device_identity_scope', '005_licensed_import_tickets', '004_payments', '003_licenses']) await client.query(rollback(name));
+    for (const name of ['024_single_device_license', '007_payment_checkout', '006_device_identity_scope', '005_licensed_import_tickets', '004_payments', '003_licenses']) await client.query(rollback(name));
     assert.equal((await client.query("select to_regclass('licenses') is null as absent")).rows[0].absent, true);
     assert.equal((await client.query("select to_regclass('users') is not null as preserved")).rows[0].preserved, true);
-    assert.deepEqual(await migrate(), ['003_licenses.sql', '004_payments.sql', '005_licensed_import_tickets.sql', '006_device_identity_scope.sql', '007_payment_checkout.sql']);
+    assert.deepEqual(await migrate(), ['003_licenses.sql', '004_payments.sql', '005_licensed_import_tickets.sql', '006_device_identity_scope.sql', '007_payment_checkout.sql', '024_single_device_license.sql']);
     const user = (await client.query('insert into users(email,password_hash) values($1,$2) returning id',
       [`${randomUUID()}@test.invalid`, 'fixture'])).rows[0];
     await client.query('insert into orders(user_id,amount_vnd) values($1,1000)', [user.id]);

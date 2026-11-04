@@ -38,13 +38,16 @@ const planCounters = (plan, scanSkipped) => ({
   missingCount: plan.counters.missingCount, reviewCount: plan.counters.reviewCount, skippedCount: scanSkipped + plan.counters.skippedCount,
 });
 
-export function createSyncHandler({ pool, previewDir, minFreeDiskBytes, defaultPriceVnd, previewDelayMs, previewConcurrency, previewCooldownMs, apiKey, createClient, freeDiskBytes }) {
-  const makeClient = createClient ?? (() => createDriveClient({ apiKey }));
+export function createSyncHandler({ pool, previewDir, minFreeDiskBytes, defaultPriceVnd, previewDelayMs, previewConcurrency, previewCooldownMs, apiKey, oauth, createClient, freeDiskBytes }) {
+  const makeClient = createClient ?? ((source) => source.access_mode === 'OAUTH'
+    ? createDriveClient({ getAccessToken: oauth.tokenProvider(source.connection_id) })
+    : createDriveClient({ apiKey }));
   const reload = async (id) => (await pool.query('select * from drive_sync_jobs where id = $1', [id])).rows[0];
 
   async function run(job, ctx) {
     const source = (await pool.query('select * from drive_sources where id = $1', [job.source_id])).rows[0];
-    if (!source?.enabled || source.access_mode !== 'API_KEY') return failed('DRIVE_NOT_CONNECTED');
+    if (!source?.enabled || !['API_KEY', 'OAUTH'].includes(source.access_mode)) return failed('DRIVE_NOT_CONNECTED');
+    if (source.access_mode === 'OAUTH' && !createClient && !oauth) return failed('DRIVE_NOT_CONNECTED');
     const client = makeClient(source);
     let cur = job;
 

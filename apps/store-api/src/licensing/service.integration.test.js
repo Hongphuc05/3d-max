@@ -59,40 +59,59 @@ dbTest('issuance is idempotent under concurrency, bound to account, authenticate
   assert.equal((await service.getActivatedDevices(other.userId)).length, 0);
 });
 
-dbTest('two permanent slots, third denied, existing device verifies without license key', async () => {
+dbTest('one permanent device, second denied, existing device verifies without license key', async () => {
   const user = await licensed(), pc1 = machine(), pc2 = machine();
   const one = await activate(user, pc1);
   assert.equal(one.device.slotNumber, 1);
-  assert.equal((await activate(user, pc2)).device.slotNumber, 2);
-  await assert.rejects(activate(user, machine()), { code: 'DEVICE_LIMIT_REACHED' });
+  await assert.rejects(activate(user, pc2), { code: 'DEVICE_LIMIT_REACHED' });
   assert.equal((await activate(user, pc1)).device.id, one.device.id);
   const verified = await devices.verifyDevice(user.userId, user.sessionId, await proof(user, pc1, 'VERIFY'));
   assert.equal(verified.device.id, one.device.id);
-  assert.equal((await service.getActivatedDevices(user.userId)).length, 2);
+  assert.equal((await service.getActivatedDevices(user.userId)).length, 1);
   assert.equal((await devices.getDeviceSession(user.userId, user.sessionId, verified.token)).license.status, 'ACTIVE');
   await assert.rejects(devices.getDeviceSession(user.userId, user.sessionId, one.token), { code: 'DEVICE_SESSION_INVALID' });
 });
 
-dbTest('simultaneous contenders cannot take a third slot', async () => {
+dbTest('simultaneous contenders cannot take more than one slot', async () => {
   const user = await licensed();
-  await activate(user, machine());
   const outcomes = await Promise.allSettled([activate(user, machine()), activate(user, machine()), activate(user, machine())]);
   assert.equal(outcomes.filter(item => item.status === 'fulfilled').length, 1);
   assert.ok(outcomes.filter(item => item.status === 'rejected').every(item => item.reason.code === 'DEVICE_LIMIT_REACHED'));
-  assert.equal((await service.getActivatedDevices(user.userId)).length, 2);
+  assert.equal((await service.getActivatedDevices(user.userId)).length, 1);
 });
 
-dbTest('one Windows identity can use independently owned licenses without transferring a slot', async () => {
+dbTest('one Windows identity cannot activate two separately owned licenses', async () => {
   const first = await licensed(), second = await licensed(), pc = machine();
   await activate(first, pc);
   await assert.rejects(devices.activateDevice(second.userId, second.sessionId,
     { ...await proof(second, pc), licenseKey: first.key }), { code: 'INVALID_LICENSE_KEY' });
-  await activate(second, pc);
-  const restored = await devices.verifyDevice(second.userId, second.sessionId, await proof(second, pc, 'VERIFY'));
-  assert.equal(restored.license.id, second.license.id, 'prefer the signed-in owner binding when several licenses share this machine');
+  await assert.rejects(activate(second, pc), { code: 'DEVICE_IDENTITY_ALREADY_BOUND' });
   assert.equal((await service.getActivatedDevices(first.userId)).length, 1);
-  assert.equal((await service.getActivatedDevices(second.userId)).length, 1);
+  assert.equal((await service.getActivatedDevices(second.userId)).length, 0);
   await assert.rejects(activate(second, { ...pc, deviceId: randomUUID() }), { code: 'DEVICE_IDENTITY_ALREADY_BOUND' });
+});
+
+dbTest('concurrent licenses cannot bind the same machine identity', async () => {
+  const first = await licensed(), second = await licensed(), pc = machine();
+  const results = await Promise.allSettled([activate(first, pc), activate(second, pc)]);
+  assert.equal(results.filter(r => r.status === 'fulfilled').length, 1);
+  assert.equal(results.find(r => r.status === 'rejected').reason.code, 'DEVICE_IDENTITY_ALREADY_BOUND');
+  assert.equal((await pool.query('select count(*)::int n from license_devices where device_id=$1', [pc.deviceId])).rows[0].n, 1);
+});
+
+dbTest('historical second device remains valid after the policy change', async () => {
+  const user = await licensed(), first = machine(), second = machine();
+  await activate(user, first);
+  const key = (await import('./device-crypto.js')).validatedPublicKey(second.publicKey);
+  // Reproduce a binding issued before migration 024 without weakening the new policy.
+  await pool.query('alter table license_devices disable trigger enforce_new_license_device_binding');
+  try {
+    await pool.query(`insert into license_devices(license_id,slot_number,device_id,device_public_key,public_key_hash,device_name,key_protection)
+      values($1,2,$2,$3,$4,$5,$6)`, [user.license.id, second.deviceId, key.pem, key.hash, second.deviceName, second.keyProtection]);
+  } finally { await pool.query('alter table license_devices enable trigger enforce_new_license_device_binding'); }
+  const verified = await devices.verifyDevice(user.userId, user.sessionId, await proof(user, second, 'VERIFY'));
+  assert.equal(verified.device.slotNumber, 2);
+  await assert.rejects(activate(user, machine()), { code: 'DEVICE_LIMIT_REACHED' });
 });
 
 dbTest('spoofed device ID/new key and reused key/new ID cannot bypass permanent bindings', async () => {

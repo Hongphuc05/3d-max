@@ -99,8 +99,8 @@ export function createDriveRouter({ pool, oauth, config, guards = [], rateLimit,
 
   router.get('/status', async (_req, res, next) => {
     try {
-      if (apiMode) return res.json({ configured: Boolean(apiKey), missingConfig: apiKey ? [] : ['DRIVE_API_KEY'], connection: null, sources: await repo.listSources() });
-      res.json({ configured: config.configured, missingConfig: config.errors, connection: await repo.latestConnection(), sources: await repo.listSources() });
+      if (apiMode) return res.json({ authMode: 'api_key', configured: Boolean(apiKey), missingConfig: apiKey ? [] : ['DRIVE_API_KEY'], connection: null, sources: await repo.listSources() });
+      res.json({ authMode: 'oauth', configured: config.configured, missingConfig: config.errors, connection: await repo.latestConnection(), sources: await repo.listSources() });
     } catch (e) { next(e); }
   });
 

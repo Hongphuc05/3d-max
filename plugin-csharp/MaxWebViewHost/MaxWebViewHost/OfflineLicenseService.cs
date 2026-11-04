@@ -85,6 +85,28 @@ namespace MaxWebViewHost
             }
         }
 
+        // Keep the first valid machine license intact, including when two activation requests arrive together.
+        public OfflineLicenseStatus ActivateForOnline(string license)
+        {
+            lock (gate)
+            {
+                ValidateForOnline(license);
+                return Activate(license);
+            }
+        }
+
+        // Do not persist an unconfirmed key: the server can reject a valid signature or an existing binding.
+        public void ValidateForOnline(string license)
+        {
+            lock (gate)
+            {
+                var token = (license ?? "").Trim();
+                Validate(token);
+                if (GetStatus().licensed && !string.Equals(ReadSaved(), token, StringComparison.Ordinal))
+                    throw new InvalidDataException("Máy này đã có license. Liên hệ quản trị viên nếu cần hỗ trợ.");
+            }
+        }
+
         public void EnsureLicensed()
         {
             var status = GetStatus();

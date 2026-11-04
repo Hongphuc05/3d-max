@@ -67,7 +67,7 @@ before(async () => {
 after(async () => { if (server) { server.closeAllConnections?.(); await new Promise((r) => server.close(r)); } if (dispose) await dispose(pool); });
 beforeEach(async () => {
   if (!configured) return;
-  for (const t of ['entitlements', 'device_tokens', 'device_auth_challenges', 'devices', 'audit_events']) await pool.query(`delete from ${t}`);
+  for (const t of ['mxl1_bindings', 'entitlements', 'device_tokens', 'device_auth_challenges', 'devices', 'audit_events']) await pool.query(`delete from ${t}`);
 });
 
 test('challenge: valid request returns id, message bound to uuid + key hash, 2 minute expiry; NO device row yet', { skip }, async () => {
@@ -81,7 +81,7 @@ test('challenge: valid request returns id, message bound to uuid + key hash, 2 m
   assert.equal(parts[4], hashOf(k).toString('hex'));
   assert.match(parts[2], /^[A-Za-z0-9_-]{43}$/, 'nonce: 32 bytes base64url, the shape the plugin validates');
   const ms = new Date(j.expiresAt) - Date.now();
-  assert.ok(ms > 100_000 && ms <= 120_000, `expiry ${ms}`);
+  assert.ok(ms > 100_000 && ms <= 121_000, `expiry ${ms}`); // DB and host clocks can differ slightly.
   assert.equal(await deviceRow(body.deviceUuid), undefined, 'not registered before a valid signature');
   assert.equal((await pool.query('select count(*)::int n from device_auth_challenges')).rows[0].n, 1);
 });
@@ -110,7 +110,7 @@ test('verify: valid signature registers the device, issues a 15 minute token (on
   assert.equal(r.status, 200);
   assert.match(j.deviceToken, /^[A-Za-z0-9_-]{43}$/);
   const ms = new Date(j.expiresAt) - Date.now();
-  assert.ok(ms > 14 * 60_000 && ms <= 15 * 60_000, `ttl ${ms}`);
+  assert.ok(ms > 14 * 60_000 && ms <= 15 * 60_000 + 1000, `ttl ${ms}`);
   assert.deepEqual(j.entitlements, { allModels: false, modelIds: [] });
   const dev = await deviceRow(body.deviceUuid);
   assert.equal(dev.status, 'ACTIVE'); assert.equal(dev.machine_code, MACHINE); assert.equal(dev.device_name, 'PC-Test'); assert.equal(dev.key_protection, 'SOFTWARE');
@@ -215,7 +215,7 @@ test('registration race: the same device registering twice in parallel yields on
   assert.equal((await pool.query("select count(*)::int n from audit_events where action='DEVICE_REGISTERED'")).rows[0].n, 1);
 });
 
-test('MXL1: a valid licence for this machine grants ALL_MODELS (idempotent, audited); anything else is silently ignored', { skip }, async () => {
+test('MXL1: a valid licence grants ALL_MODELS idempotently; invalid licences fail closed', { skip }, async () => {
   const k = newKey();
   const first = await register(k, {}, { legacyLicense: license() });
   assert.equal(first.r.status, 200);
@@ -235,21 +235,80 @@ test('MXL1: a valid licence for this machine grants ALL_MODELS (idempotent, audi
   const wrong = { 'other machine': license(OTHER_MACHINE), 'foreign signer': license(MACHINE, 'x', newKey().privateKey), 'junk': 'MXL1.a.b', 'empty': '' };
   for (const [name, legacyLicense] of Object.entries(wrong)) {
     const x = await register(newKey(), {}, { legacyLicense });
-    assert.equal(x.r.status, 200, name);
-    assert.equal(x.j.entitlements.allModels, false, name);
+    assert.equal(x.r.status, 403, name);
+    assert.equal(x.j.error.code, 'LEGACY_LICENSE_INVALID', name);
   }
   assert.equal((await pool.query("select count(*)::int n from entitlements where source='MXL1'")).rows[0].n, 1);
 });
 
-test('MXL1: with no licence key configured the field is ignored and registration still works', { skip }, async () => {
+test('MXL1: missing server verification key refuses activation', { skip }, async () => {
   const s = build(null).listen(0, '127.0.0.1'); await new Promise((r) => s.once('listening', r));
   try {
     const k = newKey(), url = `http://127.0.0.1:${s.address().port}/api/v1/device`;
     const post = (p, body) => fetch(url + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json());
     const c = await post('/challenge', challengeBody(k));
     const v = await post('/verify', { challengeId: c.challengeId, signature: signMessage(k, c.message), legacyLicense: license() });
-    assert.equal(v.entitlements.allModels, false);
+    assert.equal(v.error.code, 'LEGACY_LICENSE_INVALID');
   } finally { s.closeAllConnections?.(); await new Promise((r) => s.close(r)); }
+});
+
+test('MXL1 first binding is one key per device and one key per machine even under concurrent requests', { skip }, async () => {
+  const a = newKey(), b = newKey();
+  const bodies = [challengeBody(a), challengeBody(b)];
+  const challenges = await Promise.all(bodies.map(challenge));
+  const responses = await Promise.all(challenges.map(({ j }, i) => verifyCall({
+    challengeId: j.challengeId, signature: signMessage([a, b][i], j.message), legacyLicense: license(),
+  })));
+  assert.deepEqual(responses.map(r => r.status).sort(), [200, 409]);
+  assert.equal((await pool.query('select count(*)::int n from mxl1_bindings')).rows[0].n, 1);
+  assert.equal((await pool.query("select count(*)::int n from entitlements where source='MXL1'")).rows[0].n, 1);
+  const winner = responses[0].status === 200 ? 0 : 1;
+  const duplicate = await register([a, b][winner], { deviceUuid: bodies[winner].deviceUuid }, { legacyLicense: license(MACHINE, 'another') });
+  assert.equal(duplicate.r.status, 409);
+  assert.equal(duplicate.j.error.code, 'LEGACY_LICENSE_CONFLICT');
+  const anotherDevice = await register(newKey(), {}, { legacyLicense: license(MACHINE, 'third') });
+  assert.equal(anotherDevice.r.status, 409);
+});
+
+test('historical duplicated MXL1 grants remain usable, including revoked grants, without granting a third device', { skip }, async () => {
+  const a = await register(), b = await register();
+  const da = await deviceRow(a.body.deviceUuid), db = await deviceRow(b.body.deviceUuid);
+  for (const device of [da, db]) await pool.query(
+    "insert into entitlements(device_id,scope,source,mxl1_license_id) values($1,'ALL_MODELS','MXL1','lic-001')", [device.id]);
+  await pool.query('update entitlements set revoked_at=now() where device_id=$1', [db.id]);
+  const aAgain = await register(a.k, { deviceUuid: a.body.deviceUuid }, { legacyLicense: license() });
+  const bAgain = await register(b.k, { deviceUuid: b.body.deviceUuid }, { legacyLicense: license() });
+  assert.equal(aAgain.j.entitlements.allModels, true);
+  assert.equal(bAgain.j.entitlements.allModels, false);
+  const c = await register(newKey(), {}, { legacyLicense: license() });
+  assert.equal(c.r.status, 409);
+  assert.equal((await pool.query('select count(*)::int n from mxl1_bindings')).rows[0].n, 0);
+});
+
+test('MXL1 activation refuses another active full-library grant instead of binding without its own grant', { skip }, async () => {
+  const client = await register();
+  const device = await deviceRow(client.body.deviceUuid);
+  await pool.query("insert into entitlements(device_id,scope,source) values($1,'ALL_MODELS','ADMIN')", [device.id]);
+  const denied = await register(client.k, { deviceUuid: client.body.deviceUuid }, { legacyLicense: license() });
+  assert.equal(denied.r.status, 409);
+  assert.equal(denied.j.error.code, 'LEGACY_LICENSE_CONFLICT');
+  assert.equal((await pool.query('select count(*)::int n from mxl1_bindings')).rows[0].n, 0);
+  await pool.query("update entitlements set revoked_at = now() where device_id=$1 and source='ADMIN'", [device.id]);
+  const accepted = await register(client.k, { deviceUuid: client.body.deviceUuid }, { legacyLicense: license() });
+  assert.equal(accepted.r.status, 200);
+  assert.equal(accepted.j.entitlements.allModels, true);
+  assert.equal((await pool.query("select count(*)::int n from entitlements where device_id=$1 and source='MXL1' and revoked_at is null", [device.id])).rows[0].n, 1);
+});
+
+test('a bound or historically MXL1-licensed device cannot silently change its machine code', { skip }, async () => {
+  const current = await register(newKey(), {}, { legacyLicense: license() });
+  const changed = await register(current.k, { deviceUuid: current.body.deviceUuid, machineCode: OTHER_MACHINE });
+  assert.equal(changed.r.status, 409);
+  assert.equal((await deviceRow(current.body.deviceUuid)).machine_code, MACHINE);
+  await pool.query('delete from mxl1_bindings'); // simulate an entitlement created before this migration
+  const historical = await register(current.k, { deviceUuid: current.body.deviceUuid, machineCode: OTHER_MACHINE });
+  assert.equal(historical.r.status, 409);
+  assert.equal((await deviceRow(current.body.deviceUuid)).machine_code, MACHINE);
 });
 
 test('requireDevice: only a live token of an active device passes; every other case is a v3 401', { skip }, async () => {

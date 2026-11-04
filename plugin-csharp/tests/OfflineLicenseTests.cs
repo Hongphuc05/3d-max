@@ -10,9 +10,9 @@ internal static class OfflineLicenseTests
     static int passed;
     static void Assert(bool condition, string name) { if (!condition) throw new Exception(name); passed++; Console.WriteLine("PASS " + name); }
     static string Encode(byte[] value) { return Convert.ToBase64String(value).TrimEnd('=').Replace('+', '-').Replace('/', '_'); }
-    static string Sign(RSACryptoServiceProvider rsa, string machine, string extra = "")
+    static string Sign(RSACryptoServiceProvider rsa, string machine, string extra = "", string licenseId = "test-license")
     {
-        var body = Encoding.UTF8.GetBytes("{\"version\":1,\"product\":\"3dsmood-library\",\"machineCode\":\"" + machine + "\",\"licenseId\":\"test-license\"" + extra + "}");
+        var body = Encoding.UTF8.GetBytes("{\"version\":1,\"product\":\"3dsmood-library\",\"machineCode\":\"" + machine + "\",\"licenseId\":\"" + licenseId + "\"" + extra + "}");
         return "MXL1." + Encode(body) + "." + Encode(rsa.SignData(body, CryptoConfig.MapNameToOID("SHA256")));
     }
     static void Reject(Action action, string name) { try { action(); } catch (InvalidDataException) { Assert(true, name); return; } throw new Exception("Accepted: " + name); }
@@ -37,6 +37,9 @@ internal static class OfflineLicenseTests
                 Assert(service.Activate(token).licensed, "valid signed license activates");
                 service.EnsureLicensed();
                 Assert(new OfflineLicenseService(rsa.ToXmlString(false), root, machine).GetStatus().licensed, "license persists offline");
+                Assert(service.ActivateForOnline(token).licensed, "online activation is idempotent for the same license");
+                Reject(() => service.ActivateForOnline(Sign(rsa, machine, "", "different-license")), "online activation preserves the first valid license");
+                Assert(File.ReadAllText(Path.Combine(root, "license.txt")) == token, "conflicting activation leaves the original license intact");
                 Reject(() => service.Activate(Sign(rsa, "MAX-" + new string('B', 64))), "wrong machine rejected");
                 Reject(() => service.Activate(token.Substring(0, token.Length - 8) + "AAAAAAAA"), "tampered signature rejected");
                 Reject(() => service.Activate("invalid"), "malformed license rejected");

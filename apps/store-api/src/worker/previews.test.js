@@ -81,6 +81,15 @@ test('a small source is never enlarged; identical sm/lg bytes share ONE file', {
   assert.equal((await files()).length, 1);
 });
 
+test('preview media requests include the image resource key and do not put it in the URL', { skip }, async () => {
+  const src = addImage(await jpeg(300, 200));
+  const result = await run([{ ...want(src), resourceKey: 'resourceKey_abc' }]);
+  assert.ok(result.results[src.id]);
+  const request = fake.state.requests.find(x => x.query.alt === 'media');
+  assert.equal(request.headers['x-goog-drive-resource-keys'], `${src.id}/resourceKey_abc`);
+  assert.ok(!JSON.stringify(request.query).includes('resourceKey_abc'));
+});
+
 test('EXIF orientation is applied and metadata (GPS etc.) is not copied into the preview', { skip }, async () => {
   const withExif = await sharp(await jpeg(800, 400)).withMetadata({ orientation: 6, exif: { IFD0: { Copyright: 'secret-owner' } } }).jpeg().toBuffer();
   const src = addImage(withExif);

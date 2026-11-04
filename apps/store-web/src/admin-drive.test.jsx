@@ -20,8 +20,8 @@ const response = (data, status = 200) => new Response(JSON.stringify(data), { st
 const v3Error = (status, code, message) => response({ error: { code, message, requestId: 'req-1' } }, status);
 const source = (over = {}) => ({ id: 'src-1', connectionId: null, rootFolderName: 'Thu vien 3DS', sourceType: 'MY_DRIVE', enabled: true, lastSuccessfulSyncAt: null, ...over });
 
-async function mount({ configured = true, sources = [] } = {}) {
-  fixture = { sources, configured, requests: [], addError: null, testResult: null };
+async function mount({ configured = true, sources = [], authMode = 'api_key', connection = null } = {}) {
+  fixture = { sources, configured, authMode, connection, requests: [], addError: null, testResult: null };
   globalThis.fetch = async (url, init = {}) => {
     const path = String(url).split('?')[0], body = init.body ? JSON.parse(init.body) : null;
     fixture.requests.push({ path, body, method: init.method ?? 'GET' });
@@ -31,7 +31,7 @@ async function mount({ configured = true, sources = [] } = {}) {
     if (path === '/api/licenses/devices') return response({ devices: [] });
     if (path === '/api/admin/overview') return response({ stats: { users: 1, activeLicenses: 0, paidOrders: 0, revenueVnd: 0 }, catalog: { state: 'empty', syncing: false } });
     if (path === '/api/admin/catalog/sync/permission') return response({ allowed: true });
-    if (path === '/api/admin/drive/status') return response({ configured: fixture.configured, missingConfig: fixture.configured ? [] : ['DRIVE_API_KEY'], connection: null, sources: fixture.sources });
+    if (path === '/api/admin/drive/status') return response({ authMode: fixture.authMode, configured: fixture.configured, missingConfig: fixture.configured ? [] : [fixture.authMode === 'oauth' ? 'GOOGLE_OAUTH_CLIENT_ID' : 'DRIVE_API_KEY'], connection: fixture.connection, sources: fixture.sources });
     if (path === '/api/admin/drive/sources' && init.method === 'POST') {
       if (fixture.addError) return fixture.addError;
       if (fixture.gate) await fixture.gate;
@@ -58,7 +58,7 @@ async function submit(form) { await act(async () => form.dispatchEvent(new windo
 const openDrive = async () => click(button('Kết nối Drive'));
 const calls = (path, method) => fixture.requests.filter((r) => r.path === path && (!method || r.method === method));
 
-afterEach(async () => { if (root) await act(async () => root.unmount()); root = null; });
+afterEach(async () => { if (root) await act(async () => root.unmount()); root = null; window.history.replaceState(null, '', '/admin'); });
 after(() => { globalThis.fetch = originalFetch; dom.window.close(); });
 
 test('the Drive section loads only when opened; configured key and sources are shown without any secret', async () => {
@@ -81,6 +81,32 @@ test('missing key: shows the variable NAME, tells the admin to set it on the ser
   assert.match(container.textContent, /DRIVE_API_KEY/);
   assert.equal(container.querySelector('button[type="submit"]').disabled, true);
   assert.equal(calls('/api/admin/drive/sources', 'POST').length, 0);
+});
+
+test('OAuth requires connection before adding a source and offers the guarded start endpoint', async () => {
+  await mount({ authMode: 'oauth' });
+  await openDrive();
+  assert.match(container.textContent, /Chưa kết nối tài khoản Google/);
+  assert.equal(container.querySelector('button[type="submit"]').disabled, true);
+  assert.equal(container.querySelector('a[href="/api/admin/drive/oauth/start"]').textContent, 'Kết nối Google Drive');
+});
+
+test('OAuth callback opens Drive, shows connection status and permits adding a source', async () => {
+  window.history.replaceState(null, '', '/admin?drive=connected');
+  await mount({ authMode: 'oauth', connection: { email: 'operator@example.test', status: 'CONNECTED' } });
+  assert.match(container.textContent, /Đã hoàn tất kết nối Google/);
+  assert.match(container.textContent, /operator@example.test/);
+  assert.equal(container.querySelector('button[type="submit"]').disabled, false);
+  assert.equal(container.querySelector('a[href="/api/admin/drive/oauth/start"]').textContent, 'Kết nối lại Google Drive');
+});
+
+test('OAuth callback failure is reported without rendering an arbitrary reason; revoked connections cannot add sources', async () => {
+  window.history.replaceState(null, '', '/admin?drive=error&reason=untrusted-secret');
+  await mount({ authMode: 'oauth', connection: { email: 'operator@example.test', status: 'RECONNECT_REQUIRED' } });
+  assert.match(container.textContent, /Kết nối Google chưa hoàn tất/);
+  assert.match(container.textContent, /Cần kết nối lại/);
+  assert.doesNotMatch(container.textContent, /untrusted-secret/);
+  assert.equal(container.querySelector('button[type="submit"]').disabled, true);
 });
 
 test('add root folder: sends only the filled fields, refreshes the list, resets the form', async () => {

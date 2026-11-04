@@ -69,12 +69,12 @@ test('action state: browser views only; queue states win; unknown rights never o
   const offlineWait = actionState({ ...base, entitlements: null, owned: false, offline: true });
   assert.deepEqual([offlineWait.kind, offlineWait.disabled, offlineWait.label], ['wait', true, 'Cần Internet để xác minh quyền']);
   assert.equal(actionState({ ...base, entitlements: null, owned: false }).label, 'Chưa xác minh được quyền');
-  assert.deepEqual(actionState({ ...base, owned: false }), { kind: 'buy', label: 'Mua · 15.000 ₫', disabled: false });
-  assert.equal(actionState({ ...base, owned: false, priceLabel: '' }).label, 'Mua');
+  assert.deepEqual(actionState({ ...base, owned: false }), { kind: 'activate', label: 'Kích hoạt thư viện', disabled: false });
+  assert.equal(actionState({ ...base, owned: false, priceLabel: '' }).label, 'Kích hoạt thư viện');
   assert.equal(actionState({ ...base, job: { status: 'failed' } }).kind, 'failed');
   assert.equal(actionState({ ...base, job: { status: 'done' } }).kind, 'done');
   assert.deepEqual(actionState(base), { kind: 'download', label: 'Download', disabled: false });
-  assert.equal(actionState({ ...base, owned: false, job: { status: 'failed' } }).kind, 'buy', 'a stale failed job never unlocks a model the device does not own');
+  assert.equal(actionState({ ...base, owned: false, job: { status: 'failed' } }).kind, 'activate', 'a stale failed job never unlocks a model the device does not own');
 });
 
 test('a model whose category sits in a parent cycle still gets a finite ancestry; a model with only a large preview uses it for the thumbnail too', () => {

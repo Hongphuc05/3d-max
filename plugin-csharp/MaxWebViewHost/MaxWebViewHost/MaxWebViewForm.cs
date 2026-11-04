@@ -261,8 +261,11 @@ namespace MaxWebViewHost
                     {
                         ApiBase = configuration.ApiBaseUri.AbsoluteUri.TrimEnd('/');
                         var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                        var licenseDir = Path.Combine(local, "MaxWebViewHost", "OfflineLibrary", "License");
+                        if (!string.IsNullOrWhiteSpace(configuration.LicensePublicKeyXml))
+                            _offlineLicense = new OfflineLicenseService(configuration.LicensePublicKeyXml, licenseDir);
                         _v3 = V3Library.Create(configuration, _deviceIdentity, OfflineLicenseService.ReadMachineCode(), Path.Combine(local, "3dMood"),
-                            Path.Combine(local, "MaxWebViewHost", "OfflineLibrary", "License", "license.txt"));
+                            Path.Combine(licenseDir, "license.txt"));
                         _v3.HostEvent += PostHostEvent;
                     }
                     TrustedOrigins = PackagedAppRuntime.AppOrigin;
@@ -524,11 +527,22 @@ namespace MaxWebViewHost
                 if (_v3 != null)
                 {
                     if (method == "library.refresh") await _v3.Watcher.CheckNowAsync(_lifetime.Token);
+                    else if (method == "library.activate")
+                    {
+                        if (_offlineLicense == null) { PostError(id, "LICENSE_NOT_CONFIGURED", "Bộ cài thiếu khóa xác minh license. Liên hệ nhà cung cấp để cập nhật bộ cài."); return; }
+                        var candidate = (string)parameters["license"];
+                        await RunDeviceOperation(() => _offlineLicense.ValidateForOnline(candidate));
+                        bool activated;
+                        try { activated = await _v3.Session.ActivateLicenseAsync(candidate, () => _offlineLicense.ActivateForOnline(candidate), _lifetime.Token); }
+                        catch (ApiException error) when (error.Code == "SERVER_UNAVAILABLE")
+                        { PostError(id, error.Code, "Chưa kết nối được máy chủ để xác nhận license. Kiểm tra mạng và thử lại."); return; }
+                        if (!activated) { PostError(id, "LICENSE_NOT_GRANTED", "Máy chủ chưa cấp quyền thư viện cho license này. Liên hệ quản trị viên."); return; }
+                    }
                     else if (method == "library.status")
                     {
                         try { await _v3.GetEntitlementsAsync(_lifetime.Token); } catch (ApiException) { /* offline or blocked: report what we know */ }
                     }
-                    else { PostError(id, "UNSUPPORTED", "Phiên bản này không dùng license nhập tay."); return; }
+                    else { PostError(id, "UNSUPPORTED", "Chức năng thư viện không được hỗ trợ."); return; }
                     PostResponse(id, true, _v3.Status(), null);
                     return;
                 }

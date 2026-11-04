@@ -68,7 +68,8 @@ test('guards: anonymous 401, ordinary user 403 on status/sources/test-access; no
 
 test('status (key configured): configured true, no missing config, no OAuth connection, sources listed; the key never appears', { skip }, async () => {
   const empty = await (await j('/status')).json();
-  assert.deepEqual(Object.keys(empty).sort(), ['configured', 'connection', 'missingConfig', 'sources']);
+  assert.deepEqual(Object.keys(empty).sort(), ['authMode', 'configured', 'connection', 'missingConfig', 'sources']);
+  assert.equal(empty.authMode, 'api_key');
   assert.equal(empty.configured, true); assert.deepEqual(empty.missingConfig, []); assert.equal(empty.connection, null); assert.deepEqual(empty.sources, []);
 
   await j('/sources', { method: 'POST', body: { rootFolderUrlOrId: ROOT } });

@@ -1,5 +1,4 @@
-// P3.1 — Ket noi Drive (plan §2.1: "cau hinh API key va thu muc goc"). Khoa API chi nam trong .env cua may chu:
-// man nay chi hien da/chua cau hinh, khong nhan va khong hien khoa. ID thu muc/Drive khong bao gio duoc hien lai.
+// Credentials stay on the server; the browser only starts the OAuth redirect.
 import { useState } from 'react';
 import * as api from './api.js';
 import { adminError, dateTime, inputClass, panel, primary, ResourceState, secondary, useAdminResource } from './AdminShared.jsx';
@@ -45,6 +44,10 @@ export default function AdminDrive() {
   const [form, setForm] = useState({ rootFolderUrlOrId: '', resourceKey: '' });
   const [save, setSave] = useState({ busy: false, error: '' });
   const status = resource.data;
+  const oauthMode = status?.authMode === 'oauth';
+  const connected = status?.connection?.status === 'CONNECTED';
+  const canAddSource = status?.configured && (!oauthMode || connected);
+  const callback = new URLSearchParams(window.location.search).get('drive');
 
   async function submit(event) {
     event.preventDefault();
@@ -65,21 +68,28 @@ export default function AdminDrive() {
     <ResourceState {...resource} retry={() => setVersion((value) => value + 1)} />
     {status && <>
       <div className={`${panel} space-y-2`}>
-        <h3 className="font-bold">Khóa API</h3>
-        {status.configured
-          ? <p className="text-sm text-accent">Đã cấu hình khóa API Drive trên máy chủ.</p>
-          : <p role="alert" className="text-sm text-warn">Chưa cấu hình. Máy chủ thiếu biến: {status.missingConfig.join(', ')}. Đặt biến này trong file .env của máy chủ rồi khởi động lại.</p>}
-        <p className="text-xs text-mute">Khóa chỉ nằm trên máy chủ, không nhập và không hiển thị ở đây.</p>
+        <h3 className="font-bold">{oauthMode ? 'Kết nối tài khoản Google' : 'Khóa API'}</h3>
+        {!status.configured
+          ? <p role="alert" className="text-sm text-warn">Chưa cấu hình. Máy chủ thiếu biến: {status.missingConfig.join(', ')}. Đặt biến này trong file .env của máy chủ rồi khởi động lại.</p>
+          : oauthMode ? <>
+            {connected ? <p className="text-sm text-accent">Đã kết nối: {status.connection.email}</p>
+              : <p className="text-sm text-warn">{status.connection ? 'Cần kết nối lại tài khoản Google.' : 'Chưa kết nối tài khoản Google.'}</p>}
+            <a className={`${secondary} inline-block`} href="/api/admin/drive/oauth/start">{status.connection ? 'Kết nối lại Google Drive' : 'Kết nối Google Drive'}</a>
+            <p className="text-xs text-mute">Đăng nhập bằng tài khoản được chia sẻ thư mục Drive và có quyền tải file.</p>
+          </> : <p className="text-sm text-accent">Đã cấu hình khóa API Drive trên máy chủ.</p>}
+        {oauthMode && callback === 'connected' && <p role="status" className="text-sm text-accent">Đã hoàn tất kết nối Google. Kiểm tra trạng thái ở trên.</p>}
+        {oauthMode && callback === 'error' && <p role="alert" className="text-sm text-danger">Kết nối Google chưa hoàn tất. Hãy thử kết nối lại và kiểm tra cấu hình OAuth.</p>}
+        <p className="text-xs text-mute">Thông tin xác thực chỉ nằm trên máy chủ, không nhập và không hiển thị ở đây.</p>
       </div>
 
       <form className={`${panel} space-y-3`} onSubmit={submit}>
         <h3 className="font-bold">Thư mục gốc</h3>
         <label className="block text-sm"><span className="text-mute">Thư mục gốc (liên kết hoặc ID)</span>
-          <input className={`${inputClass} mt-1`} name="rootFolderUrlOrId" maxLength={2000} autoComplete="off" disabled={!status.configured} value={form.rootFolderUrlOrId} onChange={(event) => setForm({ ...form, rootFolderUrlOrId: event.target.value })} /></label>
+          <input className={`${inputClass} mt-1`} name="rootFolderUrlOrId" maxLength={2000} autoComplete="off" disabled={!canAddSource} value={form.rootFolderUrlOrId} onChange={(event) => setForm({ ...form, rootFolderUrlOrId: event.target.value })} /></label>
         <label className="block text-sm"><span className="text-mute">Resource key (nếu có)</span>
-          <input className={`${inputClass} mt-1`} name="resourceKey" maxLength={100} autoComplete="off" disabled={!status.configured} value={form.resourceKey} onChange={(event) => setForm({ ...form, resourceKey: event.target.value })} /></label>
+          <input className={`${inputClass} mt-1`} name="resourceKey" maxLength={100} autoComplete="off" disabled={!canAddSource} value={form.resourceKey} onChange={(event) => setForm({ ...form, resourceKey: event.target.value })} /></label>
         {save.error && <p role="alert" className="text-sm text-danger">{save.error}</p>}
-        <button type="submit" className={primary} disabled={!status.configured || save.busy}>Lưu thư mục gốc</button>
+        <button type="submit" className={primary} disabled={!canAddSource || save.busy}>Lưu thư mục gốc</button>
       </form>
 
       <div className={`${panel} space-y-3`}>

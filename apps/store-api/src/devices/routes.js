@@ -7,6 +7,7 @@ import { apiError, requestId, v3ErrorHandler } from '../drive/errors.js';
 import { bad, inTransaction, UUID } from '../catalog-admin/shared.js';
 import { validatedPublicKey, validSignature } from '../licensing/device-crypto.js';
 import { verifyLegacyLicense } from './mxl1.js';
+import { bindMxl1 } from './mxl1-binding.js';
 
 const MACHINE = /^MAX-[A-F0-9]{64}$/;
 const TOKEN = /^Device ([A-Za-z0-9_-]{43})$/;
@@ -92,10 +93,16 @@ export function createDeviceRouter({ pool, rateLimit, legacyPublicKey = null }) 
         deviceId = ins.rows[0]?.id;
       } catch (e) { if (e.code === '23505') throw apiError('DEVICE_KEY_MISMATCH'); throw e; } // khoa nay da thuoc uuid khac
       if (!registered) {
-        const dev = (await db.query('select id, public_key_hash, status from devices where device_uuid = $1 for update', [ch.device_uuid])).rows[0];
+        const dev = (await db.query('select id, public_key_hash, status, machine_code from devices where device_uuid = $1 for update', [ch.device_uuid])).rows[0];
         if (!dev.public_key_hash.equals(ch.public_key_hash)) throw apiError('DEVICE_KEY_MISMATCH');
         if (dev.status === 'BLOCKED') throw apiError('DEVICE_BLOCKED');
         deviceId = dev.id;
+        if (dev.machine_code !== ch.machine_code) {
+          const protectedMachine = await db.query(
+            `select 1 from mxl1_bindings where device_id = $1
+             union all select 1 from entitlements where device_id = $1 and source = 'MXL1' limit 1`, [deviceId]);
+          if (protectedMachine.rowCount) throw apiError('LEGACY_LICENSE_CONFLICT');
+        }
         await db.query('update devices set last_seen_at = now(), device_name = $2, machine_code = $3, key_protection = $4 where id = $1',
           [deviceId, ch.device_name, ch.machine_code, ch.key_protection]);
       }
@@ -103,18 +110,10 @@ export function createDeviceRouter({ pool, rateLimit, legacyPublicKey = null }) 
         "insert into audit_events (actor_kind, action, target_type, target_id, details) values ('SYSTEM', 'DEVICE_REGISTERED', 'device', $1, $2)",
         [ch.device_uuid, JSON.stringify({ keyProtection: ch.key_protection })]);
 
-      // License MXL1 sai/khong khop may/chua cau hinh khoa: bo qua im lang, khong bao gio chan dang ky.
-      const licenseId = typeof legacyLicense === 'string' ? verifyLegacyLicense(legacyLicense, legacyPublicKey, ch.machine_code) : null;
-      if (licenseId) {
-        // Quyen MXL1 da tung cap (ke ca da thu hoi) cho license nay thi khong cap lai.
-        const granted = await db.query(
-          `insert into entitlements (device_id, scope, source, mxl1_license_id)
-           select $1, 'ALL_MODELS', 'MXL1', $2
-            where not exists (select 1 from entitlements where device_id = $1 and source = 'MXL1' and mxl1_license_id = $2)
-           on conflict do nothing`, [deviceId, licenseId]);
-        if (granted.rowCount) await db.query(
-          "insert into audit_events (actor_kind, action, target_type, target_id, details) values ('SYSTEM', 'MXL1_GRANTED', 'device', $1, $2)",
-          [ch.device_uuid, JSON.stringify({ licenseId })]);
+      if (legacyLicense !== undefined) {
+        const licenseId = verifyLegacyLicense(legacyLicense, legacyPublicKey, ch.machine_code);
+        if (!licenseId) throw apiError('LEGACY_LICENSE_INVALID');
+        await bindMxl1(db, { deviceId, deviceUuid: ch.device_uuid, machineCode: ch.machine_code, licenseId });
       }
 
       const token = randomBytes(32).toString('base64url');

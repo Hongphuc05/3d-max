@@ -1,6 +1,6 @@
 // P4.4: the model grid card, detail panel and action button of the plugin (UI-1 layout, v3 data). No account, no licence screen:
 // what a device may download is decided by the server (entitlements); the button only reflects it.
-import { mb, vnd } from './api.js';
+import { mb } from './api.js';
 import { Preview, rendererLabel } from './components.jsx';
 import { Icon } from './icons.jsx';
 import { enqueue, useJob } from './queue.js';
@@ -14,15 +14,14 @@ const styles = {
 
 export function ModelAction({ p, ctx, big }) {
   const job = useJob(p.slug);
-  const state = actionState({ max: ctx.max, entitlements: ctx.entitlements, owned: owns(ctx.entitlements, p.id), offline: ctx.offline, job,
-    priceLabel: p.priceVnd == null ? '' : vnd(p.priceVnd) });
+  const state = actionState({ max: ctx.max, entitlements: ctx.entitlements, owned: owns(ctx.entitlements, p.id), offline: ctx.offline, job });
   const size = `${styles.base} ${big ? 'py-3 text-sm' : 'py-1.5 text-xs'}`;
-  const click = (e) => { e.stopPropagation(); if (state.kind === 'buy') ctx.onBuy(p); else enqueue(p); };
+  const click = (e) => { e.stopPropagation(); if (state.kind === 'activate') ctx.onActivate(); else enqueue(p); };
   if (state.kind === 'view') return <div className="font-mono text-xs text-mute">{state.label}</div>;
   if (state.disabled) return <button disabled className={`${size} ${styles.ghost} ${state.kind === 'running' ? 'animate-pulse text-accent' : ''}`}>{state.label}</button>;
   if (state.kind === 'failed') return <button onClick={click} className={`${size} border border-danger/50 text-danger hover:bg-danger/10`}>{state.label}</button>;
   if (state.kind === 'done') return <button onClick={click} className={`${size} border border-accent/50 text-accent hover:bg-accent/10`}>{state.label}</button>;
-  if (state.kind === 'buy') return <button onClick={click} className={`${size} border border-accent/60 text-accent hover:bg-accent/10`}>{state.label}</button>;
+  if (state.kind === 'activate') return <button onClick={click} className={`${size} border border-accent/60 text-accent hover:bg-accent/10`}>{state.label}</button>;
   return <button onClick={click} className={`${size} ${styles.solid}`}>{big ? 'Download & import vào 3ds Max' : state.label}</button>;
 }
 
@@ -77,7 +76,6 @@ export function PluginDetail({ p, onClose, ctx }) {
           </div>
           <div className="grid grid-cols-2 gap-x-4">
             <Row k="QUYỀN DÙNG" v={ctx.entitlements ? (owned ? <span className="font-mono font-bold text-accent">Đã sở hữu</span> : <span className="font-mono">Chưa sở hữu</span>) : <span className="font-mono text-mute">—</span>} />
-            <Row k="GIÁ" v={<span className="font-mono">{p.priceVnd == null ? '—' : vnd(p.priceVnd)}</span>} />
             <Row k="DUNG LƯỢNG" v={<span className="font-mono">{mb(p.info.sizeMB)}</span>} />
             <Row k="ĐỊNH DẠNG" v={p.info.formats.map((f) => '.' + f).join(' ') || '—'} />
           </div>

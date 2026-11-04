@@ -39,6 +39,7 @@ namespace MaxWebViewHost
         private readonly Func<DateTime> utcNow;
         private readonly SemaphoreSlim gate = new SemaphoreSlim(1, 1);
         private volatile DeviceSession current;
+        private int generation;
 
         public DeviceSessionService(Uri apiBase, IDeviceSigner signer, string machineCode, Func<string> legacyLicense, HttpClient http, Func<DateTime> utcNow)
         {
@@ -53,7 +54,25 @@ namespace MaxWebViewHost
         /// <summary>The session in use, or null before the first successful authentication.</summary>
         public DeviceSession Current { get { return current; } }
 
-        public void Invalidate() { current = null; }
+        public void Invalidate() { Interlocked.Increment(ref generation); current = null; }
+
+        /// <summary>Verify a candidate license before saving it; failures preserve any previously saved license.</summary>
+        public async Task<bool> ActivateLicenseAsync(string license, Action save, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(license) || save == null) throw new ArgumentNullException();
+            Invalidate();
+            await gate.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                var started = Volatile.Read(ref generation);
+                var session = await AuthenticateAsync(ct, license.Trim()).ConfigureAwait(false);
+                if (!session.Entitlements.AllModels) return false;
+                await OffThread(() => { save(); return true; }).ConfigureAwait(false);
+                if (started == Volatile.Read(ref generation)) current = session;
+                return true;
+            }
+            finally { gate.Release(); }
+        }
 
         public async Task<string> GetTokenAsync(CancellationToken ct)
         {
@@ -65,7 +84,16 @@ namespace MaxWebViewHost
             {
                 session = current;
                 if (Fresh(session)) return session.Token;
-                return (current = await AuthenticateAsync(ct).ConfigureAwait(false)).Token;
+                while (true)
+                {
+                    var started = Volatile.Read(ref generation);
+                    session = await AuthenticateAsync(ct).ConfigureAwait(false);
+                    if (started != Volatile.Read(ref generation)) continue;
+                    current = session;
+                    // An activation may invalidate the session while authentication is in flight.
+                    if (started == Volatile.Read(ref generation)) return session.Token;
+                    current = null;
+                }
             }
             finally { gate.Release(); }
         }
@@ -90,7 +118,7 @@ namespace MaxWebViewHost
 
         private bool Fresh(DeviceSession session) { return session != null && utcNow() < session.ExpiresUtc - Margin; }
 
-        private async Task<DeviceSession> AuthenticateAsync(CancellationToken ct)
+        private async Task<DeviceSession> AuthenticateAsync(CancellationToken ct, string candidateLicense = null)
         {
             PublicDeviceIdentity identity;
             try { identity = await OffThread(() => signer.GetIdentity()).ConfigureAwait(false); }
@@ -109,7 +137,7 @@ namespace MaxWebViewHost
             try { signature = await OffThread(() => signer.SignChallenge(challengeId, message)).ConfigureAwait(false); }
             catch (DeviceIdentityException e) { throw new ApiException(e.Code, 0, e.Message); }
             var verify = new Dictionary<string, object> { { "challengeId", challengeId }, { "signature", signature } };
-            var license = legacyLicense();
+            var license = candidateLicense ?? legacyLicense();
             if (!string.IsNullOrWhiteSpace(license)) verify["legacyLicense"] = license.Trim();
             var result = (await api.SendAsync(HttpMethod.Post, "/api/v1/device/verify", verify, null, null, 1024 * 1024, ct).ConfigureAwait(false)).Object();
 

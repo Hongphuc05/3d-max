@@ -33,7 +33,7 @@ function Overview() {
 
 export default function AdminDashboard() {
   const { user, logout } = useAuth();
-  const [section, setSection] = useState(user.mustChangeCredentials ? 'account' : 'overview');
+  const [section, setSection] = useState(user.mustChangeCredentials ? 'account' : new URLSearchParams(window.location.search).has('drive') ? 'drive' : 'overview');
   const locked = Boolean(user.mustChangeCredentials);
   const active = locked ? 'account' : section;
   return <div className="flex h-screen min-h-0 flex-col bg-base text-fg">

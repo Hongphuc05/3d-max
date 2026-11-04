@@ -156,6 +156,43 @@ test('an ALL_MODELS entitlement (migrated MXL1) is enough', { skip }, async () =
   assert.equal(r.status, 201);
 });
 
+test('direct Drive streaming opens only for an entitled device and keeps Drive metadata private', { skip }, async () => {
+  const seen = [];
+  base = await start({ router: { driveProvider: { async openDownload(model, opts) {
+    seen.push(model.record);
+    return fakeOpen(model.record.driveFileId, opts);
+  } } } });
+  const dev = await mkDevice(), m = await mkModel();
+  await pool.query(`insert into drive_inventory(source_id,drive_file_id,path,filename,mime_type,resource_key)
+                    values($1,$2,'/m.rar','m.rar','application/octet-stream','resourceKey')`, [sourceId, m.driveFileId]);
+  assert.equal(await code(await createSession(m.id, dev.token)), 'NOT_ENTITLED');
+  assert.equal(seen.length, 0);
+  await grantAll(dev.id);
+  const session = await (await createSession(m.id, dev.token)).json();
+  assert.equal(seen.length, 0, 'creating a session does not download a model');
+  const response = await openStream(session.sessionId, dev.token);
+  assert.equal(response.status, 200);
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()), m.data);
+  assert.equal(seen[0].sourceMode, 'API_KEY');
+  assert.equal(seen[0].resourceKey, 'resourceKey');
+  assert.equal(JSON.stringify(session).includes(m.driveFileId), false);
+  assert.equal(JSON.stringify([...response.headers]).includes(m.driveFileId), false);
+  await until(async () => (await logs()).length === 1);
+  assert.deepEqual([(await logs())[0].status, Number((await logs())[0].bytes_sent)], ['COMPLETED', m.data.length]);
+  await pool.query('delete from drive_inventory where source_id=$1 and drive_file_id=$2', [sourceId, m.driveFileId]);
+});
+
+test('Drive permission failure is logged but hidden from the client', { skip }, async () => {
+  base = await start({ router: { driveProvider: { async openDownload() {
+    throw Object.assign(new Error('private upstream detail'), { code: 'DRIVE_PERMISSION_DENIED' });
+  } } } });
+  const { dev, j } = await ready();
+  const response = await openStream(j.sessionId, dev.token);
+  assert.equal(response.status, 502);
+  assert.equal(await code(response), 'STORAGE_DOWNLOAD_FAILED');
+  assert.equal((await logs())[0].error_code, 'DRIVE_PERMISSION_DENIED');
+});
+
 test('no entitlement, revoked entitlement, or another device\'s entitlement: NOT_ENTITLED 403 and no session row', { skip }, async () => {
   const dev = await mkDevice(), other = await mkDevice(), m = await mkModel();
   let r = await createSession(m.id, dev.token);
@@ -389,7 +426,7 @@ test('loadDownloadConfig: defaults, overrides and bad values (errors name the va
   const { loadDownloadConfig } = await import('./config.js');
   const d = loadDownloadConfig({ STORAGE_DIR: '/data' });
   assert.equal(d.cacheDir, path.resolve('/data', 'model-cache'));
-  assert.deepEqual([d.maxBytes, d.minFreeBytes, d.maxFileBytes, d.sessionsPerHour, d.maxConcurrent], [20 * 1024 ** 3, 2 * 1024 ** 3, 4 * 1024 ** 3, 10, 3]);
+  assert.deepEqual([d.maxBytes, d.minFreeBytes, d.maxFileBytes, d.sessionsPerHour, d.maxConcurrent], [20 * 1024 ** 3, 2 * 1024 ** 3, 4 * 1024 ** 3, 120, 3]);
   const o = loadDownloadConfig({ MODEL_CACHE_DIR: '/x/cache', MODEL_CACHE_MAX_BYTES: '5000', MODEL_CACHE_MIN_FREE_BYTES: '0', MODEL_MAX_FILE_BYTES: '9000', DOWNLOAD_SESSIONS_PER_HOUR: '4', DOWNLOAD_MAX_CONCURRENT: '2' });
   assert.deepEqual([o.cacheDir, o.maxBytes, o.minFreeBytes, o.maxFileBytes, o.sessionsPerHour, o.maxConcurrent], [path.resolve('/x/cache'), 5000, 0, 9000, 4, 2]);
   for (const [name, value] of [['MODEL_CACHE_MAX_BYTES', '-1'], ['MODEL_CACHE_MAX_BYTES', 'abc'], ['MODEL_CACHE_MAX_BYTES', '1e3'], ['DOWNLOAD_SESSIONS_PER_HOUR', '0'], ['DOWNLOAD_MAX_CONCURRENT', '0'], ['MODEL_MAX_FILE_BYTES', '0'], ['DOWNLOAD_MAX_CONCURRENT', '65']]) {

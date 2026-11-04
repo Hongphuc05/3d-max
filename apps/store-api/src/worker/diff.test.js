@@ -51,6 +51,16 @@ const pair = (dir, stem, { ext = 'rar', archiveId, imageId, archiveMd5, archiveS
 ];
 const diff = jobId => computeDiff(pool, { sourceId, jobId });
 
+test('preview plan retains each image resource key from the scanned inventory', { skip }, async () => {
+  const imageId = nid();
+  const { jobId } = await scanned(pair('Furniture/Desk', 'keyed', { imageId }));
+  await pool.query('update drive_inventory set resource_key=$3 where source_id=$1 and drive_file_id=$2', [sourceId, imageId, 'resourceKey_abc']);
+  const plan = await diff(jobId);
+  assert.equal(plan.previews.length, 1);
+  assert.equal(plan.previews[0].imageId, imageId);
+  assert.equal(plan.previews[0].resourceKey, 'resourceKey_abc');
+});
+
 async function mkModel({ name = 'Model', category = 'Furniture / Desk', archiveId, filename = 'x.rar', md5: m = null, size = null, status = 'PUBLISHED',
   nameOverridden = false, missingScans = 0, previews = [] } = {}) {
   const parts = category.split(' / '); let parent = null, path = '';

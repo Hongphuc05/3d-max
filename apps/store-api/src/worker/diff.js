@@ -15,9 +15,10 @@ export async function computeDiff(pool, { sourceId, jobId }) {
   if (job.rows[0]?.checkpoint?.scan?.done !== true) throw Object.assign(new Error('SCAN_NOT_COMPLETE'), { code: 'SCAN_NOT_COMPLETE' });
 
   const inv = (await pool.query(
-    `select drive_file_id, parent_drive_id, path, filename, size_bytes, md5_checksum, is_folder, is_shortcut
+    `select drive_file_id, parent_drive_id, path, filename, size_bytes, md5_checksum, resource_key, is_folder, is_shortcut
        from drive_inventory where source_id = $1 and last_seen_job_id = $2`, [sourceId, jobId])).rows;
   const seen = new Set(inv.map((r) => r.drive_file_id));
+  const resourceKeys = new Map(inv.filter((r) => r.resource_key).map((r) => [r.drive_file_id, r.resource_key]));
 
   const dirs = new Map();
   for (const r of inv) {
@@ -50,6 +51,8 @@ export async function computeDiff(pool, { sourceId, jobId }) {
   }
 
   const plan = { models: [], previews: [], missing, recovered: [], reviews: [] };
+  const preview = (fileId, img) => ({ fileId, imageId: img.id, md5: img.md5, primary: img.primary,
+    ...(resourceKeys.has(img.id) ? { resourceKey: resourceKeys.get(img.id) } : {}) });
   let skipped = 0;
   const addReview = (kind, path, files, extra = {}) => {
     const review = { kind, payload: { path, files, ...extra, fingerprint: fingerprint(kind, path, [...files, ...Object.values(extra).map(String)]) } };
@@ -79,7 +82,7 @@ export async function computeDiff(pool, { sourceId, jobId }) {
           if (link) link.forFile = m.file.id;
         }
         plan.models.push(entry);
-        for (const img of m.images) plan.previews.push({ fileId: m.file.id, imageId: img.id, md5: img.md5, primary: img.primary });
+        for (const img of m.images) plan.previews.push(preview(m.file.id, img));
         continue;
       }
 
@@ -99,7 +102,7 @@ export async function computeDiff(pool, { sourceId, jobId }) {
       const primary = m.images.find((i) => i.primary)?.id ?? null;
       const gone = [...have.byImage.keys()].some((id) => !m.images.some((i) => i.id === id));
       if (need.length || gone || (have.primary !== null && have.primary !== primary)) c.previews = true;
-      for (const img of need) plan.previews.push({ fileId: m.file.id, imageId: img.id, md5: img.md5, primary: img.primary });
+      for (const img of need) plan.previews.push(preview(m.file.id, img));
 
       if (c.file || c.name || c.filename || c.category || c.previews) entry.action = 'MODIFIED';
       if (ex.missing_scans > 0) plan.recovered.push(ex.model_id);

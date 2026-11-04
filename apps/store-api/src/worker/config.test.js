@@ -37,3 +37,8 @@ test('PREVIEW_COOLDOWN_MS defaults to 10 minutes and rejects bad values by name'
   assert.equal(loadWorkerConfig(ok).previewCooldownMs, 600000);
   assert.deepEqual(loadWorkerConfig({ ...ok, PREVIEW_COOLDOWN_MS: 'x' }).errors, ['PREVIEW_COOLDOWN_MS']);
 });
+
+test('OAuth worker mode does not require an API key', () => {
+  assert.deepEqual(loadWorkerConfig({ DRIVE_AUTH_MODE: 'oauth' }).errors, []);
+  assert.deepEqual(loadWorkerConfig({ DRIVE_AUTH_MODE: 'other', DRIVE_API_KEY: KEY }).errors, ['DRIVE_AUTH_MODE']);
+});
