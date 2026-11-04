@@ -17,4 +17,4 @@ GIỚI HẠN CỦA BẢN NÀY
 - Chưa tự cập nhật plugin: bản mới = tải zip mới và chạy lại PlatformSetup.exe.
 - 1 license = 1 máy.
 
-Hỗ trợ: {{CONTACT}}
+Hỗ trợ: xem thông tin liên hệ trong plugin hoặc trên https://3dsmood.io.vn

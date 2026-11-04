@@ -1,10 +1,9 @@
 # Dong goi 3dsmood-library.zip = PlatformSetup.exe + huong dan + thu muc cai thu cong.
 # Chay (sau khi build-installer.ps1 xong, vi can installer\stage):
-#   powershell -ExecutionPolicy Bypass -File installer\release\make-release-zip.ps1 -Contact "zalo/sdt/email"
+#   powershell -ExecutionPolicy Bypass -File installer\release\make-release-zip.ps1
 # (comment khong dau: PowerShell 5.1 doc file khong BOM theo ANSI)
 param(
-    [string]$Version = '1.0.0',
-    [Parameter(Mandatory = $true)][string]$Contact
+    [string]$Version = '1.0.0'
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -36,7 +35,7 @@ Copy-Item (Join-Path $stage 'Startup') (Join-Path $enu 'scripts\Startup') -Recur
 Copy-Item (Join-Path $stage 'usermacros') (Join-Path $enu 'usermacros') -Recurse
 
 # 3. huong dan + thong tin phien ban (thay the {{...}})
-$vars = @{ '{{VERSION}}' = $Version; '{{SHA256}}' = $sha; '{{CONTACT}}' = $Contact; '{{DATE}}' = (Get-Date -Format 'yyyy-MM-dd') }
+$vars = @{ '{{VERSION}}' = $Version; '{{SHA256}}' = $sha; '{{DATE}}' = (Get-Date -Format 'yyyy-MM-dd') }
 foreach ($name in @('HUONG-DAN-CAI-DAT.html', 'THONG-TIN-PHIEN-BAN.txt')) {
     $text = [IO.File]::ReadAllText((Join-Path $here $name), [Text.Encoding]::UTF8)
     foreach ($k in $vars.Keys) { $text = $text.Replace($k, $vars[$k]) }

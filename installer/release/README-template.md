@@ -17,9 +17,9 @@ Cai-thu-cong\ENU\              chép đè vào %LOCALAPPDATA%\Autodesk\3dsMax\20
 1. `installer\build-installer.ps1 -ApiBaseUrl https://3dsmood.io.vn` (tạo `PlatformSetup.exe` và `installer\stage\`).
 2. Chép ảnh vào `installer\release\images\`: `smartscreen-1.png` (More info), `smartscreen-2.png` (Run anyway), `toolbar.png`, `panel.png`. Thiếu ảnh thì guide hiện khung chữ thay thế.
 3. ```powershell
-   powershell -ExecutionPolicy Bypass -File installer\release\make-release-zip.ps1 -Contact "<zalo/sdt/email>" [-Version 1.0.0]
+   powershell -ExecutionPolicy Bypass -File installer\release\make-release-zip.ps1 [-Version 1.0.0]
    ```
-   Kết quả: `installer\release\out\3dsmood-library.zip`. Script thay `{{VERSION}}`, `{{SHA256}}`, `{{CONTACT}}`, `{{DATE}}` trong guide và file phiên bản.
+   Kết quả: `installer\release\out\3dsmood-library.zip`. Script thay `{{VERSION}}`, `{{SHA256}}`, `{{DATE}}` trong guide và file phiên bản.
 4. Giải nén thử, mở `HUONG-DAN-CAI-DAT.html`, chạy `PlatformSetup.exe` trên máy sạch (có Max 2022 ENU, Max đã đóng).
 
 ## 3. Phát hành
