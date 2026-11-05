@@ -1,4 +1,4 @@
-// P3.7: bang model (tim, loc, phan trang, sua ten/gia/an-hien). jsdom + fetch gia.
+// Gallery quan tri model: danh muc, tim loc, phan trang, sua ten/an-hien.
 import test, { after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
@@ -16,16 +16,18 @@ let root, fixture;
 const response = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
 const v3Error = (status, code, message) => response({ error: { code, message, requestId: 'req-1' } }, status);
 const m = (id, over = {}) => ({ id, name: `Model ${id}`, categoryPath: 'Living / Sofa', status: 'PUBLISHED', state: 'FULL', categoryMismatch: false, nameOverridden: false, updatedAt: '2026-11-01T08:00:00Z', ...over });
+const categories = [{ id: 'living', parentId: null, name: 'Living', fullPath: 'Living', modelCount: 0 },
+  { id: 'sofa', parentId: 'living', name: 'Sofa', fullPath: 'Living / Sofa', modelCount: 2 }];
 
 async function mount({ items = [m('a'), m('b')], total = items.length } = {}) {
   fixture = { items, total, requests: [], patchError: null, listError: null };
   globalThis.fetch = async (url, init = {}) => {
     const u = new URL(String(url), 'http://x'), path = u.pathname, method = init.method ?? 'GET', body = init.body ? JSON.parse(init.body) : null;
-    fixture.requests.push({ path, method, body, q: u.searchParams.get('q'), status: u.searchParams.get('status'), state: u.searchParams.get('state'), page: u.searchParams.get('page'), limit: u.searchParams.get('limit') });
-    if (path === '/api/admin/categories') return response({ items: [] });
+    fixture.requests.push({ path, method, body, q: u.searchParams.get('q'), status: u.searchParams.get('status'), state: u.searchParams.get('state'), categoryId: u.searchParams.get('categoryId'), page: u.searchParams.get('page'), limit: u.searchParams.get('limit') });
+    if (path === '/api/admin/categories') return response({ items: categories });
     if (path === '/api/admin/models' && method === 'GET') {
       if (fixture.listError) return fixture.listError;
-      const snapshot = { items: fixture.items, total: fixture.total, page: Number(u.searchParams.get('page') ?? 1), limit: 20, counts: { FULL: 1, PREVIEW_ONLY: 2, ARCHIVE_ONLY: 3, MISMATCH: 0 } };
+      const snapshot = { items: fixture.items, total: fixture.total, page: Number(u.searchParams.get('page') ?? 1), limit: 30, counts: { FULL: 1, PREVIEW_ONLY: 2, ARCHIVE_ONLY: 3, MISMATCH: 0 } };
       if (fixture.holdNext) { const hold = fixture.holdNext; fixture.holdNext = null; await hold; }
       return response(snapshot);
     }
@@ -54,7 +56,7 @@ async function type(name, value, scope = container) {
     el.dispatchEvent(new window.Event(el.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }));
   });
 }
-const row = (id) => container.querySelector(`tr[data-model="${id}"]`);
+const row = (id) => container.querySelector(`article[data-model="${id}"]`);
 const lists = () => fixture.requests.filter((r) => r.path === '/api/admin/models' && r.method === 'GET');
 const patches = () => fixture.requests.filter((r) => r.method === 'PATCH');
 async function submitSearch() { await act(async () => container.querySelector('form[role="search"]').dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true }))); }
@@ -62,14 +64,22 @@ async function submitSearch() { await act(async () => container.querySelector('f
 afterEach(async () => { if (root) await act(async () => root.unmount()); root = null; });
 after(() => { globalThis.fetch = originalFetch; dom.window.close(); });
 
-test('lists models: name, category, status label; badge only for hand-edited names; never shows ids', async () => {
+test('gallery cards show preview, name, category and status; badge only for hand-edited names', async () => {
   await mount({ items: [m('a', { name: 'Sofa A' }), m('b', { name: 'Sofa B', status: 'HIDDEN', nameOverridden: true })] });
-  assert.equal(lists()[0].page, '1'); assert.equal(lists()[0].limit, '20');
+  assert.equal(lists()[0].page, '1'); assert.equal(lists()[0].limit, '30');
   const a = row('a'), b = row('b');
   assert.match(a.textContent, /Sofa A/); assert.match(a.textContent, /Living \/ Sofa/);  assert.equal(/\d\.\d{3}/.test(a.textContent), false, 'no per-model price column any more'); assert.match(a.textContent, /Đang bán/);
   assert.equal(/Tên đã sửa/.test(a.textContent), false);
   assert.match(b.textContent, /Đã ẩn/); assert.match(b.textContent, /Tên đã sửa/);
-  assert.match(container.textContent, /2 kết quả/);
+  assert.match(container.textContent, /2 model/);
+});
+
+test('category tree selection filters the selected category and descendants on the server', async () => {
+  await mount();
+  await click(container.querySelector('[aria-label="Mở Living"]'));
+  await click(container.querySelector('[title="Living / Sofa"]').closest('button'));
+  assert.equal(lists().at(-1).categoryId, 'sofa');
+  assert.match(container.textContent, /Living \/ Sofa/);
 });
 
 test('empty result says so', async () => {
@@ -91,8 +101,8 @@ test('search and status filter go to the server (trimmed), reset to page 1, and 
 });
 
 test('pagination uses the server total', async () => {
-  await mount({ items: [m('a')], total: 45 });
-  assert.match(container.textContent, /45 kết quả/); assert.match(container.textContent, /Trang 1\/3/);
+  await mount({ items: [m('a')], total: 75 });
+  assert.match(container.textContent, /75 model/); assert.match(container.textContent, /Trang 1\/3/);
   await click(mustButton('Sau')); await click(mustButton('Sau'));
   assert.equal(lists().at(-1).page, '3');
   assert.equal(mustButton('Sau').disabled, true);
@@ -138,7 +148,7 @@ test('saving without any change sends nothing and just closes the editor; Cancel
 
 test('client-side checks: empty / too long name are refused without a request', async () => {
   await mount();
-  const cases = [['editName', '   ', /Tên không được để trống/], ['editName', 'x'.repeat(301), /Tên tối đa 300 ký tự/]];
+  const cases = [['editName', '   ', /Tên model cần từ 1 đến 300 ký tự/], ['editName', 'x'.repeat(301), /Tên model cần từ 1 đến 300 ký tự/]];
   for (const [name, value, message] of cases) {
     await click(mustButton('Sửa', row('a')));
     await type(name, value, row('a'));
@@ -233,16 +243,16 @@ test('D29: pairing state column + filter (with counts) go to the server; mismatc
   await mount({ items: [m('a', { state: 'PREVIEW_ONLY' }), m('b', { state: 'ARCHIVE_ONLY' }), m('c', { categoryMismatch: true })] });
   assert.match(row('a').textContent, /Thiếu zip/); assert.match(row('b').textContent, /Thiếu ảnh/); assert.match(row('c').textContent, /Lệch danh mục/);
   assert.equal(button('Xóa ảnh', row('b')), null, 'nothing to delete on an archive-only model');
-  assert.match(container.querySelector('[name="stateFilter2"]').textContent, /Thiếu zip \(2\)/);
-  await type('stateFilter2', 'PREVIEW_ONLY'); await submitSearch();
+  assert.match(container.querySelector('[name="stateFilter"]').textContent, /Thiếu zip \(2\)/);
+  await type('stateFilter', 'PREVIEW_ONLY'); await submitSearch();
   assert.equal(lists().at(-1).state, 'PREVIEW_ONLY');
   const calls = [];
   const inner = globalThis.fetch;
   globalThis.fetch = async (url, init = {}) => { if (init.method === 'DELETE') { calls.push(String(url)); return response({ deleted: 'PREVIEW' }); } return inner(url, init); };
-  await click(mustButton('Xóa ảnh', row('a')));
+  await click(mustButton('Xóa preview', row('a')));
   assert.equal(calls.length, 0, 'first click only asks to confirm');
   const before = lists().length;
-  await click(mustButton('Xác nhận xóa ảnh', row('a')));
+  await click(mustButton('Xóa ảnh', row('a')));
   assert.deepEqual(calls, ['/api/admin/models/a/preview']);
   assert.equal(lists().length, before + 1, 'list reloaded');
 });

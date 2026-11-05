@@ -17,13 +17,14 @@ const response = (data, status = 200) => new Response(JSON.stringify(data), { st
 afterEach(async () => { if (root) await act(async () => root.unmount()); root = null; });
 after(() => { globalThis.fetch = originalFetch; dom.window.close(); });
 
-test('the dashboard has lazy "Cài đặt" (settings form) and "Model" (models table with thumbnails) sections', async () => {
+test('the dashboard has lazy "Cài đặt" and "Model" (gallery cards with thumbnails) sections', async () => {
   requests.length = 0;
   globalThis.fetch = async (url, init = {}) => {
     const path = String(url).split('?')[0]; requests.push(path);
     if (path === '/api/auth/me') return response({ user: { id: 'admin-id', email: 'a@a.invalid', role: 'ADMIN', username: 'owner', mustChangeCredentials: false } });
     if (path === '/api/admin/catalog/sync/permission') return response({ allowed: true });
     if (path === '/api/admin/settings') return response({ bankName: null, bankBin: null, accountNo: null, accountName: null, defaultModelPriceVnd: 15000, orderTtlMinutes: 1440, maxPendingOrdersPerDevice: 3, updatedAt: null });
+    if (path === '/api/admin/categories') return response({ items: [{ id: 'cat-1', parentId: null, name: 'Living', fullPath: 'Living', modelCount: 1 }] });
     if (path === '/api/admin/models') return response({ items: [{ id: 'm1', name: 'Sofa A', categoryPath: 'Living / Sofa', priceVnd: 15000, status: 'PUBLISHED', nameOverridden: false, priceOverridden: false, updatedAt: '2026-11-01T08:00:00Z', thumbUrl: '/previews/abc.webp' }], total: 1, page: 1, limit: 20 });
     throw new Error(`Unhandled ${path}`);
   };
@@ -39,7 +40,7 @@ test('the dashboard has lazy "Cài đặt" (settings form) and "Model" (models t
   assert.ok(models, 'Model nav entry exists');
   await act(async () => models.click());
   assert.ok(requests.includes('/api/admin/models'));
-  assert.ok(container.querySelector('tr[data-model="m1"]'), 'models table is there');
-  assert.equal(container.querySelector('tr[data-model="m1"] img').getAttribute('src'), '/previews/abc.webp');
+  assert.ok(container.querySelector('article[data-model="m1"]'), 'model gallery card is there');
+  assert.equal(container.querySelector('article[data-model="m1"] img').getAttribute('src'), '/previews/abc.webp');
   assert.match(container.textContent, /Sofa A/);
 });

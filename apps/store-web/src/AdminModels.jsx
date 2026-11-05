@@ -29,8 +29,7 @@ function CategoryNode({ node, selectedId, onSelect, depth = 0 }) {
   </li>;
 }
 
-function ModelCard({ model, onSaved, onDeleted }) {
-  const [editing, setEditing] = useState(false);
+function ModelCard({ model, editing, onEdit, onCancel, onSaved, onDeleted }) {
   const [name, setName] = useState(model.name);
   const [status, setStatus] = useState(model.status);
   const [busy, setBusy] = useState(false);
@@ -38,7 +37,7 @@ function ModelCard({ model, onSaved, onDeleted }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
-    if (!editing) { setName(model.name); setStatus(model.status); }
+    if (!editing) { setName(model.name); setStatus(model.status); setError(''); }
   }, [model.name, model.status, editing]);
 
   async function save() {
@@ -48,9 +47,9 @@ function ModelCard({ model, onSaved, onDeleted }) {
     const body = {};
     if (cleanName !== model.name) body.name = cleanName;
     if (status !== model.status && EDITABLE.includes(status)) body.status = status;
-    if (!Object.keys(body).length) { setEditing(false); return; }
+    if (!Object.keys(body).length) { onCancel(); return; }
     setBusy(true); setError('');
-    try { onSaved(await api.adminPatchModel(model.id, body)); setEditing(false); }
+    try { onSaved(await api.adminPatchModel(model.id, body)); onCancel(); }
     catch (e) { setError(adminError(e)); }
     finally { setBusy(false); }
   }
@@ -83,8 +82,8 @@ function ModelCard({ model, onSaved, onDeleted }) {
         {EDITABLE.map((value) => <option key={value} value={value}>{statusLabels[value]}</option>)}
       </select>}
       <div className="mt-auto flex flex-wrap gap-2 pt-1">
-        {editing ? <><button className={primary} disabled={busy} onClick={save}>Lưu</button><button className={secondary} disabled={busy} onClick={() => { setEditing(false); setError(''); }}>Hủy</button></>
-          : <><button className={secondary} disabled={busy} onClick={() => setEditing(true)}>Sửa</button>
+        {editing ? <><button className={primary} disabled={busy} onClick={save}>Lưu</button><button className={secondary} disabled={busy} onClick={onCancel}>Hủy</button></>
+          : <><button className={secondary} disabled={busy} onClick={onEdit}>Sửa</button>
             {model.state !== 'ARCHIVE_ONLY' && (confirmDelete
               ? <><button className="rounded-md border border-danger/40 px-3 py-2 text-sm text-danger disabled:opacity-40" disabled={busy} onClick={deletePreview}>Xóa ảnh</button><button className={secondary} disabled={busy} onClick={() => setConfirmDelete(false)}>Hủy</button></>
               : <button className={secondary} disabled={busy} onClick={() => setConfirmDelete(true)}>Xóa preview</button>)}</>}
@@ -98,6 +97,7 @@ export default function AdminModels() {
   const [query, setQuery] = useState(''), [status, setStatus] = useState(''), [stateFilter, setStateFilter] = useState('');
   const [draft, setDraft] = useState({ q: '', status: '', state: '' });
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
+  const [editingId, setEditingId] = useState(null);
   const [page, setPage] = useState(1), [version, setVersion] = useState(0);
   const [categoryState, setCategoryState] = useState({ items: null, loading: true, error: '' });
   const [modelState, setModelState] = useState({ data: null, loading: true, error: '' });
@@ -182,7 +182,8 @@ export default function AdminModels() {
       <ResourceState loading={modelState.loading && !data} error={modelState.error} retry={() => setVersion((value) => value + 1)} />
       {data && data.items.length === 0 && <p className="py-16 text-center text-sm text-mute">Không có model nào trong danh mục này.</p>}
       {data && data.items.length > 0 && <div className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-3">
-        {data.items.map((model) => <ModelCard key={model.id} model={model} onSaved={replace} onDeleted={() => setVersion((value) => value + 1)} />)}
+        {data.items.map((model) => <ModelCard key={model.id} model={model} editing={editingId === model.id}
+          onEdit={() => setEditingId(model.id)} onCancel={() => setEditingId(null)} onSaved={replace} onDeleted={() => setVersion((value) => value + 1)} />)}
       </div>}
       {data && data.total > PAGE && <Pagination page={data.page} total={data.total} limit={data.limit} onPage={setPage} />}
     </section>
