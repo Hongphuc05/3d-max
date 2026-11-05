@@ -23,6 +23,9 @@ const messages = {
   ORDER_NOT_FOUND: 'Không tìm thấy đơn hàng.',
   DEVICE_NOT_FOUND: 'Không tìm thấy thiết bị.',
   ALREADY_ENTITLED: 'Thiết bị đích đã có license thư viện.',
+  TELEGRAM_LOGIN_NOT_CONFIGURED: 'Máy chủ chưa cấu hình Telegram Login. Cần thiết lập Client ID và Client Secret từ BotFather.',
+  TELEGRAM_ACCOUNT_ALREADY_LINKED: 'Tài khoản Telegram này đã được liên kết với một admin khác.',
+  TELEGRAM_CONNECTION_NOT_FOUND: 'Không tìm thấy kết nối Telegram này.',
 };
 export const adminError = error => messages[error?.code] || error?.detail || 'Không thể hoàn tất yêu cầu. Vui lòng thử lại.';
 export const dateTime = value => value ? new Date(value).toLocaleString('vi-VN') : '—';

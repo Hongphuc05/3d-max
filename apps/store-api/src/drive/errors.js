@@ -4,6 +4,11 @@ const MESSAGES = {
   DRIVE_OAUTH_NOT_CONFIGURED: 'Chưa cấu hình kết nối Google Drive trên máy chủ.',
   OAUTH_STATE_INVALID: 'Phiên kết nối Google không hợp lệ hoặc đã hết hạn. Hãy bấm Kết nối lại.',
   OAUTH_NO_REFRESH_TOKEN: 'Google không cấp refresh token. Hãy thu hồi quyền của ứng dụng tại tài khoản Google rồi kết nối lại.',
+  TELEGRAM_LOGIN_NOT_CONFIGURED: 'Máy chủ chưa cấu hình Telegram Login. Hãy thiết lập Client ID và Client Secret từ BotFather.',
+  TELEGRAM_LOGIN_STATE_INVALID: 'Phiên kết nối Telegram không hợp lệ hoặc đã hết hạn. Hãy bấm kết nối lại.',
+  TELEGRAM_LOGIN_TOKEN_INVALID: 'Telegram không xác minh được tài khoản. Hãy thử kết nối lại.',
+  TELEGRAM_ACCOUNT_ALREADY_LINKED: 'Tài khoản Telegram này đã được liên kết với một admin khác.',
+  TELEGRAM_CONNECTION_NOT_FOUND: 'Không tìm thấy kết nối Telegram này.',
   DRIVE_SCOPE_MISSING: 'Chưa cấp đủ quyền đọc Google Drive. Hãy kết nối lại và đồng ý quyền đọc Drive.',
   DRIVE_NOT_CONNECTED: 'Chưa kết nối Google Drive.',
   DRIVE_AUTH_REVOKED: 'Kết nối Google Drive đã hết hiệu lực. Hãy kết nối lại.',
@@ -66,6 +71,8 @@ export class ApiError extends Error {
 // HTTP status per code. Upstream/user-input problems avoid 401/403/404 so they are never mistaken
 // for "not logged in / not admin / no such route".
 const STATUS = {
+  TELEGRAM_LOGIN_NOT_CONFIGURED: 503, TELEGRAM_LOGIN_STATE_INVALID: 400, TELEGRAM_LOGIN_TOKEN_INVALID: 401,
+  TELEGRAM_ACCOUNT_ALREADY_LINKED: 409, TELEGRAM_CONNECTION_NOT_FOUND: 404,
   DRIVE_OAUTH_NOT_CONFIGURED: 503, OAUTH_STATE_INVALID: 400, OAUTH_NO_REFRESH_TOKEN: 400, DRIVE_SCOPE_MISSING: 400,
   DRIVE_NOT_CONNECTED: 409, DRIVE_AUTH_REVOKED: 409, DRIVE_PERMISSION_DENIED: 422, DRIVE_NOT_FOUND: 422,
   DRIVE_QUOTA_EXCEEDED: 429, DRIVE_UPSTREAM_ERROR: 502, DRIVE_BAD_REQUEST: 502, DRIVE_NOT_A_FOLDER: 422,

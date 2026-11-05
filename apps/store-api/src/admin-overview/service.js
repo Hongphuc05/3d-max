@@ -10,7 +10,7 @@ const TTL = 60_000;
 const DAY = "(coalesce(o.decided_at, o.created_at) at time zone 'Asia/Ho_Chi_Minh')::date";
 const TODAY = "(now() at time zone 'Asia/Ho_Chi_Minh')::date";
 
-export function createOverviewService({ pool, env = process.env, fetchImpl = fetch, now = () => Date.now(), diskStat = statfs }) {
+export function createOverviewService({ pool, env = process.env, fetchImpl = fetch, now = () => Date.now(), diskStat = statfs, listTelegramRecipients }) {
   let tg = null; // { at, value } cache 60s
   const config = () => loadTelegramConfig(env);
 
@@ -105,9 +105,13 @@ export function createOverviewService({ pool, env = process.env, fetchImpl = fet
   async function telegramTest() {
     const c = config();
     if (!c.enabled) return { ok: false, error: 'NOT_CONFIGURED' };
+    let linked = [];
+    try { linked = listTelegramRecipients ? await listTelegramRecipients() : []; } catch { return { ok: false, error: 'TELEGRAM_UNREACHABLE' }; }
+    const chatId = linked[0]?.chatId ?? c.ownerChatIds[0];
+    if (!chatId) return { ok: false, error: 'NO_RECIPIENT' };
     try {
       const r = await fetchImpl(`https://api.telegram.org/bot${c.botToken}/sendMessage`, { method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ chat_id: Number(c.ownerChatIds[0]), text: 'Tin nhắn thử từ trang Tổng quan 3DS Mood.' }), signal: AbortSignal.timeout(5000) });
+        body: JSON.stringify({ chat_id: Number(chatId), text: 'Tin nhắn thử từ trang Tổng quan 3DS Mood.' }), signal: AbortSignal.timeout(5000) });
       const d = await r.json().catch(() => null);
       return d?.ok === true && r.ok ? { ok: true } : { ok: false, error: 'TELEGRAM_API' };
     } catch { return { ok: false, error: 'TELEGRAM_UNREACHABLE' }; }

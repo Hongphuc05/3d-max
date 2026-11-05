@@ -14,14 +14,35 @@ const REPLIES = {
   EXPIRED: { answer: 'Đơn đã hết hạn, không cấp quyền.', mark: '⌛ Đơn đã hết hạn, không cấp quyền.' },
 };
 
-export function createTelegramRouter({ config, client, service }) {
+export function createTelegramRouter({ config, client, service, accounts, login }) {
   const router = express.Router();
-  const owners = new Set(config.ownerChatIds.map(String));
+  const owners = new Set((config.ownerChatIds ?? []).map(String));
+
+  router.get('/login/callback', requestId, async (req, res) => {
+    const { state, code, error } = req.query;
+    if (Array.isArray(state) || Array.isArray(code) || Array.isArray(error) || typeof state !== 'string') return res.redirect(303, '/admin?telegram=failed');
+    if (error) {
+      try { await login?.reject(state); } catch { /* one-time state expired or invalid */ }
+      return res.redirect(303, '/admin?telegram=cancelled');
+    }
+    if (typeof code !== 'string' || !login) return res.redirect(303, '/admin?telegram=failed');
+    try {
+      const result = await login.complete(state, code);
+      await accounts.link(result.adminId, result.profile);
+      return res.redirect(303, '/admin?telegram=connected');
+    } catch (e) {
+      const status = e?.code === 'TELEGRAM_ACCOUNT_ALREADY_LINKED' ? 'already-linked' : 'failed';
+      return res.redirect(303, `/admin?telegram=${status}`);
+    }
+  });
 
   async function handle(cq) {
     if (!cq || typeof cq !== 'object' || typeof cq.id !== 'string' || !cq.id || cq.id.length > 200 || typeof cq.data !== 'string' || cq.data.length > 64) return;
     const chatId = cq.message?.chat?.id;
-    if (!isId(cq.from?.id) || !isId(chatId) || !owners.has(String(cq.from.id)) || !owners.has(String(chatId))) return; // nguoi la: im lang
+    if (!isId(cq.from?.id) || !isId(chatId)) return;
+    const legacyOwner = owners.has(String(cq.from.id)) && owners.has(String(chatId));
+    const linkedAdmin = !legacyOwner && accounts ? await accounts.isAuthorized(cq.from.id, chatId) : false;
+    if (!legacyOwner && !linkedAdmin) return; // nguoi la: im lang
     const m = DATA.exec(cq.data);
     if (!m) return;
     const messageId = cq.message?.message_id;
@@ -32,7 +53,14 @@ export function createTelegramRouter({ config, client, service }) {
     await client.answerCallbackQuery(cq.id, answer).catch(() => {});
     if (mark && isId(messageId)) {
       const original = typeof cq.message?.text === 'string' ? cq.message.text.slice(0, 3500) : `Đơn ${result.order?.code ?? ''}`;
-      await client.editMessageText({ chatId: String(chatId), messageId: String(messageId), text: `${original}\n\n${mark}` }).catch(() => {});
+      let copies = [];
+      try { copies = service.telegramMessagesForOrder ? await service.telegramMessagesForOrder(m[1]) : []; } catch { /* decision already committed */ }
+      if (!copies.length) copies = [{ chatId: String(chatId), messageId: String(messageId) }];
+      await Promise.allSettled(copies.map((copy) => {
+        const isClicked = String(copy.chatId) === String(chatId) && String(copy.messageId) === String(messageId);
+        const text = isClicked ? `${original}\n\n${mark}` : `Đơn ${result.order?.code ?? ''}\n\n${mark}`;
+        return client.editMessageText({ chatId: String(copy.chatId), messageId: String(copy.messageId), text });
+      }));
     }
   }
 

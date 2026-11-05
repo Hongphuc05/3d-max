@@ -19,15 +19,32 @@ export function orderText(s) {
   ].join('\n');
 }
 
-export function createTelegramNotifier({ client, service, ownerChatIds }) {
+export function createTelegramNotifier({ client, service, ownerChatIds = [], listRecipients, accounts }) {
   return {
     async orderClaimed(summary) {
       const keyboard = [[{ text: '✅ Đã nhận tiền', callback_data: CALLBACK_DATA.ok(summary.orderId) }, { text: '❌ Từ chối', callback_data: CALLBACK_DATA.no(summary.orderId) }]];
       const text = orderText(summary);
-      const results = await Promise.allSettled(ownerChatIds.map((chatId) => client.sendMessage({ chatId, text, keyboard })));
-      const first = results.find((r) => r.status === 'fulfilled');
-      if (!first) throw new Error('Telegram: no owner could be notified');
-      await service.saveTelegramMessage(summary.orderId, first.value.chatId, first.value.messageId);
+      let linked = [];
+      try { linked = listRecipients ? await listRecipients() : []; } catch { /* still attempt legacy recipients */ }
+      const recipients = new Map();
+      for (const chatId of ownerChatIds) recipients.set(String(chatId), { chatId: String(chatId), accountId: null });
+      for (const item of linked) recipients.set(String(item.chatId), { chatId: String(item.chatId), accountId: item.accountId });
+      const list = [...recipients.values()];
+      const results = new Array(list.length);
+      let next = 0;
+      await Promise.all(Array.from({ length: Math.min(5, list.length) }, async () => {
+        while (next < list.length) {
+          const index = next++;
+          const recipient = list[index];
+          try {
+            const sent = await client.sendMessage({ chatId: recipient.chatId, text, keyboard });
+            await service.saveTelegramMessage(summary.orderId, sent.chatId, sent.messageId);
+            if (recipient.accountId && accounts?.markNotified) await accounts.markNotified(recipient.accountId);
+            results[index] = { status: 'fulfilled', value: sent };
+          } catch (reason) { results[index] = { status: 'rejected', reason }; }
+        }
+      }));
+      if (!results.some((result) => result.status === 'fulfilled')) throw new Error('Telegram: no admin could be notified');
     },
   };
 }

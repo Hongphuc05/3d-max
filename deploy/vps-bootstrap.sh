@@ -26,12 +26,15 @@ JWT_SECRET=$(node -e "console.log(require('node:crypto').randomBytes(32).toStrin
 STORAGE_DIR=/var/lib/3dsmood
 BACKUP_DIR=/var/backups/3dsmood
 DRIVE_API_KEY=
-# Telegram: dien du 4 bien hoac de trong het
+# Telegram Bot API; TELEGRAM_OWNER_CHAT_IDS la tuy chon khi admin da lien ket trong giao dien.
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_OWNER_CHAT_IDS=
 TELEGRAM_WEBHOOK_SECRET=
 TELEGRAM_WEBHOOK_PATH=
 TELEGRAM_WEBHOOK_BASE_URL=https://$DOMAIN
+TELEGRAM_LOGIN_CLIENT_ID=
+TELEGRAM_LOGIN_CLIENT_SECRET=
+TELEGRAM_LOGIN_REDIRECT_URI=
 E
 fi
 chown root:dsmood $ENV; chmod 640 $ENV

@@ -82,8 +82,21 @@ export function createOrderService({ pool }) {
     return o && { orderId: o.id, code: o.code, amountVnd: o.amount_vnd, deviceName: o.device_name, expiresAt: o.expires_at, claimedPaidAt: o.claimed_paid_at };
   }
 
-  const saveTelegramMessage = (orderId, chatId, messageId) => pool.query(
-    'update purchase_orders set telegram_chat_id = $2, telegram_message_id = $3 where id = $1 and telegram_message_id is null', [orderId, chatId, messageId]);
+  async function saveTelegramMessage(orderId, chatId, messageId) {
+    return inTransaction(pool, async (db) => {
+      await db.query(`insert into purchase_order_telegram_messages (order_id, chat_id, message_id)
+        values ($1,$2,$3) on conflict do nothing`, [orderId, chatId, messageId]);
+      await db.query(`update purchase_orders set telegram_chat_id=coalesce(telegram_chat_id,$2),
+        telegram_message_id=coalesce(telegram_message_id,$3) where id=$1`, [orderId, chatId, messageId]);
+    });
+  }
+
+  async function telegramMessagesForOrder(orderId) {
+    const rows = await pool.query(`select chat_id, message_id from purchase_order_telegram_messages where order_id=$1
+      union select telegram_chat_id, telegram_message_id from purchase_orders where id=$1
+        and telegram_chat_id is not null and telegram_message_id is not null`, [orderId]);
+    return rows.rows.map((row) => ({ chatId: String(row.chat_id), messageId: String(row.message_id) }));
+  }
   const recordNotifyFailure = (orderId, reason) => audit(pool, { kind: 'SYSTEM', ref: null }, 'OWNER_NOTIFY_FAILED', orderId, { reason: String(reason).slice(0, 200) });
 
   /** @returns {{outcome:'CONFIRMED'|'REJECTED'|'EXPIRED'|'ALREADY_DECIDED'|'NOT_FOUND', order?}} */
@@ -128,5 +141,5 @@ export function createOrderService({ pool }) {
       claimedPaidAt: o.claimed_paid_at, decidedAt: o.decided_at, deviceName: o.device_name, deviceId: o.device_id }));
   }
 
-  return { createOrder, getOrder, claimPaid, cancelOrder, summary, saveTelegramMessage, recordNotifyFailure, decide, expireDue, listOrders };
+  return { createOrder, getOrder, claimPaid, cancelOrder, summary, saveTelegramMessage, telegramMessagesForOrder, recordNotifyFailure, decide, expireDue, listOrders };
 }

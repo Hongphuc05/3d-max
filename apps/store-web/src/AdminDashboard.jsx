@@ -14,7 +14,7 @@ import { secondary } from './AdminShared.jsx';
 const sections = [['overview', 'Tổng quan'], ['drive', 'Kết nối Drive'], ['sync', 'Quét đồng bộ'], ['models', 'Model'], ['review', 'Cần duyệt'], ['orders', 'Đơn hàng'], ['devices', 'Thiết bị & license'], ['settings', 'Cài đặt'], ['account', 'Thông tin đăng nhập']];
 export default function AdminDashboard() {
   const { user, logout } = useAuth();
-  const [section, setSection] = useState(user.mustChangeCredentials ? 'account' : 'overview');
+  const [section, setSection] = useState(user.mustChangeCredentials ? 'account' : new URLSearchParams(window.location.search).has('telegram') ? 'settings' : 'overview');
   const locked = Boolean(user.mustChangeCredentials);
   const active = locked ? 'account' : section;
   return <div className="flex h-screen min-h-0 flex-col bg-base text-fg">

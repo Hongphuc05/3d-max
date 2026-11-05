@@ -24,7 +24,7 @@ test('callback data fits Telegram\'s 64-byte limit and has the agreed shape o:<o
   assert.ok(Buffer.byteLength(CALLBACK_DATA.ok(ORDER)) <= 64);
 });
 
-test('orderClaimed sends one plain-text message with ✅ and ❌ to every owner and remembers the first message', async () => {
+test('orderClaimed sends one plain-text message with ✅ and ❌ to every owner and remembers every delivered message', async () => {
   const { notifier, sent, saved } = rig();
   await notifier.orderClaimed(summary());
   assert.deepEqual(sent.map((m) => m.chatId), ['111', '222']);
@@ -33,7 +33,7 @@ test('orderClaimed sends one plain-text message with ✅ and ❌ to every owner 
   assert.deepEqual(kb[0].map((b) => b.callback_data), [`o:${ORDER}:ok`, `o:${ORDER}:no`]);
   assert.match(kb[0][0].text, /✅/); assert.match(kb[0][1].text, /❌/);
   assert.equal(sent[0].parseMode, undefined, 'plain text: names from customers can never inject markup');
-  assert.deepEqual(saved, [[ORDER, '111', 'm-111']], 'the first delivered message is stored so it can be edited later');
+  assert.deepEqual(saved, [[ORDER, '111', 'm-111'], [ORDER, '222', 'm-222']], 'each delivered copy is stored so it can be edited later');
 });
 
 test('one owner unreachable is fine; all unreachable throws so the failure is recorded', async () => {
