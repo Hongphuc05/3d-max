@@ -1,6 +1,6 @@
 -- MZP runs this file from its extracted package directory. Never loads DLLs here.
 (
-    local title = "3DS Mood"
+    local title = "3dsmood"
     try
     (
         if (maxVersion())[1] != 24000 do throw "Ban cai nay danh cho 3ds Max 2022."
@@ -44,11 +44,18 @@
             try (ioFile.Delete pointerBackup) catch ()
         )
         else ioFile.Move pending pointer
+        -- Refresh only our known auto-generated legacy macro copies as well.
+        -- Keep the internal action identity so saved toolbar/menu bindings remain usable.
+        for legacyMacroName in #("Platform_OpenPlatformPanel.mcr", "Platform-OpenPlatformPanel.mcr") do
+        (
+            local legacyMacroPath = (getDir #userMacros) + "\\" + legacyMacroName
+            if ioFile.Exists legacyMacroPath do ioFile.Copy (source + "Platform-OpenPanel.mcr") legacyMacroPath true
+        )
         fileIn ((getDir #userMacros) + "\\Platform-OpenPanel.mcr")
         local restartNeeded = false
         for a in (dotNetClass "System.AppDomain").CurrentDomain.GetAssemblies() where (a.GetName()).Name == "MaxWebViewHost" do
             if (toLower a.Location) != (toLower (destination + "\\MaxWebViewHost.dll")) do restartNeeded = true
-        local message = "Da cai 3DS Mood.\n\nCustomize > Customize User Interface > Toolbars\nCategory: Platform > keo nut Platform vao toolbar."
+        local message = "Da cai 3dsmood.\n\nCustomize > Customize User Interface > Toolbars\nCategory: 3dsmood > keo nut 3dsmood vao toolbar."
         if restartNeeded do message += "\n\nHay khoi dong lai 3ds Max de nap ban moi."
         messageBox message title:title
     )

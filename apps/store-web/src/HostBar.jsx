@@ -44,7 +44,7 @@ export function HostBar({ reloadKey, onRefresh, apiStatus }) {
       <div className="flex shrink-0 items-center gap-2">
         <span className="grid size-7 place-items-center rounded-md bg-accent text-accent-ink"><Icon name="cube" /></span>
         <div className="leading-tight">
-          <div className="text-sm font-bold">3DS Mood</div>
+          <div className="text-sm font-bold">3dsmood</div>
           <div className="font-mono text-[10px] tracking-widest text-accent">MODEL LIBRARY</div>
         </div>
       </div>

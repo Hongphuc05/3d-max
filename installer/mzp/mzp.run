@@ -1,5 +1,5 @@
-name "3DS Mood"
-description "3DS Mood for 3ds Max 2022"
+name "3dsmood"
+description "3dsmood for 3ds Max 2022"
 version 1
 run "install.ms"
 drop "install.ms"

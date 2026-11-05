@@ -10,7 +10,7 @@ namespace Setup
     internal static class Program
     {
         private const string MaxUserRel = @"Autodesk\3dsMax\2022 - 64bit\ENU";
-        private const string Title = "Platform for 3ds Max 2022";
+        private const string Title = "3dsmood for 3ds Max 2022";
 
         [STAThread]
         private static int Main()
@@ -36,7 +36,7 @@ namespace Setup
                     "Cài đặt xong — " + n + " file vào:\n" + target +
                     "\n\nMở 3ds Max 2022, rồi vào:\n" +
                     "Customize > Customize User Interface > tab Toolbars\n" +
-                    "Category \"Platform\" > kéo OpenPlatformPanel vào một toolbar.",
+                    "Category \"3dsmood\" > kéo 3dsmood vào một toolbar.",
                     Title, MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return 0;
             }

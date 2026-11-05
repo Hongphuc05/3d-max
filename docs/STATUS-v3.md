@@ -249,3 +249,10 @@ Lỗi môi trường hay gặp: `AUTH_CONFIGURATION_REQUIRED` = thiếu `JWT_SEC
 - [x] Test native/WebView 46 checks pass: hai form gắn hai owner độc lập, tên scene giống nhau vẫn phân biệt PID, không đọc/validate/dispatch vào owner khác, không fallback, PID tái sử dụng và metadata sai bị chặn. Bridge thực xác nhận processId thuộc tiến trình đang chạy. Các fixture hai owner là mô phỏng; WebView2 dùng runtime thật.
 - [x] Full web/net48 build, staged ZIP/RAR/7z, MZP validator và test cập nhật pointer pass. Artifact v1.3.0: installer/release/out/3dsmood-library.mzp, 9759588 bytes, SHA256 44F2333771133195CE7D9FF48A07D0E3EE2919D7BD3FD79FBD974192F7D79A15.
 - [ ] Chưa nghiệm thu import trên hai tiến trình 3ds Max thật. Chưa phát hành/deploy.
+## D33 — Đổi tên hiển thị thành 3dsmood (2026-11-05)
+
+- [x] Đổi tên nút, tooltip và Category từ Platform sang 3dsmood; tên cửa sổ vẫn gồm scene/PID. Đồng bộ header, HTML title, thông báo MZP/loader và product metadata; file version 1.3.1.0.
+- [x] Giữ action name/internalCategory cũ để hỗ trợ toolbar đã lưu; installer cập nhật các bản macro tự sinh đã biết. Không đổi thư mục dữ liệu hay khóa thiết bị.
+- [x] Web 161/161 pass; full Vite/net48 build pass; staged ZIP/RAR/7z, kiểm tra MZP và pointer swap pass. Đã mở chính artifact để xác nhận category/button/tooltip 3dsmood và phiên bản 1.3.1.
+- [x] Artifact local: installer/release/out/3dsmood-library.mzp, 9759757 bytes, SHA256 5DC1AA0AFB58D7800922B91ED009602C654EE48195D200AB2D088C36274E2030. Binary không commit vào Git.
+- [ ] Chưa nghiệm thu hiển thị/toolbar trên Max thật. File MZP trên website vẫn cần phát hành qua workflow release riêng.

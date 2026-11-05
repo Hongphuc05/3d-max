@@ -1,11 +1,12 @@
 -- Macroscript cho nút toolbar. Cài vào:
 --   %LOCALAPPDATA%\Autodesk\3dsMax\2022 - 64bit\ENU\usermacros\
--- Sau đó: Customize > Customize User Interface > tab Toolbars > category "Platform".
+-- Sau đó: Customize > Customize User Interface > tab Toolbars > category "3dsmood".
 
 macroScript OpenPlatformPanel
-category:"Platform"
-buttonText:"Platform"
-toolTip:"Mở Platform Design Library"
+category:"3dsmood"
+internalCategory:"Platform"
+buttonText:"3dsmood"
+toolTip:"3dsmood"
 (
     on execute do
     (
@@ -14,6 +15,6 @@ toolTip:"Mở Platform Design Library"
             f = @"D:\Project\3d-max\maxscript\PlatformBridge.ms"   -- fallback layout dev
 
         if doesFileExist f then fileIn f
-        else messageBox "Không thấy PlatformBridge.ms. Chạy installer trước." title:"Platform"
+        else messageBox "Không thấy PlatformBridge.ms. Chạy installer trước." title:"3dsmood"
     )
 )

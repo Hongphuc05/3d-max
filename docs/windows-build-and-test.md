@@ -5,7 +5,7 @@ Target: 3ds Max 2022, .NET Framework 4.8, WebView2 Evergreen. Máy build cần N
 ## Build và đóng gói
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File installer\build-mzp.ps1 -ApiBaseUrl https://3dsmood.io.vn -Version 1.3.0
+powershell -ExecutionPolicy Bypass -File installer\build-mzp.ps1 -ApiBaseUrl https://3dsmood.io.vn -Version 1.3.1
 ```
 
 Kết quả duy nhất cho khách: `installer\release\out\3dsmood-library.mzp`. Build gồm web, native, staging, test gói ZIP/RAR/7z và kiểm cấu trúc MZP. Không cần build EXE hay nén thêm folder. Khi dependency đã khớp lockfile, thêm `-SkipDependencyRestore` để bỏ bước npm ci. Build dùng thư mục output mới, không xóa dist hay ghi đè DLL của bản đang mở.
@@ -21,7 +21,7 @@ Không commit `stage/`, `bin/`, `obj/` hoặc file build. Chỉ phát hành arti
 
 ## Cài và cập nhật
 
-Trong Max 2022: **Scripting > Run Script > chọn .mzp**. Installer tự lấy đường dẫn user của Max đang chạy, đăng ký macro ngay; vào **Customize > Customize User Interface > Toolbars > Platform**, kéo nút Platform ra toolbar. Không cần giải nén thủ công hoặc tìm file hướng dẫn ngoài.
+Trong Max 2022: **Scripting > Run Script > chọn .mzp**. Installer tự lấy đường dẫn user của Max đang chạy, đăng ký macro ngay; vào **Customize > Customize User Interface > Toolbars > 3dsmood**, kéo nút 3dsmood ra toolbar. Không cần giải nén thủ công hoặc tìm file hướng dẫn ngoài.
 
 Mỗi payload nằm trong một thư mục phiên bản riêng. Cài bản mới không ghi đè DLL đang được Max sử dụng và không đụng model đã tải. Nếu Max đang nạp DLL của bản khác, loader yêu cầu khởi động lại trước khi mở bản mới. Không tự xóa runtime cũ; một phiên Max khác có thể còn dùng nó.
 
@@ -48,7 +48,7 @@ Ghi pass/fail, ảnh và log cho các mục đã kiểm. Test tự động/build
 ## Kiểm tra hai cửa sổ Max và hai plugin (D32)
 
 1. Cài bản MZP mới rồi lưu scene, khởi động lại mọi phiên Max đang nạp DLL cũ.
-2. Mở hai tiến trình Max, mỗi tiến trình mở plugin bằng nút Platform của chính nó. Hai plugin phải có PID khác nhau trên tiêu đề; thử cả hai scene cùng tên hoặc Untitled.
+2. Mở hai tiến trình Max, mỗi tiến trình mở plugin bằng nút 3dsmood của chính nó. Hai plugin phải có PID khác nhau trên tiêu đề; thử cả hai scene cùng tên hoặc Untitled.
 3. Từ plugin A import một model trong khi Max B đang được focus: chỉ scene A được thêm model. Thử ngược lại từ plugin B.
 4. Không có bộ chọn Max khác. Mở scene mới trong Max A: tên trên plugin A tự cập nhật, plugin B giữ nguyên đích của nó.
 5. Đổi/reset scene giữa lúc thao tác đang xác minh đích: phải báo lỗi thay vì merge nhầm vào document mới. Mất Max sở hữu không được chuyển sang Max còn lại.

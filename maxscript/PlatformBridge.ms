@@ -263,7 +263,7 @@ fn pbDllPath = (
 
 -- Giao diện được đóng gói trong app/. Native đọc máy chủ từ plugin-config.json.
 -- Máy khách chỉ cần plugin, WebView2 và kết nối Internet.
-global gPlatformEnvironmentName = "3DsMood"
+global gPlatformEnvironmentName = "3dsmood"
 
 -- Agent chạy trong MỌI Max (scripts\Startup\Platform-Agent.ms gọi hàm này) để panel ở Max khác import vào được scene này.
 global gPlatformAgent
@@ -284,7 +284,7 @@ fn openPlatformPanel = (
     local dllPath = pbDllPath()
 
     if not (doesFileExist dllPath) do (
-        messageBox ("Không thấy DLL:\n" + dllPath) title:"Platform"
+        messageBox ("Không thấy DLL:\n" + dllPath) title:"3dsmood"
         return undefined
     )
 

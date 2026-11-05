@@ -350,3 +350,6 @@ Triển khai theo ba phần tách biệt: native/kho model, web/Settings–Đã 
 - Tiến trình sở hữu được chốt bằng PID và thời điểm khởi động, không thay theo focus hay thứ tự liệt kê cửa sổ. Tiêu đề plugin có tên scene và PID; thanh trên hiển thị đường dẫn scene của Max sở hữu.
 - Bỏ bộ chọn Max đích. Native chỉ đọc metadata của Max sở hữu và dispatch import vào adapter trong cùng tiến trình, không chuyển lệnh import tới pipe của Max khác.
 - Mở/reset scene mới trong cùng Max cập nhật đích cho lần import tiếp theo. Nếu scene đổi sau khi đã chụp đích của một thao tác đang chạy, kiểm tra document token và đường dẫn scene phải chặn thao tác đó. Chủ sở hữu không sẵn sàng thì báo lỗi, không chuyển sang Max khác.
+## D33 — Tên hiển thị plugin là 3dsmood (2026-11-05)
+
+Tên hiển thị thống nhất là 3dsmood: cửa sổ native (vẫn kèm scene/PID), header giao diện, toolbar/tooltip, Category trong Customize User Interface, thông báo cài/loader và metadata sản phẩm. Giữ macroScript OpenPlatformPanel và internalCategory Platform để bảo toàn định danh action trong CUI/menu cũ; các đường dẫn runtime, model và dữ liệu thiết bị không đổi. Installer cập nhật các bản macro tự sinh cũ đã biết nếu có. Bản MZP đổi tên là v1.3.1; cần kiểm tra hiển thị thực tế sau khi khởi động lại Max.

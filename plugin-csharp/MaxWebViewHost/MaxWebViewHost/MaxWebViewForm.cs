@@ -44,7 +44,7 @@ namespace MaxWebViewHost
         /// để MAXScript gán trực tiếp được, không cần dựng .NET array).</summary>
         public static string TrustedOrigins = "https://app.3dsmood.local";
 
-        public static string EnvironmentName = "3DsMood";
+        public static string EnvironmentName = "3dsmood";
         public static string HostVersion = "unknown";
 
         /// <summary>Method allowlist. Web gọi method ngoài danh sách này thì bị từ chối ngay tại native,
@@ -58,7 +58,7 @@ namespace MaxWebViewHost
             "library.status", "library.refresh", "library.downloads", "library.importOptions", "library.settings", "library.chooseDownloadDirectory"
         };
 
-        /// <summary>Origin của backend 3DS Mood, nơi host tải asset. Phải nằm trong TrustedOrigins.
+        /// <summary>Origin của backend 3dsmood, nơi host tải asset. Phải nằm trong TrustedOrigins.
         /// Web chỉ gửi asset ID + ticket, không bao giờ gửi URL (spec §5.5).</summary>
         public static string ApiBase = "";
 
@@ -157,7 +157,7 @@ namespace MaxWebViewHost
         {
             var ready = current != null && current.IsReady;
             var scene = ready ? (string.IsNullOrEmpty(current.ScenePath) ? "Untitled" : Path.GetFileName(current.ScenePath)) : "3ds Max";
-            Text = "3DS Mood | " + scene + " | Max PID " + _ownerProcess.ProcessId;
+            Text = "3dsmood | " + scene + " | Max PID " + _ownerProcess.ProcessId;
             _ownerDisplay.Text = ready
                 ? (string.IsNullOrEmpty(current.ScenePath) ? "Untitled" : current.ScenePath) + " | PID " + _ownerProcess.ProcessId
                 : "Đang chờ scene của Max PID " + _ownerProcess.ProcessId;
@@ -273,7 +273,7 @@ namespace MaxWebViewHost
                 Debug.WriteLine("[webview.init] " + ex.GetType().Name);
                 if (MessageBox.Show(this,
                     "Không khởi tạo được Microsoft Edge WebView2 Runtime. Cài hoặc sửa WebView2 Evergreen Runtime, rồi mở lại 3ds Max.\r\n\r\nMở trang tải chính thức của Microsoft?",
-                    "3DS Mood", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
+                    "3dsmood", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
                     OpenExternal("https://developer.microsoft.com/microsoft-edge/webview2/");
                 return;
             }
@@ -336,14 +336,14 @@ namespace MaxWebViewHost
         {
             if (_packagedApp == null || IsDisposed) return;
             _connectionRetry.Enabled = false;
-            SetConnectionMessage("Đang kết nối máy chủ 3DsMood…");
+            SetConnectionMessage("Đang kết nối máy chủ 3dsmood…");
             try
             {
                 var connected = _v3 != null || await _packagedApp.CheckConnectionAsync(_lifetime.Token);
                 if (IsDisposed || Disposing) return;
                 if (!connected)
                 {
-                    SetConnectionMessage("Không thể kết nối máy chủ 3DsMood. Vui lòng kết nối Internet rồi bấm Thử lại kết nối.");
+                    SetConnectionMessage("Không thể kết nối máy chủ 3dsmood. Vui lòng kết nối Internet rồi bấm Thử lại kết nối.");
                     return;
                 }
                 if (IsDisposed) return;
@@ -353,7 +353,7 @@ namespace MaxWebViewHost
                 if (_v3 != null) _v3.SetPanelOpen(true);
             }
             catch (OperationCanceledException) { }
-            catch (Exception) { if (!IsDisposed) SetConnectionMessage("Không thể kết nối máy chủ 3DsMood. Vui lòng kiểm tra Internet rồi thử lại."); }
+            catch (Exception) { if (!IsDisposed) SetConnectionMessage("Không thể kết nối máy chủ 3dsmood. Vui lòng kiểm tra Internet rồi thử lại."); }
             finally { if (!IsDisposed) _connectionRetry.Enabled = true; }
         }
 
@@ -365,7 +365,7 @@ namespace MaxWebViewHost
             {
                 var connected = await _packagedApp.CheckConnectionAsync(_lifetime.Token);
                 if (IsDisposed) return;
-                if (!connected) SetConnectionMessage("Mất kết nối máy chủ 3DsMood. Vui lòng kết nối Internet rồi thử lại.");
+                if (!connected) SetConnectionMessage("Mất kết nối máy chủ 3dsmood. Vui lòng kết nối Internet rồi thử lại.");
                 else if (_connectionPanel.Visible) await LoadPackagedAppAsync();
             }
             catch (Exception) { /* The next bounded connection check retries after panel or network changes. */ }
