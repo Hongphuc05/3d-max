@@ -1,5 +1,5 @@
 // Danh muc cong khai (trinh duyet thuong): chi xem model, khong mua/gia/license. Tai ve thu vien = MZP installer cua plugin.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Filters, Preview } from './components.jsx';
 import { Icon } from './icons.jsx';
 import { matchesCategory } from './catalog-view.js';
@@ -10,15 +10,50 @@ const STEP = 48;
 
 function DownloadButton({ className = '' }) {
   const [ready, setReady] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const activeDownload = useRef(null);
   useEffect(() => {
     const c = new AbortController();
-    fetch(MZP, { method: 'HEAD', signal: c.signal }).then((r) => setReady(r.status === 200), () => { if (!c.signal.aborted) setReady(false); });
-    return () => c.abort();
+    fetch(MZP, { method: 'HEAD', signal: c.signal }).then(r => { if (!c.signal.aborted) setReady(r.status === 200); }, () => { if (!c.signal.aborted) setReady(false); });
+    return () => { c.abort(); activeDownload.current?.abort(); };
   }, []);
+
+  async function download(event) {
+    event.preventDefault();
+    if (activeDownload.current) return;
+    const c = new AbortController();
+    activeDownload.current = c;
+    setBusy(true); setError('');
+    try {
+      const response = await fetch(MZP, { method: 'GET', cache: 'no-store', signal: c.signal });
+      if (!response.ok) throw new Error('Download unavailable');
+      const payload = await response.blob();
+      const signature = new Uint8Array(await payload.slice(0, 4).arrayBuffer());
+      if (signature.length !== 4 || signature[0] !== 0x50 || signature[1] !== 0x4b || signature[2] !== 3 || signature[3] !== 4) throw new Error('Invalid installer response');
+      if (c.signal.aborted) return;
+      // The live server can still send filename=.zip. A local Blob URL has no
+      // Content-Disposition header, so save the verified response bytes as .mzp.
+      const url = URL.createObjectURL(new Blob([payload], { type: 'application/octet-stream' }));
+      const link = document.createElement('a');
+      link.href = url; link.download = '3dsmood-library.mzp'; link.hidden = true;
+      document.body.appendChild(link);
+      try { link.click(); } finally { link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000); }
+    } catch {
+      if (!c.signal.aborted) setError('Không tải được bộ cài hợp lệ. Kiểm tra kết nối rồi bấm tải lại.');
+    } finally {
+      if (activeDownload.current === c) activeDownload.current = null;
+      if (!c.signal.aborted) setBusy(false);
+    }
+  }
+
   const cls = `inline-flex items-center justify-center rounded-md px-5 py-2.5 text-sm font-bold ${className}`;
-  return ready === false
-    ? <button type="button" disabled className={`${cls} cursor-not-allowed border border-line text-mute`}>Bản cài đặt sắp có</button>
-    : <a href={MZP} download className={`${cls} bg-accent text-accent-ink hover:brightness-110`}>Tải xuống thư viện</a>;
+  return <>
+    {ready === false
+      ? <button type="button" disabled className={`${cls} cursor-not-allowed border border-line text-mute`}>Bản cài đặt sắp có</button>
+      : <a href={MZP} download="3dsmood-library.mzp" onClick={download} aria-disabled={busy} aria-busy={busy} className={`${cls} bg-accent text-accent-ink hover:brightness-110 ${busy ? 'pointer-events-none opacity-60' : ''}`}>{busy ? 'Đang tải bộ cài…' : 'Tải xuống thư viện'}</a>}
+    {error && <p role="alert" className="max-w-sm text-xs text-danger">{error}</p>}
+  </>;
 }
 
 function Lightbox({ p, onClose }) {

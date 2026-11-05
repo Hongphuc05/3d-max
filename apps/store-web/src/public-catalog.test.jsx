@@ -13,10 +13,26 @@ const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const json = (v, status = 200) => new Response(JSON.stringify(v), { status, headers: { 'content-type': 'application/json' } });
 const flush = () => new Promise((r) => setTimeout(r, 20));
 let zipStatus = 200;
+const packageBytes = new Uint8Array([0x50, 0x4b, 3, 4, 0x11, 0x22]);
+const wrongHeaderResponse = () => new Response(packageBytes, { headers: { 'content-type': 'application/zip', 'content-disposition': 'attachment; filename="3dsmood-library.zip"' } });
+let downloadResponse = wrongHeaderResponse, downloadGets = 0, blobSequence = 0;
+const savedFiles = [], objectBlobs = new Map();
+const originalCreate = URL.createObjectURL, originalRevoke = URL.revokeObjectURL;
+URL.createObjectURL = blob => { const url = 'blob:gallery-' + (++blobSequence); objectBlobs.set(url, blob); return url; };
+URL.revokeObjectURL = url => objectBlobs.delete(url);
+const originalClick = dom.window.HTMLAnchorElement.prototype.click;
+dom.window.HTMLAnchorElement.prototype.click = function () {
+  if (this.href.startsWith('blob:gallery-')) { savedFiles.push({ name: this.download, blob: objectBlobs.get(this.href) }); return; }
+  return originalClick.call(this);
+};
 const original = globalThis.fetch;
 globalThis.fetch = async (url, opts) => {
   const path = String(url);
-  if (path === '/download/3dsmood-library.mzp') { assert.equal(opts.method, 'HEAD'); return new Response(null, { status: zipStatus }); }
+  if (path === '/download/3dsmood-library.mzp') {
+    if (opts.method === 'HEAD') return new Response(null, { status: zipStatus });
+    assert.equal(opts.method, 'GET'); downloadGets++;
+    return downloadResponse(opts);
+  }
   if (path === '/api/v1/catalog') return json({ models: [
     { id: id(101), name: 'Sofa One', categoryId: id(1), status: 'PUBLISHED' },
     { id: id(102), name: 'Sofa Two', categoryId: id(1), status: 'PUBLISHED' },
@@ -25,7 +41,7 @@ globalThis.fetch = async (url, opts) => {
   if (path === '/api/v1/previews/manifest') return json({ previews: [] });
   throw new Error('unexpected ' + path);
 };
-after(() => { globalThis.fetch = original; dom.window.close(); });
+after(() => { globalThis.fetch = original; dom.window.close(); URL.createObjectURL = originalCreate; URL.revokeObjectURL = originalRevoke; dom.window.HTMLAnchorElement.prototype.click = originalClick; });
 
 async function mount() {
   const root = createRoot(document.getElementById('root'));
@@ -81,4 +97,52 @@ test('inside the Max host the entry is PluginApp (not public); admin never publi
   assert.equal(isPublicSite('/'), false);
   delete dom.window.chrome;
   assert.equal(isPublicSite('/admin'), false);
+});
+
+test('gallery saves exactly one unchanged MZP even when the server forces a ZIP filename and MIME type', async () => {
+  zipStatus = 200; downloadGets = 0; savedFiles.length = 0;
+  let releaseResponse;
+  downloadResponse = () => new Promise(resolve => { releaseResponse = resolve; });
+  const root = await mount();
+  const link = document.querySelector('a[download]');
+  await act(() => { link.click(); link.click(); });
+  assert.equal(downloadGets, 1, 'double-click must not create duplicate package downloads');
+  assert.equal(link.getAttribute('aria-busy'), 'true');
+  await act(async () => { releaseResponse(wrongHeaderResponse()); await flush(); });
+  assert.equal(savedFiles.length, 1);
+  assert.equal(savedFiles[0].name, '3dsmood-library.mzp');
+  assert.equal(savedFiles[0].blob.type, 'application/octet-stream');
+  assert.deepEqual(new Uint8Array(await savedFiles[0].blob.arrayBuffer()), packageBytes, 'response bytes are saved without unpacking or adding files');
+  assert.equal(link.getAttribute('aria-busy'), 'false');
+  await act(() => root.unmount()); downloadResponse = wrongHeaderResponse;
+});
+
+test('HTML and failed HTTP responses are not saved as installers; download can be retried', async () => {
+  zipStatus = 200; downloadGets = 0; savedFiles.length = 0;
+  const responses = [new Response('<html>not an installer</html>', { headers: { 'content-type': 'text/html' } }), new Response(null, { status: 503 }), wrongHeaderResponse()];
+  downloadResponse = () => responses.shift();
+  const root = await mount();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await act(async () => { document.querySelector('a[download]').click(); await flush(); });
+    assert.equal(savedFiles.length, 0);
+    assert.match(document.querySelector('[role=alert]').textContent, /Không tải được/);
+  }
+  await act(async () => { document.querySelector('a[download]').click(); await flush(); });
+  assert.equal(downloadGets, 3); assert.equal(savedFiles.length, 1);
+  assert.equal(savedFiles[0].name, '3dsmood-library.mzp');
+  assert.equal(document.querySelector('[role=alert]'), null);
+  await act(() => root.unmount()); downloadResponse = wrongHeaderResponse;
+});
+
+test('leaving the gallery cancels an in-flight package request without saving a file', async () => {
+  zipStatus = 200; savedFiles.length = 0;
+  let releaseResponse, downloadSignal;
+  downloadResponse = opts => { downloadSignal = opts.signal; return new Promise(resolve => { releaseResponse = resolve; }); };
+  const root = await mount();
+  await act(() => document.querySelector('a[download]').click());
+  await act(() => root.unmount());
+  assert.equal(downloadSignal.aborted, true);
+  await act(async () => { releaseResponse(wrongHeaderResponse()); await flush(); });
+  assert.equal(savedFiles.length, 0);
+  downloadResponse = wrongHeaderResponse;
 });

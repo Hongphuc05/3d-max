@@ -256,3 +256,9 @@ Lỗi môi trường hay gặp: `AUTH_CONFIGURATION_REQUIRED` = thiếu `JWT_SEC
 - [x] Web 161/161 pass; full Vite/net48 build pass; staged ZIP/RAR/7z, kiểm tra MZP và pointer swap pass. Đã mở chính artifact để xác nhận category/button/tooltip 3dsmood và phiên bản 1.3.1.
 - [x] Artifact local: installer/release/out/3dsmood-library.mzp, 9759757 bytes, SHA256 5DC1AA0AFB58D7800922B91ED009602C654EE48195D200AB2D088C36274E2030. Binary không commit vào Git.
 - [ ] Chưa nghiệm thu hiển thị/toolbar trên Max thật. File MZP trên website vẫn cần phát hành qua workflow release riêng.
+## Sửa nút tải gallery khi Nginx còn header ZIP (2026-11-06)
+
+- Xác minh production /download/3dsmood-library.mzp trả HTTP 200 nhưng Content-Disposition vẫn ép filename=3dsmood-library.zip, Content-Type application/zip. File tải thực tế khớp SHA256 asset MZP v1.3.1 (5DC1AA0AFB58D7800922B91ED009602C654EE48195D200AB2D088C36274E2030), không phải archive source của repo.
+- Nút gallery tải bytes rồi tạo Blob URL và đặt tên lưu 3dsmood-library.mzp rõ ràng; không giải nén hay ghép thêm file. Có trạng thái đang tải, chặn nhấp trùng, lỗi/thử lại và hủy request khi rời trang. Phản hồi HTTP lỗi/không có ZIP signature không được lưu thành bộ cài.
+- Web 164/164 pass; production Vite build pass. Test tái hiện Content-Disposition ZIP sai, xác nhận một file MZP với bytes không đổi, lỗi HTML/503, retry và hủy khi unmount.
+- Sửa này bảo vệ thao tác bấm nút gallery. Header của đường URL tải trực tiếp trên Nginx vẫn cần operator sửa/reload; SSH hiện chưa sử dụng được. Không cần build/upload lại asset MZP.
