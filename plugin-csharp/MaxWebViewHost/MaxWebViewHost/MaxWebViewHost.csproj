@@ -85,6 +85,7 @@
     <Compile Include="V3Routes.cs" />
     <Compile Include="OrdersClient.cs" />
     <Compile Include="V3Library.cs" />
+    <Compile Include="DownloadedLibrary.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

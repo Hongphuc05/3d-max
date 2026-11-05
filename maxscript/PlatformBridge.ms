@@ -254,8 +254,9 @@ fn pbOnRequest sender args = (
 -- ---------- khởi động ----------
 
 -- Ưu tiên DLL đã cài trong thư mục user của Max, không có thì rơi về layout dev.
+global gPlatformInstallationRoot = getFilenamePath (getSourceFileName())
 fn pbDllPath = (
-    local installed = (getDir #userScripts) + "\\Platform\\MaxWebViewHost.dll"
+    local installed = gPlatformInstallationRoot + "MaxWebViewHost.dll"
     if doesFileExist installed then installed
     else @"D:\Project\3d-max\plugin-csharp\MaxWebViewHost\MaxWebViewHost\bin\Debug\MaxWebViewHost.dll"
 )

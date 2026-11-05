@@ -4,6 +4,8 @@
 export function installMockHost() {
   const listeners = new Set();
   let objects = 0;
+  let models = JSON.parse(localStorage.getItem('3dsmood.mock.downloads') || '[]');
+  let downloadDirectory = localStorage.getItem('3dsmood.mock.directory') || 'D:\\3DS Mood';
   const send = (data, delay) => setTimeout(() => listeners.forEach((f) => f({ data })), delay);
 
   window.chrome = window.chrome || {};
@@ -21,15 +23,31 @@ export function installMockHost() {
         case 'library.refresh':
           return ok({ items: [{ id: 'demo-chair', name: 'Ghế minh họa (DEV)', category: 'Demo' }], offline: false,
             message: 'Dữ liệu minh họa DEV; không phải model thật từ Drive.' });
+        case 'library.downloads': return ok({ models });
+        case 'library.importOptions':
+          if (!models.some(m => m.modelId === params.modelId)) return fail('MODEL_NOT_DOWNLOADED', 'Model chưa có trên máy.');
+          return ok({ options: [{ optionId: 'a'.repeat(64), label: 'model.max', relativePath: 'model.max', format: 'max' }] });
+        case 'library.settings': return ok({ downloadDirectory });
+        case 'library.chooseDownloadDirectory':
+          downloadDirectory = 'E:\\3DS Mood';
+          localStorage.setItem('3dsmood.mock.directory', downloadDirectory);
+          return ok({ downloadDirectory });
         case 'host.getInfo':
           return ok({ host: '3dsmax', hostVersion: '3ds Max (mock)', pluginVersion: '0.0.0-mock', protocolVersion: 1 });
         case 'scene.getInfo':
           return ok({ objects, selected: 0, units: 'cm', renderer: 'Corona (mock)' });
+        case 'asset.download': {
+          const record = { modelId: params.modelId, name: 'Model minh họa (DEV)', downloadedAt: new Date().toISOString() };
+          models = [...models.filter(m => m.modelId !== record.modelId), record];
+          localStorage.setItem('3dsmood.mock.downloads', JSON.stringify(models));
+          send({ event: 'library.downloadsChanged', data: {} }, 900);
+          return ok(record, 900);
+        }
         case 'asset.import': {
-          const d = 2000 + Math.random() * 3000;
-          if (Math.random() < 0.25) return fail('ASSET_DOWNLOAD_FAILED', '(mock) Không tải được gói từ backend', d);
+          if (!models.some(m => m.modelId === params.modelId)) return fail('MODEL_NOT_DOWNLOADED', 'Model chưa có trên máy.');
+          if (params.optionId !== 'a'.repeat(64)) return fail('IMPORT_OPTION_INVALID', 'File đã chọn không còn hợp lệ.');
           objects += 5;
-          return ok({ imported: 5, file: 'mock.max' }, d);
+          return ok({ imported: 5, file: 'mock.max' }, 120);
         }
         default:
           return fail('UNKNOWN_METHOD', 'Method not allowed: ' + method);

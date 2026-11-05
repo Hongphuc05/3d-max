@@ -1,24 +1,24 @@
-// Danh muc cong khai (trinh duyet thuong): chi xem model, khong mua/gia/license. Tai ve thu vien = zip installer cua plugin.
+// Danh muc cong khai (trinh duyet thuong): chi xem model, khong mua/gia/license. Tai ve thu vien = MZP installer cua plugin.
 import { useEffect, useMemo, useState } from 'react';
 import { Filters, Preview } from './components.jsx';
 import { Icon } from './icons.jsx';
 import { matchesCategory } from './catalog-view.js';
 import { usePluginCatalog } from './usePluginCatalog.js';
 
-const ZIP = '/download/3dsmood-library.zip';
+const MZP = '/download/3dsmood-library.mzp';
 const STEP = 48;
 
 function DownloadButton({ className = '' }) {
   const [ready, setReady] = useState(null);
   useEffect(() => {
     const c = new AbortController();
-    fetch(ZIP, { method: 'HEAD', signal: c.signal }).then((r) => setReady(r.status === 200), () => { if (!c.signal.aborted) setReady(false); });
+    fetch(MZP, { method: 'HEAD', signal: c.signal }).then((r) => setReady(r.status === 200), () => { if (!c.signal.aborted) setReady(false); });
     return () => c.abort();
   }, []);
   const cls = `inline-flex items-center justify-center rounded-md px-5 py-2.5 text-sm font-bold ${className}`;
   return ready === false
     ? <button type="button" disabled className={`${cls} cursor-not-allowed border border-line text-mute`}>Bản cài đặt sắp có</button>
-    : <a href={ZIP} download className={`${cls} bg-accent text-accent-ink hover:brightness-110`}>Tải xuống thư viện</a>;
+    : <a href={MZP} download className={`${cls} bg-accent text-accent-ink hover:brightness-110`}>Tải xuống thư viện</a>;
 }
 
 function Lightbox({ p, onClose }) {
@@ -64,7 +64,10 @@ export default function PublicCatalog() {
           <div className="font-mono text-lg font-bold tracking-widest text-accent">3DS MOOD</div>
           <p className="text-sm text-mute">Thư viện 3D model cho 3ds Max. Xem toàn bộ model, cài plugin để dùng trực tiếp trong Max.</p>
         </div>
-        <DownloadButton className="w-full sm:w-auto sm:px-8 sm:py-3 sm:text-base" />
+        <div className="flex flex-col items-start gap-1 sm:items-end">
+          <DownloadButton className="w-full sm:w-auto sm:px-8 sm:py-3 sm:text-base" />
+          <p className="text-xs text-mute">Trong 3ds Max: Scripting → Run Script → chọn file .mzp.</p>
+        </div>
       </header>
 
       <div className="flex min-h-0 flex-1">

@@ -7,6 +7,8 @@ const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/' });
 Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });
 const listeners = new Set(); const calls = [];
 let importOutcome = { ok: true };
+let localModels = [];
+let downloadDirectory = 'D:\\3DS Mood';
 dom.window.chrome = { webview: {
   addEventListener: (_t, f) => listeners.add(f),
   postMessage({ id, method, params }) {
@@ -15,7 +17,16 @@ dom.window.chrome = { webview: {
     if (method === 'library.status') return reply({ id, ok: true, result: { machineCode: 'MAX-TESTCODE', offline: false } });
     if (method === 'host.getInfo') return reply({ id, ok: true, result: { hostVersion: '3ds Max 2022' } });
     if (method === 'scene.getInfo') return reply({ id, ok: true, result: { objects: 1, renderer: 'Corona' } });
-    if (method === 'asset.import') return reply(importOutcome.ok ? { id, ok: true, result: { imported: 1 } } : { id, ok: false, error: { code: 'NOT_ENTITLED', message: 'english' } });
+    if (method === 'library.downloads') return reply({ id, ok: true, result: { models: localModels } });
+    if (method === 'library.importOptions') return reply({ id, ok: true, result: { options: [{ optionId: 'a'.repeat(64), label: 'model.max', relativePath: 'model.max', format: 'max' }] } });
+    if (method === 'library.settings') return reply({ id, ok: true, result: { downloadDirectory } });
+    if (method === 'library.chooseDownloadDirectory') { downloadDirectory = 'E:\\Models'; return reply({ id, ok: true, result: { downloadDirectory } }); }
+    if (method === 'asset.download') {
+      if (!importOutcome.ok) return reply({ id, ok: false, error: { code: 'NOT_ENTITLED', message: 'english' } });
+      localModels = [...localModels.filter(m => m.modelId !== params.modelId), { modelId: params.modelId }];
+      return reply({ id, ok: true, result: { modelId: params.modelId } });
+    }
+    if (method === 'asset.import') return reply({ id, ok: true, result: { imported: 1 } });
   },
 } };
 const emit = (event, data) => listeners.forEach((f) => f({ data: { event, data } }));
@@ -31,6 +42,7 @@ const originalFetch = globalThis.fetch;
 after(() => { globalThis.fetch = originalFetch; dom.window.close(); });
 
 function server() {
+  calls.length = 0; localModels = [];
   version = 1; rights = { allModels: true };
   cats = [{ id: id(1), parentId: null, name: 'Living', fullPath: 'Living', modelCount: 2 }, { id: id(2), parentId: null, name: 'Bedroom', fullPath: 'Bedroom', modelCount: 1 }];
   globalThis.fetch = async (url) => {
@@ -66,8 +78,9 @@ test('licensed device: every card shows Download and the bridge only ever sees a
   const download = [...document.querySelectorAll('.group')][1].querySelectorAll('button')[2];
   await act(async () => { download.click(); await flush(); });
   await act(flush); await act(flush);
-  const imports = calls.filter((c) => c.method === 'asset.import');
+  const imports = calls.filter((c) => c.method === 'asset.download');
   assert.deepEqual(imports.map((c) => c.params), [{ modelId: id(101) }]);
+  assert.equal(calls.filter(c => c.method === 'asset.import').length, 0, 'Download never imports');
   assert.ok(!calls.some((c) => JSON.stringify(c).includes('ticket')));
   await done(root);
 });
@@ -114,20 +127,44 @@ test('Mua thư viện opens the order dialog; after the owner confirms, the card
   await act(() => r.unmount()); getJobs().forEach((j) => remove(j.slug));
 });
 
-test('tab "Đã tải" lists the models imported in this session; it starts empty; unknown rights never list anything', async () => {
+test('Downloaded models come from the native index, survive remount and import separately without another download', async () => {
   server(); const root = await mount();
   await act(async () => { button('Đã tải').click(); await flush(); });
-  assert.equal(document.querySelectorAll('.group').length, 0); assert.match(text(), /Chưa import model nào/);
+  assert.equal(document.querySelectorAll('.group').length, 0); assert.match(text(), /Chưa có model đã tải/);
   await act(async () => { button('Online').click(); await flush(); });
   await act(async () => { [...document.querySelectorAll('.group')][1].querySelectorAll('button')[2].click(); await flush(); });
   await act(flush); await act(flush);
   await act(async () => { button('Đã tải').click(); await flush(); });
   assert.deepEqual(cards().map((c) => c.match(/Sofa One|Sofa Two|Bed One/)[0]), ['Sofa One']);
   await done(root);
-  server(); rights = null; const root2 = await mount();
+  rights = null; const root2 = await mount();
   await act(async () => { button('Đã tải').click(); await flush(); });
-  assert.equal(document.querySelectorAll('.group').length, 0);
+  assert.equal(document.querySelectorAll('.group').length, 1, 'native index survives UI remount and unknown network rights');
+  const count = calls.filter(c => c.method === 'asset.download').length;
+  await act(async () => { button('Import').click(); await flush(); });
+  assert.deepEqual(calls.filter(c => c.method === 'asset.import').map(c => c.params), [{ modelId: id(101), optionId: 'a'.repeat(64) }]);
+  assert.equal(calls.filter(c => c.method === 'asset.download').length, count, 'local import does not download again');
   await done(root2);
+});
+
+test('Settings reads and changes the native download directory without sending a path from JS', async () => {
+  server(); const root = await mount();
+  await act(async () => { button('Cài đặt').click(); await flush(); }); await act(flush);
+  assert.match(document.querySelector('[role=dialog]').textContent, /D:\\3DS Mood/);
+  await act(async () => { button('Chọn thư mục').click(); await flush(); }); await act(flush);
+  assert.match(document.querySelector('[role=dialog]').textContent, /E:\\Models/);
+  assert.deepEqual(calls.find(c => c.method === 'library.chooseDownloadDirectory').params, {});
+  await done(root);
+});
+
+test('Downloaded models remain visible when the catalog cannot be read and use their persisted metadata', async () => {
+  server(); localModels = [{ modelId: id(888), product: { id: id(888), slug: id(888), name: 'Local Chair', category: 'Local', subcategory: '', folderPath: '', folderIds: [], info: { sizeMB: 1, renderers: [], formats: ['max'] } } }];
+  globalThis.fetch = async () => { throw new Error('offline'); };
+  const root = await mount();
+  await act(async () => { button('Đã tải').click(); await flush(); });
+  assert.equal(cards().length, 1); assert.match(cards()[0], /Local Chair/);
+  assert.equal(button('Import').disabled, false);
+  await done(root);
 });
 
 test('unknown rights: every card says it cannot verify instead of offering Download or Mua', async () => {
@@ -138,8 +175,7 @@ test('unknown rights: every card says it cannot verify instead of offering Downl
   const before = calls.filter((c) => c.method === 'asset.import').length;
   await act(async () => { actions[0].click(); await flush(); });
   assert.equal(calls.filter((c) => c.method === 'asset.import').length, before, 'clicking an unverified card downloads nothing');
-  emit('library.offline', { offline: true });
-  await act(flush);
+  await act(async () => { emit('library.offline', { offline: true }); await flush(); });
   assert.match(cards()[0], /Cần Internet để xác minh quyền/);
   assert.match(text(), /Đang offline/);
   await done(root);

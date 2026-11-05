@@ -16,7 +16,7 @@ let zipStatus = 200;
 const original = globalThis.fetch;
 globalThis.fetch = async (url, opts) => {
   const path = String(url);
-  if (path === '/download/3dsmood-library.zip') { assert.equal(opts.method, 'HEAD'); return new Response(null, { status: zipStatus }); }
+  if (path === '/download/3dsmood-library.mzp') { assert.equal(opts.method, 'HEAD'); return new Response(null, { status: zipStatus }); }
   if (path === '/api/v1/catalog') return json({ models: [
     { id: id(101), name: 'Sofa One', categoryId: id(1), status: 'PUBLISHED' },
     { id: id(102), name: 'Sofa Two', categoryId: id(1), status: 'PUBLISHED' },
@@ -66,7 +66,7 @@ test('click a card opens the lightbox with name and category', async () => {
 test('download button is a link when the zip exists, disabled "Bản cài đặt sắp có" otherwise', async () => {
   zipStatus = 200; let root = await mount();
   const a = document.querySelector('a[download]');
-  assert.equal(a.getAttribute('href'), '/download/3dsmood-library.zip'); assert.match(a.textContent, /Tải xuống thư viện/);
+  assert.equal(a.getAttribute('href'), '/download/3dsmood-library.mzp'); assert.match(a.textContent, /Tải xuống thư viện/);
   await act(() => root.unmount());
   zipStatus = 404; root = await mount();
   assert.equal(document.querySelector('a[download]'), null);

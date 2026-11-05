@@ -12,6 +12,9 @@ import { Queue } from './Queue.jsx';
 import { useJobs } from './queue.js';
 import { owns } from './v3-catalog.js';
 import { usePluginCatalog } from './usePluginCatalog.js';
+import { downloadedProducts, useDownloadedLibrary } from './useDownloadedLibrary.js';
+import PluginSettings from './PluginSettings.jsx';
+import ImportOptionsDialog from './ImportOptionsDialog.jsx';
 
 const PAGE = 30;
 const SORTS = {
@@ -50,15 +53,21 @@ export default function PluginApp({ orderPollMs }) {
   const [drawer, setDrawer] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [buying, setBuying] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const { products, tree, state, error, offline, progress, entitlements } = usePluginCatalog(reloadKey);
   const jobs = useJobs();
   const max = isMaxHost();
-  const ctx = useMemo(() => ({ max, entitlements, offline, onBuy: () => setBuying(true) }), [max, entitlements, offline]);
+  const completed = jobs.filter(j => j.status === 'done').length;
+  const downloads = useDownloadedLibrary(reloadKey, completed);
+  const downloadedIds = useMemo(() => new Set(downloads.models.map(m => m.modelId)), [downloads.models]);
+  const ctx = useMemo(() => ({ max, entitlements, offline, local: tab === 'done', downloadedIds,
+    onBuy: () => setBuying(true), onDownloaded: () => setTab('done') }), [max, entitlements, offline, tab, downloadedIds]);
 
   // Chon model theo id (khong giu doi tuong cu): khi catalog tu lam moi, panel chi tiet cap nhat theo ban moi hoac dong neu model da bi go.
-  const active = useMemo(() => products.find((p) => p.id === activeId) || null, [products, activeId]);
   const licensed = owns(entitlements);
-  const mine = useMemo(() => products.filter((p) => jobs.some((j) => j.slug === p.slug && j.status === 'done')), [products, jobs]); // tab "Đã tải": model da import trong phien nay
+  const mine = useMemo(() => downloadedProducts(downloads.models, products), [downloads.models, products]);
+  const active = useMemo(() => (tab === 'done' ? mine : products).find(p => p.id === activeId) || null, [products, mine, tab, activeId]);
+  const listReady = tab === 'done' || state === 'ready';
   const rows = useMemo(() => {
     const needle = text.trim().toLowerCase();
     return (tab === 'online' ? products : mine)
@@ -98,6 +107,7 @@ export default function PluginApp({ orderPollMs }) {
       <div className="flex min-h-0 flex-1">
         <nav className="flex w-14 shrink-0 flex-col items-center gap-2 border-r border-line bg-panel py-3">
           <div className="flex flex-col items-center gap-1 rounded-md bg-raised p-2 text-[10px] text-accent" title="Models"><Icon name="cube" className="size-5" />Models</div>
+          {max && <button onClick={() => setSettingsOpen(true)} title="Cài đặt" className="flex flex-col items-center gap-1 rounded-md p-2 text-[10px] text-mute hover:bg-raised hover:text-fg"><Icon name="settings" className="size-5" />Cài đặt</button>}
           <div className="mt-auto"><Device max={max} /></div>
         </nav>
 
@@ -123,7 +133,7 @@ export default function PluginApp({ orderPollMs }) {
           <div className="flex flex-wrap items-center gap-2 px-3 py-2">
             <div className="mr-2 leading-tight">
               <div className="font-mono text-[10px] tracking-widest text-accent">3DS MOOD MODELS</div>
-              <div className="font-mono text-xs text-mute">{state === 'ready' ? `${rows.length} model` : '…'}</div>
+              <div className="font-mono text-xs text-mute">{listReady ? `${rows.length} model` : '…'}</div>
             </div>
             <label className="flex min-w-48 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-accent">
               <Icon name="search" className="size-3.5 text-mute" />
@@ -135,27 +145,28 @@ export default function PluginApp({ orderPollMs }) {
           </div>
 
           <div className="min-h-0 flex-1 overflow-auto px-3 pb-3">
-            {state === 'error' && (
+            {tab === 'done' && downloads.error && <p role="alert" className="py-3 text-sm text-danger">{downloads.error}</p>}
+            {tab !== 'done' && state === 'error' && (
               <div role="alert" className="mx-auto mt-16 max-w-md rounded-md border border-danger/40 bg-danger/10 p-4 text-center font-mono text-xs text-danger">
                 <p>{error}</p>
                 <button onClick={() => setReloadKey((k) => k + 1)} className="mt-3 rounded-md bg-accent px-4 py-1.5 font-bold text-accent-ink">Thử lại</button>
               </div>
             )}
-            {state === 'ready' && rows.length === 0 && (
+            {listReady && rows.length === 0 && (
               <p className="py-16 text-center font-mono text-xs text-mute">
-                {tab === 'done' ? 'Chưa import model nào trong phiên này.'
+                {tab === 'done' ? (mine.length ? 'Không có model đã tải nào khớp bộ lọc.' : 'Chưa có model đã tải. Bấm Download ở tab Online.')
                   : products.length ? 'Không có model nào khớp bộ lọc.' : 'Catalog hiện đang trống.'}
               </p>
             )}
-            {state === 'loading' && max && <p role="status" className="py-2 text-center font-mono text-xs text-mute">Lần đầu mở: đang tải catalog từ máy chủ (cần Internet)…</p>}
+            {tab !== 'done' && state === 'loading' && max && <p role="status" className="py-2 text-center font-mono text-xs text-mute">Lần đầu mở: đang tải catalog từ máy chủ (cần Internet)…</p>}
             <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2.5">
-              {state === 'loading'
+              {!listReady && state === 'loading'
                 ? Array.from({ length: 18 }, (_, i) => <div key={i} className="aspect-[3/4] animate-pulse rounded-lg bg-panel" />)
                 : view.map((p) => <PluginCard key={p.id} p={p} active={activeId === p.id} onOpen={(m) => setActiveId(m.id)} ctx={ctx} />)}
             </div>
           </div>
 
-          {state === 'ready' && rows.length > PAGE && (
+          {listReady && rows.length > PAGE && (
             <div className="flex items-center justify-between border-t border-line px-3 py-2 font-mono text-xs">
               <button disabled={page === 1} onClick={() => setPage(page - 1)} className="rounded-md border border-line px-3 py-1 disabled:opacity-30">‹ Trước</button>
               <span className="text-mute">Trang {page} / {pages} · {rows.length} model</span>
@@ -168,6 +179,8 @@ export default function PluginApp({ orderPollMs }) {
       </div>
       {/* Thanh toan xong (chu xac nhan) -> tai lai catalog + quyen: nut chuyen sang Download khong can bam Lam moi. */}
       {buying && <OrderDialog pollMs={orderPollMs} onClose={() => setBuying(false)} onConfirmed={() => setReloadKey((k) => k + 1)} />}
+      {settingsOpen && <PluginSettings onClose={() => setSettingsOpen(false)} />}
+      <ImportOptionsDialog />
     </div>
   );
 }

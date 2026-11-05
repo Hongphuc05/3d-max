@@ -1,6 +1,7 @@
 // P4.4: the model grid card, detail panel and action button of the plugin (UI-1 layout, v3 data). No account, no licence screen:
 // what a device may download is decided by the server (entitlements); the button only reflects it.
 import { mb } from './api.js';
+import { importDownloaded, useImports } from './local-imports.js';
 import { Preview, rendererLabel } from './components.jsx';
 import { Icon } from './icons.jsx';
 import { enqueue, useJob } from './queue.js';
@@ -14,14 +15,24 @@ const styles = {
 
 export function ModelAction({ p, ctx, big }) {
   const job = useJob(p.slug);
+  const localImport = useImports().find(item => item.modelId === p.id);
+  const importing = ['loading-options', 'choosing', 'running'].includes(localImport?.status);
+  const importLabel = localImport?.status === 'loading-options' ? 'Đang đọc file…' : localImport?.status === 'choosing' ? 'Đang chọn file…' : 'Đang import…';
+  const importError = localImport?.error;
   const state = actionState({ max: ctx.max, entitlements: ctx.entitlements, owned: owns(ctx.entitlements), offline: ctx.offline, job });
   const size = `${styles.base} ${big ? 'py-3 text-sm' : 'py-1.5 text-xs'}`;
   const click = (e) => { e.stopPropagation(); enqueue(p); };
+  const downloaded = ctx.downloadedIds?.has(p.id);
+  if (ctx.local) {
+    const blocked = ctx.entitlements?.allModels === false;
+    const runImport = e => { e.stopPropagation(); importDownloaded(p.id); };
+    return <div className="space-y-1"><button disabled={importing || blocked} onClick={runImport} className={`${size} ${styles.solid}`}>{importing ? importLabel : blocked ? 'Cần license thư viện' : 'Import'}</button>{importError && <p role="alert" className="text-xs text-danger">{importError}</p>}</div>;
+  }
+  if (downloaded || state.kind === 'done') return <button onClick={e => { e.stopPropagation(); ctx.onDownloaded?.(); }} className={`${size} border border-accent/50 text-accent hover:bg-accent/10`}>Đã tải · Xem</button>;
   if (state.kind === 'view') return <div className="font-mono text-xs text-mute">{state.label}</div>;
   if (state.disabled) return <button disabled className={`${size} ${styles.ghost} ${state.kind === 'running' ? 'animate-pulse text-accent' : ''}`}>{state.label}</button>;
   if (state.kind === 'failed') return <button onClick={click} className={`${size} border border-danger/50 text-danger hover:bg-danger/10`}>{state.label}</button>;
-  if (state.kind === 'done') return <button onClick={click} className={`${size} border border-accent/50 text-accent hover:bg-accent/10`}>{state.label}</button>;
-  return <button onClick={click} className={`${size} ${styles.solid}`}>{big ? 'Download & import vào 3ds Max' : state.label}</button>;
+  return <button onClick={click} className={`${size} ${styles.solid}`}>{big ? 'Download model' : state.label}</button>;
 }
 
 /** Nut mua duy nhat (D28.1): license ca thu vien, khong co nut mua theo tung model. */
@@ -87,8 +98,8 @@ export function PluginDetail({ p, onClose, ctx }) {
             <ModelAction p={p} ctx={ctx} big />
             {ctx.max && ctx.entitlements && !owned && <BuyLibrary ctx={ctx} />}
             {ctx.max
-              ? <p className="font-mono text-[10px] text-mute">Plugin tải gói về máy rồi import vào scene hiện tại. Xem tiến trình ở Hàng đợi.</p>
-              : <p className="font-mono text-[10px] text-mute">Download &amp; import chỉ có trong plugin 3ds Max. Trên trình duyệt chỉ xem catalog.</p>}
+              ? <p className="font-mono text-[10px] text-mute">{ctx.local ? 'Import trực tiếp từ model đã lưu trên máy. Không tải hoặc giải nén lại.' : 'Download lưu model trên máy. Vào Đã tải để chọn model và import khi cần.'}</p>
+              : <p className="font-mono text-[10px] text-mute">Download và import chỉ có trong plugin 3ds Max. Trên trình duyệt chỉ xem catalog.</p>}
           </div>
         </div>
       </aside>

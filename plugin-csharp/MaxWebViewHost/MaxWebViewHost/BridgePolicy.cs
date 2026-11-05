@@ -15,8 +15,8 @@ namespace MaxWebViewHost
         private static readonly Regex Ticket = new Regex("^[A-Za-z0-9_-]{16,128}$", RegexOptions.CultureInvariant);
         internal static readonly string[] Methods = {
             "host.ping", "host.getInfo", "scene.getInfo", "scene.getSelection", "scene.createBox",
-            "design.create", "asset.import", "device.getIdentity", "device.signChallenge",
-            "library.status", "library.refresh"
+            "design.create", "asset.download", "asset.import", "device.getIdentity", "device.signChallenge",
+            "library.status", "library.refresh", "library.downloads", "library.importOptions", "library.settings", "library.chooseDownloadDirectory"
         };
 
         internal static bool IsTrusted(string value, Uri[] origins, string diagnosticUri)
@@ -83,9 +83,12 @@ namespace MaxWebViewHost
                 case "device.signChallenge":
                     return p.Count == 2 && HasOnly(p, "challengeId", "message")
                         && Text(p, "challengeId", 36) && Text(p, "message", 512);
-                case "asset.import":
-                    // v3 online catalog: {modelId} (UUID), nothing else.
+                case "asset.download":
+                case "library.importOptions":
                     return p.Count == 1 && HasOnly(p, "modelId") && Text(p, "modelId", 36) && ModelUuid.IsMatch((string)p["modelId"]);
+                case "asset.import":
+                    return HasOnly(p, "modelId", "optionId") && Text(p, "modelId", 36) && ModelUuid.IsMatch((string)p["modelId"])
+                        && (!p.ContainsKey("optionId") || (Text(p, "optionId", 64) && Regex.IsMatch((string)p["optionId"], @"\A[0-9a-f]{64}\z")));
                 case "scene.createBox":
                     return HasOnly(p, "size") && Number(p, "size", 1, 10000);
                 case "design.create":

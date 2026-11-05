@@ -321,3 +321,32 @@ Google Drive giới hạn tải ảnh nên **worker không còn tải ảnh từ
 | D29.6 | Migration 025: xóa các hàng `model_previews` nguồn `DRIVE_IMAGE` (file .webp trên đĩa giữ nguyên, dọn tay). Model cũ (stem NULL) được lần quét sau nhận lại theo `drive_file_id` |
 
 Số liệu kiểm trên dữ liệu thật: 320 ảnh cục bộ / 360 zip Drive → 318 khớp theo stem, danh mục trùng cả 318.
+
+## D30 — Một gói MZP, kho model cục bộ và tách tải/import (locked 2026-11-05)
+
+Chủ dự án xác nhận trong phiên triển khai: thay luồng Download tự import của D10 bằng hai thao tác riêng.
+
+| Mục | Quyết định |
+|---|---|
+| D30.1 | File tải công khai là `3dsmood-library.mzp`: Run Script trong Max 2022, đăng ký macro để thêm nút qua Customize User Interface. Payload chỉ xuất hiện một lần; không kèm EXE, bộ cài thủ công hoặc hướng dẫn rời trong gói phát hành mới. Giữ các dependency và thông báo bản quyền cần thiết bên trong. |
+| D30.2 | Download chỉ tải và giải nén an toàn vào kho model bền vững. Chỉ ghi nhận thành công sau khi dữ liệu sẵn sàng; xóa archive sau thành công. Giữ file model và texture ở vị trí ổn định để import lại trực tiếp từ SSD, không tải/giải nén lại. |
+| D30.3 | Settings cho chọn thư mục tải bằng hộp thoại native. Thay đổi chỉ áp dụng cho model tải sau; model cũ giữ đường dẫn đã lưu để không làm hỏng tham chiếu texture của scene. |
+| D30.4 | Mục Đã tải đọc chỉ mục lưu trên đĩa, tồn tại sau khi đóng panel/Max; Import chỉ dùng model đã lưu và không tự tải khi file thiếu. Web chỉ gửi model UUID, không gửi đường dẫn tùy ý. |
+| D30.5 | Import cục bộ không chờ mạng. Cho phép offline theo quyền đã được server xác minh gần nhất và lưu có bảo vệ trên thiết bị; khi đã nhận thông tin thu hồi/chặn phải lưu trạng thái từ chối, không dùng quyền cho phép cũ để vượt qua. |
+
+Triển khai theo ba phần tách biệt: native/kho model, web/Settings–Đã tải, đóng gói/phát hành MZP. Tích hợp và chạy kiểm tra trước khi bàn giao; nghiệm thu trong 3ds Max thật phải phân biệt với kiểm tra tự động.
+
+## D31 — Chọn mẫu/file trong model đã tải (2026-11-05)
+
+Đã kiểm 360 archive cục bộ trong source/3DSMOOD bằng tar: 317 đọc được, 284 có nhiều file .max/.fbx/.obj, 128 có nhiều file .max; tối đa 7 file import được (6 file .max). 43 archive chưa kết luận bằng công cụ này. Các lựa chọn có thể là màu/mẫu khác, regular/lowpoly, renderer hoặc phiên bản Max, không tự coi mọi file là sản phẩm khác nhau.
+
+- Download lưu chỉ mục toàn bộ file import được sau giải nén. Model đã tải bằng bản D30 được quét thư mục đã giải nén một lần để bổ sung chỉ mục, không tải/giải nén lại.
+- Đã tải → Import: một file thì import trực tiếp; nhiều file phải hiện danh sách và khách chọn rồi xác nhận. Hiển thị tên, đường dẫn tương đối, định dạng và gợi ý renderer/năm từ tên file. Không chọn mặc định thay khách.
+- Bridge library.importOptions chỉ nhận modelId. asset.import nhận modelId và optionId bất định danh đường dẫn; native chỉ cho chọn file trong chỉ mục của model. Không có lựa chọn khi nhiều file thì báo IMPORT_SELECTION_REQUIRED. Lựa chọn/file mất phải báo lỗi, không tự import file khác hoặc tải lại.
+- Phạm vi lựa chọn là file .max/.fbx/.obj trong gói; không tách từng object bên trong một file .max.
+## D32 — Một plugin gắn cố định với Max sở hữu (2026-11-05)
+
+- Mỗi tiến trình 3ds Max có một cửa sổ plugin riêng. Singleton chỉ nằm trong từng tiến trình; mở plugin ở Max A/B sẽ có hai cửa sổ độc lập.
+- Tiến trình sở hữu được chốt bằng PID và thời điểm khởi động, không thay theo focus hay thứ tự liệt kê cửa sổ. Tiêu đề plugin có tên scene và PID; thanh trên hiển thị đường dẫn scene của Max sở hữu.
+- Bỏ bộ chọn Max đích. Native chỉ đọc metadata của Max sở hữu và dispatch import vào adapter trong cùng tiến trình, không chuyển lệnh import tới pipe của Max khác.
+- Mở/reset scene mới trong cùng Max cập nhật đích cho lần import tiếp theo. Nếu scene đổi sau khi đã chụp đích của một thao tác đang chạy, kiểm tra document token và đường dẫn scene phải chặn thao tác đó. Chủ sở hữu không sẵn sàng thì báo lỗi, không chuyển sang Max khác.

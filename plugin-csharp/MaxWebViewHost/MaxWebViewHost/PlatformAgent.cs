@@ -144,11 +144,15 @@ namespace MaxWebViewHost
             string full;
             try { full = Path.GetFullPath(path); } catch { return Err("INVALID_PARAMS", "Path không hợp lệ"); }
             var root = Path.GetFullPath(CacheRoot) + Path.DirectorySeparatorChar;
-            if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase)
+            bool managed;
+            try { managed = new DownloadedLibrary().OwnsEntry(full); } catch { managed = false; }
+            // Legacy cache remains valid; custom folders require an exact protected index entry.
+            if ((!full.StartsWith(root, StringComparison.OrdinalIgnoreCase) && !managed)
                 || !AllowedExt.Contains(Path.GetExtension(full).ToLowerInvariant())
                 || !File.Exists(full))
                 return Err("INVALID_PARAMS", "File import không hợp lệ");
 
+            try { DownloadedLibrary.RejectReparse(full); } catch { return Err("INVALID_PARAMS", "File import không hợp lệ"); }
             return await DispatchSceneAsync(id, "asset.importFile", new Dictionary<string, object>
             {
                 { "path", full }, { "expectedScenePath", expectedPathObj }, { "expectedDocumentToken", expectedTokenObj }

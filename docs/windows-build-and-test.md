@@ -1,85 +1,54 @@
-# Build installer + nghiệm thu plugin trên Windows
+# Build MZP và nghiệm thu trên Windows
 
-> Dành cho người build trên máy Windows có 3ds Max 2022. Nhánh: `v3/p2-sync-worker` (KHÔNG dùng `main`).
-> Backend đã chạy thật ở `https://3dsmood.io.vn` (deploy tự động bằng GitHub Actions khi push nhánh này).
-> Phần C# gần đây được sửa trên macOS nên **chưa build, chưa chạy test lần nào** — việc của bạn là build, chạy test, sửa lỗi nếu có, rồi nghiệm thu trong Max.
+Target: 3ds Max 2022, .NET Framework 4.8, WebView2 Evergreen. Máy build cần Node.js 26, Visual Studio Build Tools với .NET Framework 4.8 targeting pack/NuGet. Nhánh hiện hành: `v3/p2-sync-worker`.
 
-## 0. Cài đặt máy (một lần)
-
-| Cần | Ghi chú |
-|---|---|
-| Windows 10/11 x64 | |
-| 3ds Max 2022 **bản tiếng Anh (ENU)** | Mở Max ít nhất 1 lần để tạo `%LOCALAPPDATA%\Autodesk\3dsMax\2022 - 64bit\ENU` |
-| Git | |
-| Node.js **26** | Cùng bản với CI/VPS (`node -v` → `v26.x`) |
-| Visual Studio 2022 **Build Tools** | Workload ".NET desktop build tools", thêm ".NET Framework 4.8 targeting pack" + "NuGet targets and build tasks" |
-| WebView2 Runtime | Win 10/11 thường có sẵn; thiếu thì cài "Evergreen" của Microsoft |
+## Build và đóng gói
 
 ```powershell
-git clone https://github.com/Hongphuc05/3d-max.git
-cd 3d-max
-git checkout v3/p2-sync-worker
+powershell -ExecutionPolicy Bypass -File installer\build-mzp.ps1 -ApiBaseUrl https://3dsmood.io.vn -Version 1.3.0
 ```
 
-## 1. Chạy test C# (bắt buộc trước khi build)
+Kết quả duy nhất cho khách: `installer\release\out\3dsmood-library.mzp`. Build gồm web, native, staging, test gói ZIP/RAR/7z và kiểm cấu trúc MZP. Không cần build EXE hay nén thêm folder. Khi dependency đã khớp lockfile, thêm `-SkipDependencyRestore` để bỏ bước npm ci. Build dùng thư mục output mới, không xóa dist hay ghi đè DLL của bản đang mở.
 
-Đóng 3ds Max. Chạy từng bộ, bộ nào lỗi thì sửa rồi chạy lại:
+Chi tiết phát hành: [installer/release/README-template.md](../installer/release/README-template.md).
 
 ```powershell
-Get-ChildItem plugin-csharp\tests\run-*.ps1 | ForEach-Object {
-  Write-Host "=== $($_.Name)"
-  powershell -ExecutionPolicy Bypass -File $_.FullName
-  if ($LASTEXITCODE -ne 0) { Write-Host "FAIL: $($_.Name)" -ForegroundColor Red }
-}
 powershell -ExecutionPolicy Bypass -File installer\tests\run-build-guard-tests.ps1
+powershell -ExecutionPolicy Bypass -File installer\tests\verify-mzp.ps1 -PackagePath installer\release\out\3dsmood-library.mzp
 ```
 
-Các chỗ đã sửa mà **chưa ai build** (ưu tiên soi khi lỗi biên dịch):
-- Dọn code cũ D28: bỏ `GoogleDriveDownloader`, `StaticCatalogService`, `OfflineLicenseService`, chế độ offline/đóng gói; thêm `MachineCode.cs`; sửa `MaxWebViewForm`, `PluginConfiguration`, `PackagedAppRuntime`, `DeviceSessionService`, `V3Library`, `PreviewCacheService`, `BridgePolicy`, `.csproj`.
-- Tải lần đầu từ VPS: `CatalogUpdateWatcher.FetchCatalogAsync` / `CheckInBackground`, `V3Library.EnsureCatalogAsync`, `PreviewCacheService` kiểm size khi resume.
-- `OrdersClient.cs`: tạo đơn luôn gửi `{}` (license cả thư viện).
-- `ImportPipelineTests.cs` đã bị xóa (test luồng tải cũ) → import chưa có test end-to-end, kiểm bằng tay ở bước 3.
+Không commit `stage/`, `bin/`, `obj/` hoặc file build. Chỉ phát hành artifact sau khi kiểm Max thật.
 
-## 2. Build installer
+## Cài và cập nhật
 
-```powershell
-# Đóng 3ds Max trước (Max khóa DLL)
-powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1 -ApiBaseUrl https://3dsmood.io.vn
-```
+Trong Max 2022: **Scripting > Run Script > chọn .mzp**. Installer tự lấy đường dẫn user của Max đang chạy, đăng ký macro ngay; vào **Customize > Customize User Interface > Toolbars > Platform**, kéo nút Platform ra toolbar. Không cần giải nén thủ công hoặc tìm file hướng dẫn ngoài.
 
-Script tự làm: `npm ci` + build giao diện → restore NuGet → build plugin Release x64 → gom file → test gói (ZIP/RAR/7z) → nén → build `installer\PlatformSetup.exe`.
-Kết quả: **`installer\PlatformSetup.exe`** — đây là file đưa cho khách. Không commit `.exe`, `stage\`, `bin\`, `obj\`.
+Mỗi payload nằm trong một thư mục phiên bản riêng. Cài bản mới không ghi đè DLL đang được Max sử dụng và không đụng model đã tải. Nếu Max đang nạp DLL của bản khác, loader yêu cầu khởi động lại trước khi mở bản mới. Không tự xóa runtime cũ; một phiên Max khác có thể còn dùng nó.
 
-Installer chép plugin vào thư mục user của Max 2022 (không cần quyền admin), không chứa sẵn catalog/ảnh: lần mở đầu plugin tự tải từ VPS.
+## Nghiệm thu Max thật
 
-## 3. Nghiệm thu trong Max (checklist)
+1. Cài MZP trên Max 2022, kiểm macro xuất hiện trong Customize; mở panel, tải catalog/ảnh.
+2. Cài lại cùng gói; không mất cấu hình hay model đã tải. Cài bản khác khi panel đã mở: có yêu cầu khởi động lại, không lỗi ghi đè DLL.
+3. Cài trên Max có đường dẫn user tùy chỉnh; file phải theo getDir, không hard-code ENU.
+4. Settings chọn thư mục trên SSD. Download ZIP/RAR/7z chỉ tải và chuẩn bị file, **không thay đổi scene**.
+5. Tab Đã tải có model sau khi đóng/mở panel và khởi động lại Max. Import từ đây không tải lại, không giải nén lại.
+6. Đổi thư mục tải; model cũ vẫn import từ vị trí cũ, model mới vào thư mục mới. Kiểm texture sau khi lưu/mở lại scene.
+7. Ngắt mạng: import model đã tải bằng quyền đã xác minh gần nhất. Khi online và nhận thu hồi license, import phải bị chặn, kể cả sau khi khởi động lại rồi offline.
+8. Máy chưa mua: Mua thư viện → VietQR → Tôi đã chuyển khoản → chủ xác nhận Telegram/admin → được tải. Không tự tạo giao dịch thật trong test tự động.
+9. Nhiều Max: chọn đúng scene đích; scene đổi/đóng giữa thao tác phải báo lỗi, không import nhầm.
+10. Thiếu WebView2: hiện hướng dẫn cài runtime chính thức, không crash Max.
 
-Chuẩn bị trên `https://3dsmood.io.vn/admin` (chủ dự án làm): đã điền ngân hàng trong **Cài đặt**, đặt **giá thấp để test** (vd 2.000đ), đã **Kết nối Drive** và **Quét đồng bộ** xong, **Tổng quan → Gửi tin thử** Telegram nhận được.
+Ghi pass/fail, ảnh và log cho các mục đã kiểm. Test tự động/build thành công không thay thế nghiệm thu trong Max.
+## Kiểm tra chọn mẫu trong gói nhiều file
 
-| # | Bước | Kỳ vọng |
-|---|---|---|
-| 1 | Xóa `%LOCALAPPDATA%\3dMood` (nếu có), chạy `PlatformSetup.exe` | Báo cài xong; Max đang mở thì báo đóng Max |
-| 2 | Mở Max → Customize > Customize User Interface > Toolbars > category **Platform** → kéo nút ra toolbar → bấm | Panel tối (UI-1) mở ra |
-| 3 | Lần đầu mở | Danh sách model hiện ngay, thanh "Đang tải ảnh xem trước x/y" chạy, ảnh hiện dần |
-| 4 | Tắt Max giữa lúc tải ảnh, mở lại | Chỉ tải tiếp phần thiếu |
-| 5 | Tắt mạng, xóa `%LOCALAPPDATA%\3dMood`, mở panel | Màn báo lỗi + nút **Thử lại**; bật mạng, bấm → chạy tiếp |
-| 6 | Chưa mua | Mọi model hiện khóa, có nút **Mua thư viện** |
-| 7 | Bấm Mua thư viện | Hiện VietQR + số tiền + mã đơn; quét bằng app ngân hàng thật, chuyển tiền |
-| 8 | Bấm **Tôi đã chuyển khoản** | Chủ nhận tin Telegram có mã đơn + số tiền |
-| 9 | Chủ bấm ✅ trên Telegram | Trong vài giây plugin mở khóa toàn bộ model (ghi lại mất bao nhiêu giây) |
-| 10 | Tải + import 1 model `.zip`, 1 `.rar`, 1 `.7z` | Có hàng đợi tải, import vào scene đúng |
-| 11 | Admin → **Thiết bị & license** → Thu hồi | Plugin khóa lại (ghi lại sau bao lâu; chắc chắn khi mở lại panel) |
-| 12 | Admin → Chuyển license sang máy khác (cần máy thứ 2 hoặc VM) | Máy cũ khóa, máy mới mở |
-| 13 | Rút mạng khi đang dùng | Vẫn xem catalog đã lưu; tải model báo cần Internet |
+- Dùng gói có 6–7 file import được: Đã tải → Import phải hiện đủ tên/thư mục/định dạng, không tự merge trước khi xác nhận.
+- Chọn một file khác file ưu tiên, kiểm đúng mẫu/màu/renderer được import; thử Hủy và Escape, scene phải giữ nguyên.
+- Mở model đã tải bằng bản D30: danh sách lựa chọn phải được bổ sung từ thư mục sẵn có, không tải lại. Thử lại khi offline và sau khi khởi động lại Max.
+- Xóa một file đã chọn ở bản sao dữ liệu test: phải báo thiếu file, không chuyển sang mẫu khác hoặc tự tải lại.
+## Kiểm tra hai cửa sổ Max và hai plugin (D32)
 
-Ghi kết quả từng dòng (đạt / lỗi + ảnh chụp + MAXScript Listener) vào `docs/STATUS-v3.md`, commit + push lên nhánh.
-
-## 4. Những điều cần biết khi đưa cho khách
-
-- **Chưa ký số (code signing)** → Windows SmartScreen sẽ cảnh báo "Windows protected your PC": khách bấm *More info → Run anyway*. Muốn hết cảnh báo phải mua chứng chỉ ký code (trả phí hằng năm) — chưa làm.
-- Installer chỉ hỗ trợ **Max 2022 bản ENU** (đường dẫn cố định `2022 - 64bit\ENU`). Max bản ngôn ngữ khác sẽ báo không tìm thấy thư mục — nợ kỹ thuật.
-- 1 license = 1 máy. Khách cài lại Windows / đổi máy → nhắn chủ để chuyển license trong admin.
-
-## 5. Đóng gói và phát hành bản tải về trên web
-
-Nút "Tải xuống thư viện" trên https://3dsmood.io.vn/ trỏ tới `/download/3dsmood-library.zip`. Cách đóng gói và đưa lên VPS (GitHub Release -> workflow `release`): xem `installer/release/README-template.md`. Script đóng gói: `installer/release/make-release-zip.ps1`; hướng dẫn cho khách: `installer/release/HUONG-DAN-CAI-DAT.html`.
+1. Cài bản MZP mới rồi lưu scene, khởi động lại mọi phiên Max đang nạp DLL cũ.
+2. Mở hai tiến trình Max, mỗi tiến trình mở plugin bằng nút Platform của chính nó. Hai plugin phải có PID khác nhau trên tiêu đề; thử cả hai scene cùng tên hoặc Untitled.
+3. Từ plugin A import một model trong khi Max B đang được focus: chỉ scene A được thêm model. Thử ngược lại từ plugin B.
+4. Không có bộ chọn Max khác. Mở scene mới trong Max A: tên trên plugin A tự cập nhật, plugin B giữ nguyên đích của nó.
+5. Đổi/reset scene giữa lúc thao tác đang xác minh đích: phải báo lỗi thay vì merge nhầm vào document mới. Mất Max sở hữu không được chuyển sang Max còn lại.

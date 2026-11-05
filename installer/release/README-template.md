@@ -1,35 +1,32 @@
-# Đóng gói và phát hành `3dsmood-library.zip`
+# Phat hanh mot file `3dsmood-library.mzp`
 
-## 1. Nội dung zip (tên file bắt buộc: `3dsmood-library.zip`, vì nginx và `release.yml` gắn cứng tên này)
+## Build tren Windows
 
-```
-PlatformSetup.exe              bộ cài (build bằng installer\build-installer.ps1)
-HUONG-DAN-CAI-DAT.html         hướng dẫn từng bước (mẫu: installer\release\HUONG-DAN-CAI-DAT.html)
-THONG-TIN-PHIEN-BAN.txt        phiên bản + SHA256 của exe (sinh tự động từ mẫu cùng tên)
-images\                        ảnh cho hướng dẫn (tùy chọn, xem mục 2)
-CHANGELOG.txt                  (tùy chọn)
-Cai-thu-cong\ENU\              chép đè vào %LOCALAPPDATA%\Autodesk\3dsMax\2022 - 64bit\ENU
-  scripts\Platform\  scripts\Startup\  usermacros\
+```powershell
+powershell -ExecutionPolicy Bypass -File installer\build-mzp.ps1 -ApiBaseUrl https://3dsmood.io.vn -Version 1.3.0
 ```
 
-## 2. Tạo zip (Windows)
+Script build web + plugin trong thu muc output rieng, tao staging duoi `installer\release\out\mzp-stage-<id>\stage`, chay test giai nen ZIP/RAR/7z, sau do tao **`installer\release\out\3dsmood-library.mzp`**. Khong build EXE, khong kem folder cai thu cong hay file huong dan roi. Catalog/preview khong dong goi san; model duoc tai rieng trong plugin.
 
-1. `installer\build-installer.ps1 -ApiBaseUrl https://3dsmood.io.vn` (tạo `PlatformSetup.exe` và `installer\stage\`).
-2. Chép ảnh vào `installer\release\images\`: `smartscreen-1.png` (More info), `smartscreen-2.png` (Run anyway), `toolbar.png`, `panel.png`. Thiếu ảnh thì guide hiện khung chữ thay thế.
-3. ```powershell
-   powershell -ExecutionPolicy Bypass -File installer\release\make-release-zip.ps1 [-Version 1.0.0]
-   ```
-   Kết quả: `installer\release\out\3dsmood-library.zip`. Script thay `{{VERSION}}`, `{{SHA256}}`, `{{DATE}}` trong guide và file phiên bản.
-4. Giải nén thử, mở `HUONG-DAN-CAI-DAT.html`, chạy `PlatformSetup.exe` trên máy sạch (có Max 2022 ENU, Max đã đóng).
+Neu stage vua duoc build va kiem tra, chi dong goi lai bang:
 
-## 3. Phát hành
+```powershell
+powershell -ExecutionPolicy Bypass -File installer\release\make-release-mzp.ps1 -Version 1.3.0 -StageDirectory installer\release\out\mzp-stage-<id>\stage
+powershell -ExecutionPolicy Bypass -File installer\tests\verify-mzp.ps1 -PackagePath installer\release\out\3dsmood-library.mzp
+```
 
-1. Trên GitHub tạo Release trên nhánh `v3/p2-sync-worker`, tag dạng `v1.0.0`.
-2. Đính kèm file `3dsmood-library.zip` làm asset (đúng tên này).
-3. Bấm Publish. Workflow `release` tự đưa file lên VPS; nút trên web chuyển từ "Bản cài đặt sắp có" sang "Tải xuống thư viện".
-4. Chạy lại thủ công: Actions -> release -> Run workflow, nhập tag.
+MZP chua mot ban runtime, giao dien, cau hinh API, third-party notices, `mzp.run` va script cai. SHA256 cua goi in ra console; co the ghi vao mo ta GitHub Release, khong can them file tai ve.
 
-## 4. Kiểm tra
+## Cai trong Max 2022
 
-- Mở https://3dsmood.io.vn/download/3dsmood-library.zip : trình duyệt tải về zip.
-- Đối chiếu SHA256 trong `THONG-TIN-PHIEN-BAN.txt` với `Get-FileHash PlatformSetup.exe`.
+1. Scripting > Run Script > chon `3dsmood-library.mzp` (hoac keo file vao viewport).
+2. Customize > Customize User Interface > Toolbars > Category **Platform** > keo nut Platform vao toolbar.
+3. Bam nut de mo plugin. WebView2 Evergreen Runtime can co tren may; neu thieu plugin huong dan mo trang tai chinh thuc cua Microsoft.
+
+Installer dung `getDir #userScripts`, `#userStartupScripts`, `#userMacros` cua Max dang chay, khong gan cung ENU. Runtime duoc cai vao `Platform\versions\v-<sha256>`; con tro active chuyen sau khi copy hoan tat. DLL cu khong bi ghi de/xoa. Neu Max da nap ban khac, can khoi dong lai de dung ban moi. Khong xoa cac runtime cu tu dong vi Max khac co the dang su dung chung DLL.
+
+## Phat hanh
+
+Tao GitHub Release va dinh kem **chi `3dsmood-library.mzp`**. Workflow `release` kiem ZIP CRC, cau truc MZP, runtime khong lap, roi upload tam va doi ten nguyen tu tren VPS. Nut web tro toi `/download/3dsmood-library.mzp`. Can trien khai cau hinh nginx moi (Content-Disposition dung ten `.mzp`) cung voi web moi.
+
+`build-installer.ps1`, `make-release-zip.ps1` va tai lieu EXE cu duoc giu de tra cuu/tuong thich; khong dung cho luong phat hanh moi.

@@ -10,6 +10,19 @@ Chú giải: `[x]` xong và đã kiểm tra · `[~]` xong một phần / chưa k
 
 ---
 
+## D30 — MZP, thư mục tải và Import riêng (2026-11-05)
+
+- [x] Build công khai một file `installer/release/out/3dsmood-library.mzp` (v1.1.0), không đóng EXE hoặc bản payload cài thủ công trùng lặp. Web/nginx/workflow release đã đổi sang đường dẫn `.mzp` trong source.
+- [x] Installer MZP dùng thư mục user của Max hiện tại, đăng ký macro cho Customize User Interface; runtime theo phiên bản để tránh ghi đè DLL đang được nạp. Khi đã nạp bản khác, yêu cầu khởi động lại Max.
+- [x] Settings chọn thư mục lưu model qua hộp thoại native. Thư mục mới áp dụng cho lượt tải sau; model cũ giữ nguyên đường dẫn. Chỉ mục model và quyền gần nhất được bảo vệ bằng DPAPI, tồn tại sau khi mở lại Max.
+- [x] Download chỉ tải, kiểm tra và giải nén một lần; bỏ archive sau thành công, giữ model/texture ở vị trí ổn định. Tab Đã tải đọc chỉ mục native; Import chỉ đọc file cục bộ, không tải hoặc giải nén lại. File thiếu không tự tải lại.
+- [x] Import offline theo quyền đã xác minh gần nhất; lưu trạng thái từ chối khi đã nhận thu hồi/chặn. Cập nhật quyền chạy riêng, không bắt Import chờ mạng. Giữ kiểm tra đúng scene đích và kiểm tra đường dẫn ở agent.
+- [x] Kiểm tra phiên này: web **157/157 pass**; native mới **24 checks pass**; native security **35 checks + Node RSA proof pass**; WebView transport **25 pass**; packaged runtime **13 pass**; packaged WebView browser regression pass. Model downloader, target selection và archive **15 checks** cũng pass. Full build web/net48 và runtime giải nén ZIP/RAR/7z trong staging pass; MZP validator có test thiếu control/traversal/runtime trùng và build guard pass.
+- [x] Artifact cuối: **9.30 MiB (9,755,657 bytes)**; SHA256 `7A65318FF6D08285D27E35A828D358D116741C4C09AC50A1314DC0C9F2C51DF7`. ZIP v1.0.0 cũ khoảng 18.54 MiB. Build cuối với dependency đã có sẵn khoảng 6 giây; không coi đây là benchmark trên máy khách.
+- [ ] Chưa chạy installer MZP bằng Run Script hoặc nghiệm thu tải/import/texture trên 3ds Max thật của phiên này. Checklist: [`windows-build-and-test.md`](windows-build-and-test.md). Phiên Max đang mở được giữ nguyên.
+- [ ] Chưa phát hành artifact mới hoặc deploy website/nginx. Cần cập nhật Content-Disposition trên nginx cùng đường dẫn `.mzp` khi phát hành.
+- Giới hạn chuyển đổi: cache GUID của bản cũ không có chỉ mục model UUID nên không tự đưa vào danh sách mới một cách đáng tin cậy. Dữ liệu cũ được giữ nguyên; model tải bằng bản mới được lưu bền vững.
+
 ## P0 — Chốt kế hoạch (2026-10-29)
 - [x] Audit repo, kiến trúc, ERD, hợp đồng API, plan từng phase; chủ dự án chốt Q1–Q8. *(ghi nhận từ `STATUS.md`, không phải phần tôi làm lại trong phiên này)*
 
@@ -222,3 +235,17 @@ Lỗi môi trường hay gặp: `AUTH_CONFIGURATION_REQUIRED` = thiếu `JWT_SEC
 **Chưa kiểm chứng:** ảnh hướng dẫn (`installer/release/images/`) chưa có; cài thủ công (`Cai-thu-cong`) chưa thử; SmartScreen chưa chụp (file build tại máy không có dấu tải từ Internet); tải/import model, mua license trong Max thật chưa thử.
 
 **Phát hành v1.0.0 (05/11):** GitHub Release `v1.0.0` (commit `0456c7c`, asset `3dsmood-library.zip`, 18,5 MB) → workflow `release` chạy đủ 6 bước thành công (Upload + Verify) → `https://3dsmood.io.vn/download/3dsmood-library.zip`. Chủ dự án tải zip từ web, `Get-FileHash` của `PlatformSetup.exe` trong zip = `7168CF4B5434A0445B8AE5692CED1B1A7D021FEF7F223497CC6CFD5C66D22538`, trùng với exe lúc build. Còn thiếu: ảnh SmartScreen/toolbar/panel cho guide (→ v1.0.1), chỗ liên hệ trong plugin/web gallery, catalog VPS còn trống.
+
+## D31 — Bộ chọn mẫu import (2026-11-05)
+
+- [x] Xác minh 360 archive cục bộ: tar đọc 317; 284 có nhiều file import được, 128 có nhiều .max; tối đa 7 lựa chọn, gồm màu/mẫu, renderer, phiên bản và định dạng.
+- [x] Chỉ mục nhiều file được lưu khi tải mới; chỉ mục D30 tự bổ sung từ thư mục cục bộ khi cần. Mã lựa chọn ổn định, không gửi đường dẫn tuyệt đối từ web. Một file import trực tiếp; nhiều file cần khách chọn và xác nhận. Hủy/Escape không import; file mất không tự đổi mẫu hoặc tải lại.
+- [x] Web 161/161 pass; test kho model native 55 checks pass; native security 35 checks + RSA/Node proof pass; WebView transport 25 pass. Full web/net48 build và runtime ZIP/RAR/7z pass. MZP validator có thêm từ chối call-chain MAXScript và tên entry chứa dấu backslash; build guard pass.
+- [x] Sửa ZIP entry của builder thành dấu / để tương thích workflow release trên Linux. Artifact v1.2.0: installer/release/out/3dsmood-library.mzp, 9,759,940 bytes (~9.31 MiB), SHA256 C813BCDEBD63BA96ADD120EAB33BE5CBFB20A32AF975E50037FA26544AFE18FE.
+- [ ] Chưa nghiệm thu bộ chọn mẫu và cài MZP mới trên Max thật; chưa phát hành/deploy.
+## D32 — Plugin riêng theo từng Max (2026-11-05)
+
+- [x] Form gắn PID + thời điểm khởi động của Max mở nó, tiêu đề gồm scene + PID; bỏ bộ chọn đích và đường import sang tiến trình khác. Đổi scene trong cùng Max tự cập nhật; snapshot cũ hoặc owner không sẵn sàng phải bị chặn.
+- [x] Test native/WebView 46 checks pass: hai form gắn hai owner độc lập, tên scene giống nhau vẫn phân biệt PID, không đọc/validate/dispatch vào owner khác, không fallback, PID tái sử dụng và metadata sai bị chặn. Bridge thực xác nhận processId thuộc tiến trình đang chạy. Các fixture hai owner là mô phỏng; WebView2 dùng runtime thật.
+- [x] Full web/net48 build, staged ZIP/RAR/7z, MZP validator và test cập nhật pointer pass. Artifact v1.3.0: installer/release/out/3dsmood-library.mzp, 9759588 bytes, SHA256 44F2333771133195CE7D9FF48A07D0E3EE2919D7BD3FD79FBD974192F7D79A15.
+- [ ] Chưa nghiệm thu import trên hai tiến trình 3ds Max thật. Chưa phát hành/deploy.

@@ -31,7 +31,7 @@ export function Queue() {
                 <div className="truncate text-xs font-bold" title={j.name}>{j.name}</div>
                 <div className="font-mono text-[10px] text-mute">
                   {j.status === 'queued' && `Đang chờ · ${mb(j.sizeMB)}`}
-                  {j.status === 'running' && `Đang tải + import · ${j.progress?.totalBytes ? Math.min(100,Math.floor(j.progress.receivedBytes/j.progress.totalBytes*100))+'% · ' : ''}${mb(j.sizeMB)} · ${secs(Date.now() - j.startedAt)}`}
+                  {j.status === 'running' && `Đang tải · ${j.progress?.totalBytes ? Math.min(100,Math.floor(j.progress.receivedBytes/j.progress.totalBytes*100))+'% · ' : ''}${mb(j.sizeMB)} · ${secs(Date.now() - j.startedAt)}`}
                   {j.status === 'failed' && <span className="text-danger">Lỗi: {j.error}</span>}
                 </div>
               </div>

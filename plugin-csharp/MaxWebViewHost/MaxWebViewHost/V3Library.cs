@@ -26,6 +26,10 @@ namespace MaxWebViewHost
         public CatalogUpdateWatcher Watcher { get; private set; }
         public BackendModelDownloader Downloader { get; private set; }
         public OrdersClient Orders { get; private set; }
+        public DownloadedLibrary Downloads { get; private set; }
+        private string deviceBinding;
+        private readonly SemaphoreSlim downloadGate = new SemaphoreSlim(1, 1);
+        private int refreshingRights;
         public bool Offline { get; private set; }
 
         /// <summary>Events for the web UI (library.updated, library.offline, library.previewProgress). Raised on a worker thread.</summary>
@@ -38,6 +42,8 @@ namespace MaxWebViewHost
         {
             if (configuration == null || configuration.ApiBaseUri == null || signer == null) throw new ArgumentNullException();
             var library = new V3Library { MachineCode = machineCode };
+            library.Downloads = new DownloadedLibrary();
+            library.deviceBinding = configuration.ApiBaseUri.AbsoluteUri + "|" + machineCode + "|" + signer.GetIdentity().deviceId;
             var apiClient = SecureHttpTransport.CreateClient(false, false, TimeSpan.FromSeconds(20));
             var bulkClient = SecureHttpTransport.CreateClient(false, false, TimeSpan.FromMinutes(30)); // the server fills its copy before the first byte
             var downloadApi = new BackendApi(configuration.ApiBaseUri, bulkClient);
@@ -102,10 +108,150 @@ namespace MaxWebViewHost
 
         public async Task<Entitlements> GetEntitlementsAsync(CancellationToken ct)
         {
-            // Always ask the server (rights can change within the 15-minute token life: a purchase, an admin grant or revoke);
-            // only when it cannot be reached fall back to what the last verify returned.
-            try { return await Session.RefreshEntitlementsAsync(ct).ConfigureAwait(false); }
-            catch (ApiException e) when (e.Code == "SERVER_UNAVAILABLE" && Session.Current != null) { return Session.Current.Entitlements; }
+            // Cached rights are available immediately after restart, including offline startup.
+            // Refresh in the background: local import never waits for an unavailable server.
+            if (Downloads.HasRights(deviceBinding))
+            {
+                var allowed = Downloads.Allows(deviceBinding);
+                if (Interlocked.CompareExchange(ref refreshingRights, 1, 0) == 0)
+                {
+                    var ignored = Task.Run(async () => {
+                        try
+                        {
+                            await RefreshRightsAsync(ct).ConfigureAwait(false);
+                        }
+                        catch (Exception e) { System.Diagnostics.Debug.WriteLine("[rights] " + e.GetType().Name); }
+                        finally
+                        {
+                            try { if (Downloads.Allows(deviceBinding) != allowed) Raise("library.updated", new { catalogVersion = GetCached()?.CatalogVersion }); } catch (IOException) { }
+                            Interlocked.Exchange(ref refreshingRights, 0);
+                        }
+                    });
+                }
+                return new Entitlements { AllModels = allowed, ModelIds = new string[0] };
+            }
+            return await RefreshRightsAsync(ct).ConfigureAwait(false);
+        }
+
+        private async Task<Entitlements> RefreshRightsAsync(CancellationToken ct)
+        {
+            try
+            {
+                var rights = await Session.RefreshEntitlementsAsync(ct).ConfigureAwait(false);
+                Downloads.RecordRights(deviceBinding, rights.AllModels);
+                return rights;
+            }
+            catch (ApiException e) when (e.Code == "DEVICE_BLOCKED" || e.Code == "NOT_ENTITLED")
+            { Downloads.RecordRights(deviceBinding, false); throw; }
+            catch (ApiException e) when (e.Code == "SERVER_UNAVAILABLE")
+            { return new Entitlements { AllModels = Downloads.Allows(deviceBinding), ModelIds = new string[0] }; }
+        }
+
+        public string LocalEntry(string modelId, string optionId = null)
+        {
+            if (!Downloads.Allows(deviceBinding)) throw new ApiException("NOT_ENTITLED", 403, "Thiết bị chưa có quyền dùng thư viện hoặc quyền đã bị thu hồi.");
+            return Downloads.EntryPath(modelId, optionId);
+        }
+
+        public void DownloadsChanged() { Raise("library.downloadsChanged", null); }
+
+        public async Task<object> DownloadModelAsync(string modelId, CancellationToken ct, Action<long, long?> progress)
+        {
+            await downloadGate.WaitAsync(ct).ConfigureAwait(false);
+            string work = null;
+            try
+            {
+                // An existing model is returned immediately, with no network or extraction.
+                var existing = Downloads.Find(modelId);
+                if (existing != null) return existing.PublicView();
+                var rights = await RefreshRightsAsync(ct).ConfigureAwait(false);
+                if (!rights.AllModels) throw new ApiException("NOT_ENTITLED", 403, "Thiết bị chưa có license thư viện.");
+                var root = Downloads.DownloadDirectory;
+                Directory.CreateDirectory(root);
+                DownloadedLibrary.RejectReparse(root);
+                work = Path.Combine(root, ".3dsmood-" + Guid.NewGuid().ToString("N"));
+                var content = Path.Combine(work, "content");
+                Directory.CreateDirectory(content);
+                var package = Path.Combine(work, "package.bin");
+                ModelDownloadInfo info;
+                try { info = await Downloader.DownloadAsync(modelId, package, ct, progress).ConfigureAwait(false); }
+                catch (ApiException e) when (e.Code == "DEVICE_BLOCKED" || e.Code == "NOT_ENTITLED")
+                { Downloads.RecordRights(deviceBinding, false); throw; }
+                string[] files;
+                if (new[] { "max", "fbx", "obj" }.Contains(info.FileType))
+                {
+                    var direct = Path.Combine(content, "model." + info.FileType);
+                    File.Move(package, direct); files = new[] { direct };
+                }
+                else files = ArchivePackage.Extract(package, content, ct, null);
+                string entry = null;
+                if (!string.IsNullOrEmpty(info.EntryFile))
+                {
+                    var specified = Path.GetFullPath(Path.Combine(content, info.EntryFile.Replace('/', Path.DirectorySeparatorChar)));
+                    entry = files.FirstOrDefault(f => string.Equals(f, specified, StringComparison.OrdinalIgnoreCase));
+                    if (entry == null) throw new InvalidDataException("File import khai báo không có trong gói model.");
+                }
+                else foreach (var extension in new[] { ".fbx", ".obj", ".max" })
+                {
+                    entry = files.Where(f => f.EndsWith(extension, StringComparison.OrdinalIgnoreCase)).OrderBy(f => f.Length).ThenBy(f => f, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
+                    if (entry != null) break;
+                }
+                if (entry == null) throw new ApiException("ASSET_NO_IMPORTABLE_FILE", 422, "Gói model không có file .max/.fbx/.obj.");
+                if (File.Exists(package)) File.Delete(package);
+                ct.ThrowIfCancellationRequested();
+                var record = new DownloadedModel { modelId = modelId, directory = content, entryFile = entry.Substring(content.Length + 1),
+                    downloadedAt = DateTime.UtcNow.ToString("o"), sizeBytes = info.SizeBytes, name = modelId, product = ProductSnapshot(modelId, info) };
+                object name; if (record.product.TryGetValue("name", out name)) record.name = name as string ?? modelId;
+                record.importOptions = DownloadedLibrary.BuildOptions(modelId, content, files);
+                Downloads.Add(record);
+                work = null; // the indexed contents and textures now have a permanent stable location
+                DownloadsChanged();
+                return record.PublicView();
+            }
+            finally
+            {
+                if (work != null && Directory.Exists(work))
+                {
+                    try { DownloadedLibrary.RejectReparse(work); Directory.Delete(work, true); } catch (IOException) { }
+                }
+                downloadGate.Release();
+            }
+        }
+
+        private Dictionary<string, object> ProductSnapshot(string modelId, ModelDownloadInfo info)
+        {
+            var result = new Dictionary<string, object> { { "id", modelId }, { "slug", modelId }, { "name", modelId },
+                { "category", "Khác" }, { "subcategory", "" }, { "folderPath", "" }, { "folderIds", new string[0] },
+                { "thumb", null }, { "image", null }, { "downloadable", true }, { "status", "ready" },
+                { "info", new { sizeMB = Math.Round(info.SizeBytes / 1048576.0, 1), renderers = new string[0], formats = new[] { info.FileType }, hasTextures = false } } };
+            var cached = GetCached();
+            if (cached == null) return result;
+            var serializer = new JavaScriptSerializer { MaxJsonLength = 32 * 1024 * 1024 };
+            var catalog = serializer.Deserialize<Dictionary<string, object>>(Encoding.UTF8.GetString(cached.CatalogJson));
+            var models = ((System.Collections.IEnumerable)catalog["models"]).Cast<object>();
+            var model = models.Cast<Dictionary<string, object>>().FirstOrDefault(m => Equals(m["id"], modelId));
+            if (model != null)
+            {
+                result["name"] = model["name"];
+                var categories = serializer.Deserialize<Dictionary<string, object>[]>(Encoding.UTF8.GetString(cached.CategoriesJson));
+                var cat = categories.FirstOrDefault(c => Equals(c["id"], model["categoryId"]));
+                if (cat != null)
+                {
+                    result["folderPath"] = cat["fullPath"]; result["subcategory"] = cat["name"];
+                    result["category"] = Convert.ToString(cat["fullPath"]).Split(new[] { " / " }, StringSplitOptions.None)[0];
+                    var ancestors = new List<string>(); var seen = new HashSet<string>();
+                    while (cat != null && seen.Add(Convert.ToString(cat["id"])))
+                    {
+                        ancestors.Add(Convert.ToString(cat["id"])); object parent; cat.TryGetValue("parentId", out parent);
+                        cat = parent == null ? null : categories.FirstOrDefault(c => Equals(c["id"], parent));
+                    }
+                    result["folderIds"] = ancestors.ToArray();
+                }
+            }
+            var sm = cached.Previews.FirstOrDefault(p => p.ModelId == modelId && p.Variant == "sm");
+            var lg = cached.Previews.FirstOrDefault(p => p.ModelId == modelId && p.Variant == "lg");
+            result["thumb"] = (sm ?? lg)?.Url; result["image"] = (lg ?? sm)?.Url;
+            return result;
         }
 
         public static string EntitlementsJson(Entitlements e)
@@ -119,8 +265,8 @@ namespace MaxWebViewHost
             {
                 { "mode", "online" }, { "machineCode", MachineCode }, { "offline", Offline },
                 { "catalogVersion", cached == null ? (object)null : cached.CatalogVersion },
-                { "allModels", session != null && session.Entitlements.AllModels },
-                { "modelIds", session == null ? new string[0] : session.Entitlements.ModelIds },
+                { "allModels", Downloads.Allows(deviceBinding) },
+                { "modelIds", new string[0] },
             };
         }
 

@@ -13,7 +13,7 @@ globalThis.window = {
     webview: {
       addEventListener: (_t, f) => listeners.add(f),
       postMessage({ id, method, params }) {
-        assert.equal(method, 'asset.import');
+        assert.equal(method, 'asset.download', 'Download queue never auto-imports');
         assert.deepEqual(Object.keys(params), ['modelId'], 'the web sends nothing but the model id');
         hostCalls.push(params);
         maxRunning = Math.max(maxRunning, ++running);

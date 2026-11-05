@@ -65,6 +65,7 @@ export function actionState({ max, entitlements, owned, offline, job }) {
   if (entitlements === null) return { kind: 'wait', label: offline ? 'Cần Internet để xác minh quyền' : 'Chưa xác minh được quyền', disabled: true };
   if (!owned) return { kind: 'locked', label: '🔒 Cần license thư viện', disabled: true };
   if (job?.status === 'failed') return { kind: 'failed', label: 'Lỗi · Thử lại', disabled: false };
-  if (job?.status === 'done') return { kind: 'done', label: '✓ Đã import · Lại', disabled: false };
+  if (job?.status === 'done') return { kind: 'done', label: 'Đã tải · Xem', disabled: false };
+  if (offline) return { kind: 'offline', label: 'Cần Internet để tải', disabled: true };
   return { kind: 'download', label: 'Download', disabled: false };
 }

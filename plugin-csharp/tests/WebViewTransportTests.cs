@@ -88,6 +88,9 @@ internal static class WebViewTransportTests
                         + ", navigating=" + typeof(MaxWebViewForm).GetField("_navigating", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(form));
                     Assert(web.CoreWebView2 != null && web.CoreWebView2.Source.StartsWith(origin + "/"), "actual WebView2 loads trusted local page");
                     await web.CoreWebView2.ExecuteScriptAsync("window.__responses={};chrome.webview.addEventListener('message',e=>window.__responses[e.data.id]=e.data);");
+                    var ownerReply = await Request(web, "owner-info", "host.getInfo", new { });
+                    var ownerInfo = (Dictionary<string, object>)ownerReply["result"];
+                    Assert(Convert.ToInt32(ownerInfo["processId"]) == System.Diagnostics.Process.GetCurrentProcess().Id && (string)ownerInfo["importTarget"] == "owner", "actual bridge reports this process as the immutable import owner");
                     var info = await Request(web, "identity", "device.getIdentity", new { });
                     Assert((bool)info["ok"], "device.getIdentity crosses actual WebView2 message channel");
                     var result = (Dictionary<string, object>)info["result"];
@@ -192,25 +195,53 @@ internal static class WebViewTransportTests
     {
         var first = new ImportTarget(101, 1001, "Same.max", @"D:\First\Same.max", new string('a', 32));
         var second = new ImportTarget(202, 2002, "Same.max", @"D:\Second\Same.max", new string('b', 32));
-        var visible = new[] { first };
+        var visible = new[] { first, second };
         var pending = new TaskCompletionSource<ImportTarget>();
         var block = false;
         var resolutions = 0;
+        var currentFirst = first;
+        var invalidMetadata = false;
         using (var form = new MaxWebViewForm(() => visible, target =>
         {
+            Assert(target.IsSameProcess(first), "first plugin never reads another Max process");
             resolutions++;
-            return block ? pending.Task : Task.FromResult(target);
-        }))
+            return block ? pending.Task : Task.FromResult(invalidMetadata ? second : currentFirst);
+        }, first))
+        using (var other = new MaxWebViewForm(() => visible, target =>
         {
-            Assert(Pump(form.CaptureImportTargetAsync()).ProcessId == 101, "single available Max is initially auto-selected");
+            Assert(target.IsSameProcess(second), "second plugin never reads the first Max process");
+            return Task.FromResult(second);
+        }, second))
+        {
+            Assert(Pump(form.CaptureImportTargetAsync()).ProcessId == 101, "first panel is bound to the Max that opened it even with two Max windows");
+            Assert(Pump(other.CaptureImportTargetAsync()).ProcessId == 202, "second panel independently follows its own Max");
+            Assert(form.Text.Contains("101") && other.Text.Contains("202") && form.Text != other.Text, "same-named scenes have distinguishable plugin titles using owner PID");
+            Assert(form.Text.Contains("Same.max"), "panel title includes the current scene filename");
+            foreach (Control control in form.Controls)
+                if (control is Panel) foreach (Control child in control.Controls)
+                    Assert(!(child is ComboBox), "owner-bound panel exposes no selector for another Max");
             block = true;
             var timerRefresh = form.RefreshTargetsAsync();
-            visible = new[] { first, second };
+            visible = new[] { second, first, new ImportTarget(303, 3003, "Foreign.max") };
             var importing = form.CaptureImportTargetAsync();
-            Assert(!importing.IsCompleted, "import waits for the in-flight target refresh instead of reading cached Current");
+            Assert(!importing.IsCompleted, "import awaits an in-flight owner metadata refresh");
             pending.SetResult(first);
-            Assert(Pump(importing) == null, "second Max appearing during pending refresh requires explicit client choice");
-            Assert(resolutions == 2 && timerRefresh.IsCompleted, "concurrent target refresh callers share the pending metadata work");
+            Assert(Pump(importing).ProcessId == 101, "opening or focusing another Max never changes the import owner");
+            Assert(resolutions == 2 && timerRefresh.IsCompleted, "concurrent owner refresh callers share pending metadata work");
+            block = false;
+            currentFirst = new ImportTarget(101, 1001, "Bedroom.max", @"D:\First\Bedroom.max", new string('c', 32));
+            var nextScene = Pump(form.CaptureImportTargetAsync());
+            Assert(nextScene.IsSameScene(currentFirst) && form.Text.Contains("Bedroom.max"), "opening a new scene in the owning Max updates the panel automatically");
+            var validate = typeof(MaxWebViewForm).GetMethod("ValidateSelectedTargetAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert(!Pump((Task<bool>)validate.Invoke(form, new object[] { "old-scene", first })), "an in-flight import captured before a document change is rejected");
+            var beforeForeign = resolutions;
+            Assert(!Pump((Task<bool>)validate.Invoke(form, new object[] { "foreign", second })) && resolutions == beforeForeign, "foreign-process import validation fails before reading or dispatching to that process");
+            visible = new[] { second };
+            Assert(Pump(form.CaptureImportTargetAsync()) == null, "missing owner never falls back to the remaining Max");
+            visible = new[] { new ImportTarget(101, 9999, first.SceneTitle, first.ScenePath, first.DocumentToken), second };
+            Assert(Pump(form.CaptureImportTargetAsync()) == null, "reused owner PID with a different process start cannot inherit the panel");
+            visible = new[] { first, second }; invalidMetadata = true;
+            Assert(Pump(form.CaptureImportTargetAsync()) == null, "metadata for another process cannot redirect the owner-bound panel");
         }
     }
 

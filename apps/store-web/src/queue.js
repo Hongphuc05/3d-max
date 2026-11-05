@@ -1,8 +1,7 @@
-// Hang doi Download (trong 3ds Max): moi san pham 1 job. Download = xin ticket -> host tai goi -> import vao scene.
-// ponytail: chay tuan tu 1 job/lan, chi luu trong RAM cua trang (F5 la mat), khong co % tien do vi native chua
-// gui event tien do. Nang cap: xem docs/download-queue-plan.md (native gui event, chay song song, huy, nho lich su).
+// Download queue only: one job at a time, with native byte progress.
+// The native index persists completed models; importing is a separate local action.
 import { useSyncExternalStore } from 'react';
-import { importModel } from './integrations/3dsmax/bridge.js';
+import { downloadModel } from './integrations/3dsmax/bridge.js';
 
 let jobs = []; // [{ slug, name, sizeMB, status: queued|running|done|failed, error, startedAt, finishedAt, result }]
 const subs = new Set();
@@ -39,7 +38,7 @@ async function pump() {
   patch(job.slug, { status: 'running', startedAt: Date.now(), error: null });
   try {
     // v3: slug = UUID cua model. Native tu xin phien tai (dung 1 lan) tu backend; thu lai thi xin phien moi.
-    const result = await importModel(job.slug, progress => patch(job.slug, {progress}));
+    const result = await downloadModel(job.slug, progress => patch(job.slug, {progress}));
     patch(job.slug, { status: 'done', finishedAt: Date.now(), result });
   } catch (e) {
     patch(job.slug, { status: 'failed', finishedAt: Date.now(), error: errorText(e) });

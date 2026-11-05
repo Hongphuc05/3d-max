@@ -1,4 +1,4 @@
-# Dua goi cai dat thu vien (asset `3dsmood-library.zip` cua GitHub Release) len VPS -> nut "Tai xuong thu vien" tren web co hieu luc.
+# Dua goi cai dat thu vien (asset `3dsmood-library.mzp` cua GitHub Release) len VPS -> nut "Tai xuong thu vien" tren web co hieu luc.
 # Secrets dung chung voi deploy.yml: VPS_HOST, VPS_SSH_KEY, VPS_KNOWN_HOSTS.
 name: release
 on:
@@ -20,12 +20,29 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern '3dsmood-library.zip' --dir .
-          test -f 3dsmood-library.zip
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern '3dsmood-library.mzp' --dir .
+          test -f 3dsmood-library.mzp
       - name: Sanity check
         run: |
-          unzip -tq 3dsmood-library.zip
-          size=$(stat -c %s 3dsmood-library.zip)
+          unzip -tq 3dsmood-library.mzp
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('3dsmood-library.mzp') as package:
+              names = package.namelist()
+              required = {'mzp.run', 'install.ms', 'PlatformLoader.ms', 'payload-id.txt', 'version.txt',
+                          'Platform-OpenPanel.mcr', 'Platform-Agent.ms', 'payload/MaxWebViewHost.dll',
+                          'payload/ThirdPartyNotices.txt', 'payload/PlatformBridge.ms', 'payload/app/index.html',
+                          'payload/plugin-config.json'}
+              assert required.issubset(names), 'Incomplete MZP'
+              assert len(names) == len(set(names)), 'Duplicate entries'
+              assert sum(n.endswith('/MaxWebViewHost.dll') for n in names) == 1, 'Duplicate runtime'
+              assert all(not n.startswith('/') and '\\' not in n and ':' not in n
+                         and '..' not in n.split('/') and not n.endswith(('.zip', '.exe')) for n in names), 'Unsafe package'
+              assert any(n.startswith('payload/runtimes/') and n.endswith('/WebView2Loader.dll') for n in names)
+              control = package.read('mzp.run').decode('utf-8-sig')
+              assert 'run "install.ms"' in control and 'drop "install.ms"' in control
+          PY
+          size=$(stat -c %s 3dsmood-library.mzp)
           echo "size=$size"
           [ "$size" -gt 0 ] && [ "$size" -lt 524288000 ]
       - name: SSH key
@@ -38,7 +55,7 @@ jobs:
         run: |
           SSH="ssh -i ~/.ssh/id_ci -o StrictHostKeyChecking=yes"
           D=/var/www/3dsmood-download
-          rsync -az -e "$SSH" 3dsmood-library.zip ci@$HOST:$D/.3dsmood-library.zip.tmp
-          $SSH ci@$HOST "chmod 644 $D/.3dsmood-library.zip.tmp && mv -f $D/.3dsmood-library.zip.tmp $D/3dsmood-library.zip"
+          rsync -az -e "$SSH" 3dsmood-library.mzp ci@$HOST:$D/.3dsmood-library.mzp.tmp
+          $SSH ci@$HOST "chmod 644 $D/.3dsmood-library.mzp.tmp && mv -f $D/.3dsmood-library.mzp.tmp $D/3dsmood-library.mzp"
       - name: Verify
-        run: curl -fsSI https://3dsmood.io.vn/download/3dsmood-library.zip
+        run: curl -fsSI https://3dsmood.io.vn/download/3dsmood-library.mzp

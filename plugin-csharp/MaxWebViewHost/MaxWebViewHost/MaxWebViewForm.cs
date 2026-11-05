@@ -54,8 +54,8 @@ namespace MaxWebViewHost
             "host.ping", "host.getInfo",
             "scene.getInfo", "scene.getSelection", "scene.createBox",
             "design.create",
-            "asset.import", "device.getIdentity", "device.signChallenge",
-            "library.status", "library.refresh"
+            "asset.download", "asset.import", "device.getIdentity", "device.signChallenge",
+            "library.status", "library.refresh", "library.downloads", "library.importOptions", "library.settings", "library.chooseDownloadDirectory"
         };
 
         /// <summary>Origin của backend 3DS Mood, nơi host tải asset. Phải nằm trong TrustedOrigins.
@@ -71,16 +71,15 @@ namespace MaxWebViewHost
         private static MaxWebViewForm _instance;
 
         private readonly ImportTargetSelection _targetSelection = new ImportTargetSelection();
-        private readonly ComboBox _targetPicker = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList, DropDownWidth = 1000 };
-        private bool _updatingTargets;
+        private readonly ImportTarget _ownerProcess;
+        private readonly Label _ownerDisplay = new Label { Dock = DockStyle.Fill, AutoEllipsis = true, TextAlign = System.Drawing.ContentAlignment.MiddleLeft };
         private Task _targetRefreshTask = Task.CompletedTask;
         private readonly Func<ImportTarget[]> _discoverTargets;
         private readonly Func<ImportTarget, Task<ImportTarget>> _readTarget;
-        private string _targetSignature;
         private readonly Timer _focusTimer = new Timer { Interval = 1000 };
         private readonly Label _target = new Label
         {
-            Dock = DockStyle.Left, Width = 95, Text = "Merge vào scene:", TextAlign = System.Drawing.ContentAlignment.MiddleLeft, Padding = new Padding(6, 0, 0, 0)
+            Dock = DockStyle.Left, Width = 95, Text = "3ds Max:", TextAlign = System.Drawing.ContentAlignment.MiddleLeft, Padding = new Padding(6, 0, 0, 0)
         };
 
         private Uri[] _trustedOrigins;
@@ -111,27 +110,23 @@ namespace MaxWebViewHost
         /// <summary>Mọi method không phải "host.*" được đẩy ra đây cho MAXScript xử lý.</summary>
         public event EventHandler<SceneRequestEventArgs> SceneRequestReceived;
 
-        public MaxWebViewForm() : this(ImportTargetDiscovery.Discover, PlatformAgent.ReadSceneTargetAsync) { }
+        public MaxWebViewForm() : this(DiscoverOwnerProcess, PlatformAgent.ReadSceneTargetAsync) { }
 
-        internal MaxWebViewForm(Func<ImportTarget[]> discoverTargets, Func<ImportTarget, Task<ImportTarget>> readTarget)
+        internal MaxWebViewForm(Func<ImportTarget[]> discoverTargets, Func<ImportTarget, Task<ImportTarget>> readTarget, ImportTarget ownerProcess = null)
         {
             _discoverTargets = discoverTargets ?? throw new ArgumentNullException(nameof(discoverTargets));
             _readTarget = readTarget ?? throw new ArgumentNullException(nameof(readTarget));
             FormClosed += (sender, args) => _lifetime.Cancel();
-            Text = "3ds Max Platform — " + EnvironmentName;
+            _ownerProcess = ownerProcess ?? CurrentOwnerProcess();
+            UpdateOwnerDisplay(null);
             Width = 1100;
             Height = 800;
 
             var toolbar = new Panel { Dock = DockStyle.Top, Height = 28 };
             _retryButton.Click += async (s, e) => { if (UsePackagedApp) await LoadPackagedAppAsync(); else Navigate(StartUrl); };
-            toolbar.Controls.Add(_targetPicker);
+            toolbar.Controls.Add(_ownerDisplay);
             toolbar.Controls.Add(_target);
             toolbar.Controls.Add(_retryButton);
-            _targetPicker.SelectedIndexChanged += (s, e) =>
-            {
-                if (!_updatingTargets) _targetSelection.Select(_targetPicker.SelectedItem as ImportTarget);
-            };
-            _targetPicker.DropDown += (s, e) => RefreshTargets();
             _focusTimer.Tick += (s, e) => RefreshTargets();
             _focusTimer.Start();
             FormClosed += (s, e) => _focusTimer.Dispose();
@@ -148,6 +143,24 @@ namespace MaxWebViewHost
             _connectionTimer.Tick += async (s, e) => await MonitorConnectionAsync();
             FormClosed += (s, e) => { _connectionTimer.Dispose(); _packagedApp?.Dispose(); _v3?.Dispose(); };
             Load += async (s, e) => await InitAsync();
+        }
+
+        private static ImportTarget CurrentOwnerProcess()
+        {
+            using (var process = Process.GetCurrentProcess())
+                return new ImportTarget(process.Id, process.StartTime.ToUniversalTime().Ticks, process.MainWindowTitle);
+        }
+
+        private static ImportTarget[] DiscoverOwnerProcess() { return new[] { CurrentOwnerProcess() }; }
+
+        private void UpdateOwnerDisplay(ImportTarget current)
+        {
+            var ready = current != null && current.IsReady;
+            var scene = ready ? (string.IsNullOrEmpty(current.ScenePath) ? "Untitled" : Path.GetFileName(current.ScenePath)) : "3ds Max";
+            Text = "3DS Mood | " + scene + " | Max PID " + _ownerProcess.ProcessId;
+            _ownerDisplay.Text = ready
+                ? (string.IsNullOrEmpty(current.ScenePath) ? "Untitled" : current.ScenePath) + " | PID " + _ownerProcess.ProcessId
+                : "Đang chờ scene của Max PID " + _ownerProcess.ProcessId;
         }
 
         private async void RefreshTargets()
@@ -167,10 +180,10 @@ namespace MaxWebViewHost
 
         private ImportTarget[] ObserveTargetProcessPresence()
         {
-            var discovered = _discoverTargets();
+            var discovered = _discoverTargets().Where(target => _ownerProcess.IsSameProcess(target)).ToArray();
             var known = _targetSelection.Targets;
-            // Process presence is synchronous: a newly opened second Max immediately invalidates
-            // implicit single-scene selection, even if an older one-process IPC refresh is pending.
+            // Only the owning process participates, including while a metadata refresh is pending.
+            // Reuse its last known document only until fresh owner metadata is available.
             _targetSelection.Refresh(discovered.Select(process => known.FirstOrDefault(t => t.IsSameProcess(process)) ?? process));
             return discovered;
         }
@@ -199,29 +212,22 @@ namespace MaxWebViewHost
                 var resolved = await Task.WhenAll(discovered.Select(ReadAvailableTargetAsync));
                 if (IsDisposed || Disposing) return;
                 _targetSelection.Refresh(resolved);
-                var targets = _targetSelection.Targets;
-                var current = _targetSelection.Current;
-                var signature = string.Join("|", targets.Select(t => t.ToString() + ":" + t.StartedTicks + ":" + t.DocumentToken))
-                    + "#" + (current == null ? "none" : current.ProcessId.ToString()) + _targetSelection.SelectedUnavailable;
-                if (_targetSignature == signature || _targetPicker.DroppedDown) return;
-                _targetSignature = signature;
-                _updatingTargets = true;
-                try
-                {
-                    _targetPicker.Items.Clear();
-                    _targetPicker.Items.Add(_targetSelection.SelectedUnavailable ? "Scene đã chọn đã đóng hoặc đổi file — chọn lại" : "Chọn scene 3ds Max để merge…");
-                    foreach (var target in targets) _targetPicker.Items.Add(target);
-                    _targetPicker.SelectedIndex = current == null ? 0 : Array.FindIndex(targets, t => t.IsSameProcess(current)) + 1;
-                }
-                finally { _updatingTargets = false; }
+                // The owner process is immutable; follow its current document between separate imports.
+                _targetSelection.Select(resolved.FirstOrDefault(target => _ownerProcess.IsSameProcess(target) && target.IsReady));
+                UpdateOwnerDisplay(_targetSelection.Current);
             }
-            catch (Exception ex) { Debug.WriteLine("[targets] discovery: " + ex.GetType().Name); }
+            catch (Exception ex) { Debug.WriteLine("[targets] owner refresh: " + ex.GetType().Name); }
         }
 
         private async Task<ImportTarget> ReadAvailableTargetAsync(ImportTarget target)
         {
-            try { return await _readTarget(target).ConfigureAwait(false); }
-            catch (Exception ex) { Debug.WriteLine("[targets] agent unavailable: " + ex.GetType().Name); return target; }
+            try
+            {
+                var resolved = await _readTarget(target).ConfigureAwait(false);
+                if (_ownerProcess.IsSameProcess(resolved)) return resolved;
+            }
+            catch (Exception ex) { Debug.WriteLine("[targets] owner unavailable: " + ex.GetType().Name); }
+            return new ImportTarget(target.ProcessId, target.StartedTicks, target.SceneTitle);
         }
 
         private async Task InitAsync()
@@ -264,9 +270,11 @@ namespace MaxWebViewHost
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this,
-                    "Không khởi tạo được WebView2 Runtime.\r\n\r\n" + ex.Message,
-                    "MaxWebViewHost", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Debug.WriteLine("[webview.init] " + ex.GetType().Name);
+                if (MessageBox.Show(this,
+                    "Không khởi tạo được Microsoft Edge WebView2 Runtime. Cài hoặc sửa WebView2 Evergreen Runtime, rồi mở lại 3ds Max.\r\n\r\nMở trang tải chính thức của Microsoft?",
+                    "3DS Mood", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
+                    OpenExternal("https://developer.microsoft.com/microsoft-edge/webview2/");
                 return;
             }
 
@@ -453,16 +461,19 @@ namespace MaxWebViewHost
                 return;
             }
 
+            if (method == "asset.download")
+            {
+                var parameters = (Dictionary<string, object>)paramsObj;
+                _ = Task.Run(() => DownloadAssetAsync(id, (string)parameters["modelId"]));
+                return;
+            }
             if (method == "asset.import")
             {
                 var target = await CaptureImportTargetAsync();
                 if (IsDisposed || Disposing || !_requestDocuments.ContainsKey(id)) return;
                 if (target == null)
                 {
-                    PostError(id, _targetSelection.SelectedUnavailable ? "TARGET_UNAVAILABLE" : "TARGET_SELECTION_REQUIRED",
-                        "Chọn scene 3ds Max ở thanh Merge vào scene, rồi bấm Download lại.");
-                    _targetPicker.Focus();
-                    _targetPicker.DroppedDown = true;
+                    PostError(id, "TARGET_UNAVAILABLE", "Scene của cửa sổ 3ds Max này chưa sẵn sàng. Thử lại sau.");
                     return;
                 }
                 var p = paramsObj as Dictionary<string, object> ?? new Dictionary<string, object>();
@@ -478,6 +489,19 @@ namespace MaxWebViewHost
             try
             {
                 if (_v3 == null) { PostError(id, "LIBRARY_NOT_CONFIGURED", "Thư viện chưa sẵn sàng. Mở lại panel rồi thử lại."); return; }
+                if (method == "library.downloads") { PostResponse(id, true, new { models = _v3.Downloads.List() }, null); return; }
+                if (method == "library.importOptions")
+                {
+                    var options = await Task.Run(() => _v3.Downloads.ImportOptions((string)parameters["modelId"]));
+                    PostResponse(id, true, options, null); return;
+                }
+                if (method == "library.settings") { PostResponse(id, true, new { downloadDirectory = _v3.Downloads.DownloadDirectory }, null); return; }
+                if (method == "library.chooseDownloadDirectory")
+                {
+                    // WebView2 forbids a modal dialog inside its synchronous COM event callback.
+                    BeginInvoke(new Action(() => ChooseDownloadDirectory(id)));
+                    return;
+                }
                 if (method == "library.refresh") await _v3.Watcher.CheckNowAsync(_lifetime.Token);
                 else // library.status
                 {
@@ -492,6 +516,25 @@ namespace MaxWebViewHost
             {
                 Debug.WriteLine("[library] " + error);
                 PostError(id, "LIBRARY_UNAVAILABLE", "Không đọc hoặc lưu được thư viện. Kiểm tra quyền ghi dữ liệu và thử lại.");
+            }
+        }
+
+        private void ChooseDownloadDirectory(string id)
+        {
+            try
+            {
+                if (_v3 == null || IsDisposed || Disposing || !_requestDocuments.ContainsKey(id)) return;
+                using (var picker = new FolderBrowserDialog { Description = "Chọn thư mục lưu model tải về", SelectedPath = _v3.Downloads.DownloadDirectory, ShowNewFolderButton = true })
+                {
+                    var chosen = picker.ShowDialog(this) == DialogResult.OK;
+                    if (chosen) { _v3.Downloads.SetDownloadDirectory(picker.SelectedPath); _v3.DownloadsChanged(); }
+                    PostResponse(id, true, new { downloadDirectory = _v3.Downloads.DownloadDirectory, cancelled = !chosen }, null);
+                }
+            }
+            catch (Exception error)
+            {
+                Debug.WriteLine("[library.folder] " + error.GetType().Name);
+                PostError(id, "DOWNLOAD_DIRECTORY_UNAVAILABLE", error is InvalidDataException ? error.Message : "Không ghi được vào thư mục đã chọn. Chọn thư mục khác trên SSD và thử lại.");
             }
         }
         private void HandleDeviceMethod(string id, string method, Dictionary<string, object> parameters)
@@ -531,131 +574,56 @@ namespace MaxWebViewHost
             });
         }
 
-        // ---------- asset.import: tải -> giải nén an toàn -> import trên main thread ----------
-
-        private async Task ImportAssetAsync(string id, Dictionary<string, object> p, ImportTarget selectedTarget)
+        private async Task DownloadAssetAsync(string id, string modelId)
         {
-            string workDir = null;
-            bool retainContent = false;
             using (var cancellation = System.Threading.CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token))
             {
-            cancellation.CancelAfter(TimeSpan.FromMinutes(30));
-            var token = cancellation.Token;
-            try
-            {
-                var v3 = _v3; // the server decides entitlement when it issues the download session
-                string fileName = null, entryFile = null;
-                if (v3 == null) { PostError(id, "LIBRARY_NOT_CONFIGURED", "Thư viện chưa sẵn sàng. Mở lại panel rồi thử lại."); return; }
-                if (!p.ContainsKey("modelId")) { PostError(id, "INVALID_PARAMS", "Thiếu mã model."); return; }
-                var assetId = (string)p["modelId"];
-                if (!await ValidateSelectedTargetAsync(id, selectedTarget).ConfigureAwait(false)) return;
-                // A catalog ID is not necessarily a valid Windows directory name (e.g. CON).
-                // Use an independently generated directory under the agent's trusted cache root.
-                workDir = Path.Combine(PlatformAgent.CacheRoot, Guid.NewGuid().ToString("N"));
-                var extractDir = Path.Combine(workDir, "content");
-                Directory.CreateDirectory(extractDir);
-                var pkg = Path.Combine(workDir, "package.bin");
+                cancellation.CancelAfter(TimeSpan.FromMinutes(30));
                 try
                 {
-                    var progressClock = Stopwatch.StartNew();
-                    long lastReceived = 0;
-                    long? lastTotal = null;
-                    Action<long, long?> progress = (received, total) => {
-                        lastReceived = received; lastTotal = total;
-                        if (progressClock.ElapsedMilliseconds < 200) return;
-                        progressClock.Restart();
-                        PostProgress(id, received, total);
-                    };
-                    var info = await v3.Downloader.DownloadAsync(assetId, pkg, token, progress).ConfigureAwait(false);
-                    fileName = "model." + info.FileType; entryFile = info.EntryFile;
-                    PostProgress(id, lastReceived, lastTotal);
+                    if (_v3 == null) { PostError(id, "LIBRARY_NOT_CONFIGURED", "Thư viện chưa sẵn sàng."); return; }
+                    var clock = Stopwatch.StartNew();
+                    var result = await _v3.DownloadModelAsync(modelId, cancellation.Token, (received, total) => {
+                        if (clock.ElapsedMilliseconds < 200 && received != total) return;
+                        clock.Restart(); PostProgress(id, received, total);
+                    }).ConfigureAwait(false);
+                    PostResponse(id, true, result, null);
                 }
-                catch (ApiException error)
+                catch (ApiException e) { PostError(id, e.Code, e.Message); }
+                catch (OperationCanceledException) { PostError(id, "DOWNLOAD_CANCELLED", "Đã hủy hoặc hết thời gian tải model."); }
+                catch (Exception e)
                 {
-                    Debug.WriteLine("[asset.download] " + error.Code);
-                    PostError(id, error.Code, error.Message);
-                    return;
+                    Debug.WriteLine("[asset.download] " + e.GetType().Name);
+                    PostError(id, IsArchiveDependencyFailure(e) ? "ARCHIVE_DEPENDENCY_MISSING" : "ASSET_DOWNLOAD_FAILED",
+                        e is InvalidDataException ? e.Message : "Không lưu được model. Kiểm tra dung lượng và quyền ghi thư mục tải.");
                 }
-                catch (Exception error) when (error is InvalidDataException || error is IOException || error is HttpRequestException || error is OperationCanceledException)
-                {
-                    Debug.WriteLine("[asset.download] " + error);
-                    PostError(id, "ASSET_DOWNLOAD_FAILED", error is InvalidDataException ? error.Message : "Không tải được model. Kiểm tra Internet hoặc thử lại sau.");
-                    return;
-                }
-                string[] files;
-                if (ImportExtensions.Contains(Path.GetExtension(fileName).ToLowerInvariant()))
-                {
-                    var direct = Path.Combine(extractDir, fileName);
-                    File.Move(pkg, direct);
-                    files = new[] { direct };
-                }
-                else files = ArchivePackage.Extract(pkg, extractDir, token, null).ToArray();
-
-                string entry = null;
-                if (!string.IsNullOrEmpty(entryFile))
-                {
-                    var specified = Path.GetFullPath(Path.Combine(extractDir, entryFile.Replace('/', Path.DirectorySeparatorChar)));
-                    entry = files.FirstOrDefault(f => string.Equals(f, specified, StringComparison.OrdinalIgnoreCase));
-                    if (entry == null) { PostError(id, "ASSET_ENTRY_MISSING", "File import khai báo trong catalog không có trong gói model."); return; }
-                }
-                else foreach (var ext in ImportExtensions)
-                {
-                    entry = files.Where(f => f.EndsWith(ext, StringComparison.OrdinalIgnoreCase)).OrderBy(f => f.Length).FirstOrDefault();
-                    if (entry != null) break;
-                }
-                if (entry == null) { PostError(id, "ASSET_NO_IMPORTABLE_FILE", "Gói không có file .fbx/.obj/.max"); return; }
-                // 4) giao cho adapter (MAXScript) chạy trên UI thread. Method này KHÔNG nằm trong allowlist
-                //    nên web không gọi trực tiếp được; đường dẫn do host tự tính.
-                token.ThrowIfCancellationRequested();
-                if (!await ValidateSelectedTargetAsync(id, selectedTarget).ConfigureAwait(false)) return;
-                var target = selectedTarget.ProcessId;
-                if (target == Process.GetCurrentProcess().Id)
-                {
-                    var args = new Dictionary<string, object> { { "path", entry }, { "assetId", assetId },
-                        { "expectedScenePath", selectedTarget.ScenePath }, { "expectedDocumentToken", selectedTarget.DocumentToken } };
-                    retainContent = true; // scene textures may refer to this owned cache directory.
-                    BeginInvoke(new Action(() => Dispatch(id, "asset.importFile", args)));
-                    return;
-                }
-
-                // Max đích là process khác: chuyển lệnh qua pipe. Không import nhầm sang scene khác khi đích không với tới được.
-                string replyJson;
-                // A lost reply does not prove that the target failed to merge. Preserve
-                // the files from the moment the command can reach another Max scene.
-                retainContent = true;
-                try { replyJson = await PlatformAgent.SendImportAsync(target, id, entry, selectedTarget.StartedTicks, selectedTarget.ScenePath, selectedTarget.DocumentToken).ConfigureAwait(false); }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine("[asset.import] pipe: " + ex);
-                    PostError(id, "TARGET_UNAVAILABLE", "Không kết nối được Max đích (" + ex.GetType().Name + "): đã đóng, chưa có agent, hoặc chạy khác quyền");
-                    return;
-                }
-                var reply = _json.Deserialize<Dictionary<string, object>>(replyJson);
-                object ok, res, er;
-                reply.TryGetValue("ok", out ok);
-                reply.TryGetValue("result", out res);
-                reply.TryGetValue("error", out er);
-                PostResponse(id, ok is bool && (bool)ok, res, er);
             }
+        }
+
+        // Local import never downloads, extracts or waits for the network. Files and textures stay at stable indexed paths.
+        private async Task ImportAssetAsync(string id, Dictionary<string, object> p, ImportTarget selectedTarget)
+        {
+            try
+            {
+                if (_v3 == null) { PostError(id, "LIBRARY_NOT_CONFIGURED", "Thư viện chưa sẵn sàng."); return; }
+                if (selectedTarget == null || !_ownerProcess.IsSameProcess(selectedTarget) || selectedTarget.ProcessId != Process.GetCurrentProcess().Id)
+                {
+                    PostError(id, "TARGET_OWNER_MISMATCH", "Plugin chỉ import vào cửa sổ 3ds Max đã mở plugin này.");
+                    return;
+                }
+                var assetId = (string)p["modelId"];
+                var entry = _v3.LocalEntry(assetId, p.ContainsKey("optionId") ? (string)p["optionId"] : null);
+                if (!await ValidateSelectedTargetAsync(id, selectedTarget).ConfigureAwait(false)) return;
+                var args = new Dictionary<string, object> { { "path", entry }, { "assetId", assetId },
+                    { "expectedScenePath", selectedTarget.ScenePath }, { "expectedDocumentToken", selectedTarget.DocumentToken } };
+                // Dispatch to this form's MAXScript adapter only. Never route an import over another Max's pipe.
+                BeginInvoke(new Action(() => Dispatch(id, "asset.importFile", args)));
+            }
+            catch (ApiException e) { PostError(id, e.Code, e.Message); }
             catch (Exception ex)
             {
-                Debug.WriteLine("[asset.import] " + ex);
-                if (IsArchiveDependencyFailure(ex))
-                    PostError(id, "ARCHIVE_DEPENDENCY_MISSING", "Plugin thiếu thư viện giải nén. Cài lại gói plugin đầy đủ rồi khởi động lại 3ds Max.");
-                else PostError(id, "ASSET_IMPORT_FAILED", ex is InvalidDataException ? ex.Message : "Import thất bại. Kiểm tra gói model và scene đã chọn.");
-            }
-            finally
-            {
-                if (workDir != null)
-                {
-                    try {
-                        var package = Path.Combine(workDir, "package.bin");
-                        if (File.Exists(package)) File.Delete(package);
-                        // workDir is a fresh GUID under a validated asset ID; never delete a scene's retained textures.
-                        if (!retainContent && Directory.Exists(workDir)) Directory.Delete(workDir, true);
-                    } catch (IOException) { Debug.WriteLine("[asset.import] cleanup deferred"); }
-                }
-            }
+                Debug.WriteLine("[asset.import] " + ex.GetType().Name);
+                PostError(id, "ASSET_IMPORT_FAILED", ex is InvalidDataException ? ex.Message : "Import thất bại. Kiểm tra file model và scene đã chọn.");
             }
         }
 
@@ -671,10 +639,15 @@ namespace MaxWebViewHost
 
         private async Task<bool> ValidateSelectedTargetAsync(string id, ImportTarget selected)
         {
+            if (selected == null || !_ownerProcess.IsSameProcess(selected))
+            {
+                PostError(id, "TARGET_OWNER_MISMATCH", "Plugin chỉ import vào cửa sổ 3ds Max đã mở plugin này.");
+                return false;
+            }
             try
             {
                 var current = await _readTarget(selected).ConfigureAwait(false);
-                if (selected.IsSameScene(current)) return true;
+                if (_ownerProcess.IsSameProcess(current) && selected.IsSameScene(current)) return true;
                 PostError(id, "TARGET_SCENE_CHANGED", "Scene đã chọn đã đóng hoặc đổi file. Chọn scene và thử lại.");
             }
             catch (Exception ex)
@@ -728,6 +701,8 @@ namespace MaxWebViewHost
                     PostResponse(id, true, new Dictionary<string, object>
                     {
                         { "host", "3dsmax" },
+                        { "processId", _ownerProcess.ProcessId },
+                        { "importTarget", "owner" },
                         { "hostVersion", HostVersion },
                         { "plugin", "MaxWebViewHost" },
                         { "pluginVersion", GetType().Assembly.GetName().Version.ToString() },

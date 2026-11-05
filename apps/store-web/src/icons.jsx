@@ -1,5 +1,6 @@
 // Icon SVG noi tuyen, net theo currentColor. Khong them thu vien icon.
 const P = {
+  settings: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1 1-3Z',
   cube: 'M12 2 3 7v10l9 5 9-5V7l-9-5Zm0 0v10m0 0 9-5m-9 5-9-5m9 5v10',
   user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 9a7 7 0 0 1 14 0',
   refresh: 'M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7',

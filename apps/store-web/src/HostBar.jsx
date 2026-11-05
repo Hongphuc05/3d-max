@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { health } from './api.js';
 import { Icon } from './icons.jsx';
 import { getHostInfo, getSceneInfo, isMaxHost } from './integrations/3dsmax/bridge.js';
-import { useJobs } from './queue.js';
+import { useImports } from './local-imports.js';
 
 const Badge = ({ ok, children }) => (
   <span className={`flex items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-[11px] ${ok ? 'border-accent/40 text-accent' : 'border-danger/40 text-danger'}`}>
@@ -15,7 +15,7 @@ export function HostBar({ reloadKey, onRefresh, apiStatus }) {
   const max = isMaxHost();
   const [host, setHost] = useState(null);
   const [api, setApi] = useState(null); // null | 'ok' | 'db' | 'down'
-  const done = useJobs().filter((j) => j.status === 'done').length;
+  const imported = useImports().filter(j => j.status === 'done').map(j => `${j.modelId}:${j.finishedAt}`).join('|');
 
   useEffect(() => {
     if (apiStatus !== undefined) { setApi(apiStatus); return; } // plugin v3: trang thai den tu host, khong goi /api/health (host chan)
@@ -26,7 +26,7 @@ export function HostBar({ reloadKey, onRefresh, apiStatus }) {
     if (!max) return;
     Promise.all([getHostInfo(), getSceneInfo()])
       .then(([info, scene]) => setHost({ info, scene }), (e) => setHost({ error: e.message }));
-  }, [max, reloadKey, done]);
+  }, [max, reloadKey, imported]);
 
   let status;
   if (!max) status = <span className="text-mute">Trình duyệt · chỉ xem catalog. Download &amp; import có trong plugin 3ds Max</span>;
