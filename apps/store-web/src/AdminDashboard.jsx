@@ -26,7 +26,7 @@ export default function AdminDashboard() {
       <nav aria-label="Quản trị" className="flex shrink-0 flex-wrap gap-1 border-b border-line bg-panel p-3 md:w-56 md:flex-col md:border-r md:border-b-0">
         {sections.map(([key, label]) => <button key={key} disabled={locked && key !== 'account'} aria-current={active === key ? 'page' : undefined} onClick={() => setSection(key)} className={`rounded-md px-3 py-2.5 text-left text-sm disabled:opacity-35 ${active === key ? 'bg-accent/10 font-bold text-accent' : 'text-mute hover:bg-raised hover:text-fg'}`}>{label}</button>)}
       </nav>
-      <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4 md:p-6"><div className="mx-auto max-w-6xl">
+      <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4 md:p-6"><div className={`mx-auto ${active === 'models' ? 'max-w-none' : 'max-w-6xl'}`}>
         {active === 'overview' && <AdminOverview onOpenOrders={sections.some(([k]) => k === 'orders') ? () => setSection('orders') : undefined} />}
         {active === 'drive' && <AdminDrive />}
         {active === 'sync' && <AdminSync />}

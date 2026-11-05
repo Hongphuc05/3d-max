@@ -56,7 +56,7 @@ const settingsView = (r) => ({
 });
 // D29: trang thai ghep cap suy ra tu du lieu (khong luu): FULL = anh + file nen = cong khai; con lai chi hien o admin.
 const STATE_WHERE = { FULL: 'has_archive and has_preview', PREVIEW_ONLY: 'has_preview and not has_archive', ARCHIVE_ONLY: 'has_archive and not has_preview', MISMATCH: 'mismatch' };
-const BASE = `select m.id, m.name, c.full_path, m.status, m.name_overridden, m.updated_at, p.local_path as thumb_path,
+const BASE = `select m.id, m.name, m.category_id, c.full_path, m.status, m.name_overridden, m.updated_at, p.local_path as thumb_path,
     (m.primary_file_id is not null) as has_archive, (p.local_path is not null) as has_preview,
     (m.drive_category_id is not null and m.drive_category_id <> m.category_id) as mismatch
   from models m join categories c on c.id = m.category_id
@@ -116,10 +116,23 @@ export function createCatalogAdminRouter({ pool, guards = [], rateLimit, envDefa
       const like = q ? q.replace(/[\\%_]/g, '\\$&') : null; // % _ \ la ky tu thuong, khong phai ky tu thay the
       const state = req.query.state === undefined || req.query.state === '' ? null : String(req.query.state);
       if (state !== null && !(state in STATE_WHERE)) throw bad();
-      const where = `($1::text is null or name ilike '%' || $1 || '%' escape '\\') and ($2::text is null or status = $2)${state ? ` and ${STATE_WHERE[state]}` : ''}`;
-      const total = Number((await pool.query(`with b as (${BASE}) select count(*) from b where ${where}`, [like, status])).rows[0].count);
+      const categoryId = req.query.categoryId === undefined || req.query.categoryId === '' ? null : String(req.query.categoryId);
+      if (categoryId !== null && !UUID.test(categoryId)) throw bad();
+      let categoryIds = null;
+      if (categoryId !== null) {
+        const scope = await pool.query(`with recursive descendants(id) as (
+          select id from categories where id = $1::uuid
+          union
+          select c.id from categories c join descendants d on c.parent_id = d.id
+        ) select id from descendants`, [categoryId]);
+        if (!scope.rowCount) throw bad();
+        categoryIds = scope.rows.map((row) => row.id);
+      }
+      const where = `($1::text is null or name ilike '%' || $1 || '%' escape '\\') and ($2::text is null or status = $2)
+        and ($3::uuid[] is null or category_id = any($3::uuid[]))${state ? ` and ${STATE_WHERE[state]}` : ''}`;
+      const total = Number((await pool.query(`with b as (${BASE}) select count(*) from b where ${where}`, [like, status, categoryIds])).rows[0].count);
       const rows = (await pool.query(
-        `with b as (${BASE}) select * from b where ${where} order by lower(name), id limit $3 offset $4`, [like, status, limit, (page - 1) * limit])).rows;
+        `with b as (${BASE}) select * from b where ${where} order by lower(name), id limit $4 offset $5`, [like, status, categoryIds, limit, (page - 1) * limit])).rows;
       const c = (await pool.query(`with b as (${BASE}) select
           count(*) filter (where ${STATE_WHERE.FULL}) as full, count(*) filter (where ${STATE_WHERE.PREVIEW_ONLY}) as preview_only,
           count(*) filter (where ${STATE_WHERE.ARCHIVE_ONLY}) as archive_only, count(*) filter (where mismatch) as mismatch from b`)).rows[0];
