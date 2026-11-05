@@ -1,6 +1,6 @@
 // Kết nối Drive: key được gửi một lần qua form password, mã hóa và giữ ở máy chủ; status chỉ trả metadata đã che.
 // Drive ID nội bộ không được render lại trên trang admin.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import * as api from './api.js';
 import { adminError, dateTime, inputClass, panel, primary, ResourceState, secondary, useAdminResource } from './AdminShared.jsx';
 
@@ -8,6 +8,12 @@ const types = { MY_DRIVE: 'Drive của tôi', SHARED_DRIVE: 'Drive chung', SHARE
 const checks = { list: 'Liệt kê thư mục', download: 'Tải thử file' };
 const th = 'px-3 py-3 text-left text-xs font-medium text-mute';
 const td = 'border-t border-line px-3 py-3 align-top text-sm';
+const MASKED_KEY = '••••••••••••••••';
+
+function countdown(ms) {
+  const seconds = Math.max(0, Math.ceil(ms / 1000));
+  return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+}
 
 function CheckResult({ result }) {
   return <ul className="space-y-1 text-sm" aria-label="Kết quả kiểm tra">
@@ -88,7 +94,7 @@ function DriveKeySlot({ slot, onChanged }) {
     </div>
     <label className="block text-sm"><span className="text-mute">API key</span>
       <input className={`${inputClass} mt-1`} name={`apiKey-${slot.slot}`} type="password" autoComplete="new-password" maxLength={256} value={apiKey}
-        onChange={(event) => setApiKey(event.target.value)} placeholder={slot.configured ? 'Đã lưu — nhập key mới nếu muốn thay' : 'Nhập Google Drive API key'} /></label>
+        onChange={(event) => setApiKey(event.target.value)} placeholder={slot.configured ? MASKED_KEY : 'Nhập Google Drive API key'} aria-label={`API key slot ${slot.slot}${slot.configured ? ' (đã lưu, đang được che)' : ''}`} /></label>
     <div className="space-y-1 rounded-md border border-line px-3 py-2 text-xs">
       <p className="flex flex-wrap items-center gap-2">
         <span className={healthClass}>Trạng thái: {health}</span>
@@ -112,14 +118,31 @@ function DriveKeySlot({ slot, onChanged }) {
 
 export default function AdminDrive() {
   const [version, setVersion] = useState(0);
+  const [keyPoll, setKeyPoll] = useState(0);
+  const [clock, setClock] = useState(Date.now());
   const resource = useAdminResource(api.adminDriveStatus, [version]);
-  const keyResource = useAdminResource(api.adminDriveKeys, [version]);
+  const keyResource = useAdminResource(api.adminDriveKeys, [version, keyPoll]);
   const [form, setForm] = useState({ rootFolderUrlOrId: '', resourceKey: '' });
   const [save, setSave] = useState({ busy: false, error: '' });
   const status = resource.data;
   const keySlots = keyResource.data?.slots ?? [];
   const slotPlaceholders = Array.from({ length: 5 }, (_, index) => keySlots[index] ?? ({ slot: index + 1, configured: false, active: false, status: 'EMPTY' }));
+  const activeSlot = slotPlaceholders.find((slot) => slot.active);
+  const checkIntervalMs = (keyResource.data?.automaticCheckMinutes ?? 10) * 60_000;
+  const lastCheckedMs = activeSlot?.lastCheckedAt ? new Date(activeSlot.lastCheckedAt).getTime() : NaN;
+  const nextCheckInMs = Number.isFinite(lastCheckedMs) ? lastCheckedMs + checkIntervalMs - clock : null;
   const refresh = () => setVersion((value) => value + 1);
+
+  useEffect(() => {
+    const timer = setInterval(() => setClock(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (!document.hidden) setKeyPoll((value) => value + 1);
+    }, 15_000);
+    return () => clearInterval(timer);
+  }, []);
 
   async function submit(event) {
     event.preventDefault();
@@ -146,6 +169,13 @@ export default function AdminDrive() {
           : <p role="alert" className="text-sm text-warn">Chưa cấu hình. Hãy thêm ít nhất một API key ở slot bên dưới.</p>}
         {keyResource.data?.legacyFallback && <p className="text-xs text-mute">Hiện hệ thống đang dùng key tương thích cũ từ cấu hình máy chủ. Lưu key vào một slot để quản lý và xoay key trên giao diện.</p>}
         <p className="text-sm text-mute">Worker kiểm tra key đang dùng mỗi {keyResource.data?.automaticCheckMinutes ?? 10} phút. Khi Google giới hạn request, hệ thống tạm nghỉ key đó rồi chuyển sang key khác. Quota chính xác cần cấu hình quyền Cloud Monitoring phía máy chủ; các key cùng project có thể dùng chung quota.</p>
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line px-3 py-2 text-sm">
+          <span className="text-mute">Kiểm tra tự động tiếp theo</span>
+          <span className="font-semibold text-accent" aria-live="polite">
+            {!activeSlot ? 'Chưa có key đang dùng' : nextCheckInMs == null ? 'Chờ lần kiểm tra đầu tiên' : nextCheckInMs <= 0 ? 'Đến hạn — chờ cập nhật trạng thái' : countdown(nextCheckInMs)}
+          </span>
+        </div>
+        <p className="text-xs text-mute">Trạng thái bên dưới tự làm mới mỗi 15 giây. Key không đang dùng hiển thị kết quả kiểm tra gần nhất; key chưa từng được thử sẽ ghi “Chưa kiểm tra”.</p>
         <p className="text-xs text-mute">Key được mã hóa trong database; giá trị đã lưu không bao giờ được gửi lại về trình duyệt.</p>
         <ResourceState {...keyResource} retry={refresh} />
       </div>
