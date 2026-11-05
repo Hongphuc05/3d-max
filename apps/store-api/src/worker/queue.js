@@ -90,9 +90,20 @@ export async function finishJob(pool, jobId, workerId, { status, errorCode = nul
   if (!TERMINAL.has(status)) throw new Error('invalid terminal status');
   if (errorCode !== null && !ERROR_CODE.test(errorCode)) throw new Error('invalid error code');
   const r = await pool.query(
-    `update drive_sync_jobs set status = $3, finished_at = now(), lease_owner = null, lease_expires_at = null, stage = null,
-            error_code = $4, error_message = $5
-      where id = $1 and lease_owner = $2 and ${LIVE}`,
+    `with completed as (
+       update drive_sync_jobs set status = $3, finished_at = now(), lease_owner = null, lease_expires_at = null, stage = null,
+              error_code = $4, error_message = $5
+        where id = $1 and lease_owner = $2 and ${LIVE}
+        returning id, source_id, mode, status, error_count
+     ), pruned as (
+       -- Keep one clean FULL baseline per source; discard failed/partial FULL snapshots and older baselines.
+       delete from drive_archive_snapshot_runs r using completed c
+        where c.mode = 'FULL' and r.source_id = c.source_id
+          and ((c.status = 'COMPLETED' and c.error_count = 0 and r.job_id <> c.id)
+            or ((c.status <> 'COMPLETED' or c.error_count <> 0) and r.job_id = c.id))
+        returning r.job_id
+     )
+     select id from completed`,
     [jobId, workerId, status, errorCode, errorMessage === null ? null : String(errorMessage).slice(0, 500)]);
   return r.rowCount === 1;
 }

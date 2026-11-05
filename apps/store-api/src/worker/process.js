@@ -3,6 +3,7 @@
 // Chi PUBLISHING ghi vao catalog, trong 1 transaction; tat ca giai doan truoc chi tao du lieu trung gian.
 import { createDriveClient } from '../drive/client.js';
 import { messageFor } from '../drive/errors.js';
+import { captureArchiveSnapshot, latestArchiveSnapshot } from './archive-snapshot.js';
 import { computeDiff } from './diff.js';
 import { publishPlan } from './publish.js';
 import { scanSource } from './scan.js';
@@ -37,17 +38,29 @@ export function createSyncHandler({ pool, apiKey, createClient }) {
 
   async function run(job, ctx) {
     const source = (await pool.query('select * from drive_sources where id = $1', [job.source_id])).rows[0];
-    if (!source?.enabled || source.access_mode !== 'API_KEY') return failed('DRIVE_NOT_CONNECTED');
-    const client = makeClient(source);
+    if (!source?.enabled) return failed('DRIVE_NOT_CONNECTED');
     let cur = job;
+    let snapshotJobId = job.id;
+    const full = cur.mode === 'FULL';
 
-    if (!cur.checkpoint?.scan?.done) {
-      const s = stopped(await scanSource({ pool, client, job: cur, source, ctx }));
-      if (s) return s;
+    if (full) {
+      if (source.access_mode !== 'API_KEY') return failed('DRIVE_NOT_CONNECTED');
+      const client = makeClient(source);
+      if (!cur.checkpoint?.scan?.done) {
+        const s = stopped(await scanSource({ pool, client, job: cur, source, ctx }));
+        if (s) return s;
+        cur = await reload(job.id);
+      }
+      await captureArchiveSnapshot(pool, { sourceId: source.id, jobId: job.id });
+    } else {
+      const snapshot = await latestArchiveSnapshot(pool, source.id);
+      if (!snapshot) return failed('FULL_SCAN_REQUIRED');
+      snapshotJobId = snapshot.id;
+      if (!(await ctx.saveProgress({ stage: 'COMPARING', checkpoint: { ...cur.checkpoint, archiveSnapshotJobId: snapshot.id } }))) return { interrupted: true };
       cur = await reload(job.id);
     }
 
-    const plan = await computeDiff(pool, { sourceId: source.id, jobId: job.id });
+    const plan = await computeDiff(pool, { sourceId: source.id, jobId: snapshotJobId, includeDriveTree: full, detectMissing: full });
     const scanSkipped = cur.checkpoint?.scan?.counters?.skippedCount ?? 0;
     if (!(await ctx.saveProgress({ stage: 'COMPARING', counters: { ...planCounters(plan, scanSkipped), reviewCount: await openReviewCount(pool, source.id, plan) } }))) return { interrupted: true };
 
@@ -55,10 +68,10 @@ export function createSyncHandler({ pool, apiKey, createClient }) {
     if (ctx.cancelled) return { status: 'CANCELLED' };
     if (ctx.shuttingDown) return { interrupted: true };
     if (!(await ctx.saveProgress({ stage: 'PUBLISHING' }))) return { interrupted: true };
-    const fresh = await computeDiff(pool, { sourceId: source.id, jobId: job.id }); // tinh lai: admin co the da sua/tai anh len trong luc so sanh
+    const fresh = await computeDiff(pool, { sourceId: source.id, jobId: snapshotJobId, includeDriveTree: full, detectMissing: full }); // tinh lai truoc publish; preview co the vua duoc admin tai len
     await publishPlan(pool, { sourceId: source.id, jobId: job.id, plan: fresh });
     await ctx.saveProgress({ counters: { ...planCounters(fresh, scanSkipped), reviewCount: await openReviewCount(pool, source.id, fresh) } });
-    await pool.query('update drive_sources set last_successful_sync_at = now() where id = $1', [source.id]);
+    if (full) await pool.query('update drive_sources set last_successful_sync_at = now() where id = $1', [source.id]);
     return { status: (await reload(job.id)).error_count > 0 ? 'COMPLETED_WITH_ERRORS' : 'COMPLETED' };
   }
 

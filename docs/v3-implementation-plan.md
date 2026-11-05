@@ -89,12 +89,13 @@ P3, P4 và P5 làm **song song được** sau khi P2 có migration + API catalog
 | Method + path | Request | Response | Lỗi riêng |
 |---|---|---|---|
 | `GET /api/admin/drive/status` | — | `{configured:bool, missingConfig:[tên biến], connection:{id,status,email,authKind,connectedAt,lastTokenRefreshAt,lastErrorCode}\|null, sources:[{id,connectionId,rootFolderName,sourceType,enabled,lastSuccessfulSyncAt}]}` (P1 thêm `configured`/`missingConfig`/`id`/`lastErrorCode`) | — |
+| `GET /api/admin/drive/summary?sourceId=` | UUID nguồn Drive | `{hasFullScan,driveArchiveCount,lastFullScanAt,previewCount,readyCount,previewOnlyCount,archiveOnlyCount,openReviewCount}`; `driveArchiveCount` null nếu chưa có FULL sạch | `INVALID_PARAMS` |
 | `GET /api/admin/drive/oauth/start` | — | `302` sang Google (có `state`, PKCE) | `DRIVE_OAUTH_NOT_CONFIGURED` |
 | `GET /api/admin/drive/oauth/callback` | `?code&state` từ Google | `302` về trang admin `?drive=connected\|error` | `OAUTH_STATE_INVALID` |
 | `POST /api/admin/drive/test-access` | `{sourceId?}` | `{canList:bool, sampleCount, canDownloadSample:bool, account, details:[{check,ok,count?,code?,reason?}]}` | `DRIVE_AUTH_REVOKED`, `DRIVE_PERMISSION_DENIED` |
 | `POST /api/admin/drive/sources` | `{rootFolderUrlOrId, resourceKey?}` | `201 {id, rootFolderName, sourceType}` | `DRIVE_NOT_FOUND`, `DRIVE_PERMISSION_DENIED` |
 | `GET /api/admin/drive/sources` | — | `[{id,...}]` | — |
-| `POST /api/admin/drive/sync-jobs` | `{sourceId, mode:"FULL"\|"INCREMENTAL"}` | `202 {jobId}` | `409 SYNC_ALREADY_RUNNING`, `DRIVE_AUTH_REVOKED`, `DISK_SPACE_LOW` |
+| `POST /api/admin/drive/sync-jobs` | `{sourceId, mode:"FULL"\|"INCREMENTAL"}` | `202 {jobId}` | `409 SYNC_ALREADY_RUNNING`, `FULL_SCAN_REQUIRED` nếu INCREMENTAL chưa có baseline, `DRIVE_AUTH_REVOKED`, `DISK_SPACE_LOW` |
 | `GET /api/admin/drive/sync-jobs?limit&cursor` | — | `{items:[JobSummary], nextCursor}` | — |
 | `GET /api/admin/drive/sync-jobs/:id` | — | `Job` (dưới) | — |
 | `GET /api/admin/drive/sync-jobs/:id/events` | SSE | event `progress` (Job), `done` (Job) | — |
@@ -279,7 +280,7 @@ Làm trong `apps/store-web` (admin hiện có: `AdminDashboard.jsx`, `AdminShare
 | Bước | Màn | Chi tiết | Dep |
 |---|---|---|---|
 | P3.1 | Kết nối Drive | Trạng thái `CONNECTED/EXPIRED/RECONNECT_REQUIRED`, email Gmail B, root folder, nút Connect/Reconnect, Test Access (hiện kết quả từng mục) | P1 |
-| P3.2 | Quét đồng bộ | Nút "Quét đồng bộ" (FULL/INCREMENTAL), khóa nút khi đang chạy; SSE `events` → stage, số liệu, dung lượng; **thanh không xác định khi chưa có tổng**; Cancel/Retry; tự chuyển sang polling 3s nếu SSE lỗi | P2.3 |
+| P3.2 | Quét đồng bộ | FULL quét Drive và lưu snapshot metadata ZIP/RAR/7Z; INCREMENTAL ghép theo snapshot FULL sạch gần nhất, không gọi Drive và không phát hiện file thêm/xóa/đổi tên (cần FULL để cập nhật snapshot). Hiển thị số preview VPS, archive snapshot, model sẵn sàng và số đang chờ; SSE, Cancel/Retry, polling nếu SSE lỗi | P2.3 |
 | P3.3 | Lịch sử + lỗi | Bảng job (thời gian, kết quả, số liệu), mở job → danh sách file lỗi (tên + đường dẫn, không Drive ID) | P2.4 |
 | P3.4 | Cần duyệt | Danh sách `review_items` theo loại; chấp nhận/bỏ qua; chọn ảnh chính; xác nhận remap | P2.5 |
 | P3.5 | Thiết bị & quyền | Tìm thiết bị, cấp/thu hồi entitlement, ký MXL1 (thay trang Vercel) | P4.1 |

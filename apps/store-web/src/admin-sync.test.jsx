@@ -29,6 +29,7 @@ let root, fixture;
 const response = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
 const v3Error = (status, code, message) => response({ error: { code, message, requestId: 'req-1' } }, status);
 const src = (over = {}) => ({ id: 'src-1', connectionId: null, rootFolderName: 'Thu vien 3DS', sourceType: 'MY_DRIVE', enabled: true, lastSuccessfulSyncAt: null, ...over });
+const summary = { hasFullScan: true, driveArchiveCount: 318, lastFullScanAt: '2026-11-01T10:00:00Z', previewCount: 100, readyCount: 80, previewOnlyCount: 20, archiveOnlyCount: 15, openReviewCount: 0 };
 const zeroCounters = { scannedFolders: 0, scannedFiles: 0, new: 0, updated: 0, unchanged: 0, missing: 0, review: 0, skipped: 0, errors: 0 };
 const job = (id, status, over = {}) => ({ id, sourceId: 'src-1', mode: 'FULL', status, stage: null, counters: { ...zeroCounters }, bytesDownloaded: 0,
   startedAt: null, finishedAt: null, heartbeatAt: null, errorCode: null, errorMessage: null, ...over });
@@ -40,6 +41,7 @@ function installFetch() {
     if (path === '/api/auth/me') return response({ user: { id: 'admin-id', email: 'a@a.invalid', role: 'ADMIN', username: 'owner', mustChangeCredentials: false } });
     if (path === '/api/admin/catalog/sync/permission') return response({ allowed: true });
     if (path === '/api/admin/drive/status') return response({ configured: fixture.configured, missingConfig: fixture.configured ? [] : ['DRIVE_API_KEY'], connection: null, sources: fixture.sources });
+    if (path === '/api/admin/drive/summary') return response(fixture.summary);
     if (path === '/api/admin/drive/sync-jobs' && method === 'GET') {
       const limit = new URLSearchParams(String(url).split('?')[1] ?? '').get('limit');
       return response({ items: limit === '1' ? fixture.latest : (fixture.history ?? []), nextCursor: null }); // limit=1: job moi nhat; con lai: lich su
@@ -59,8 +61,8 @@ function installFetch() {
     throw new Error(`Unhandled sync fixture ${method} ${path}`);
   };
 }
-async function mount({ sources = [src()], configured = true, latest = [], jobs = {}, pollMs = 20 } = {}) {
-  fixture = { sources, configured, latest, jobs, requests: [], startError: null, cancelError: null, retryError: null };
+async function mount({ sources = [src()], configured = true, latest = [], jobs = {}, summary: stats = summary, pollMs = 20 } = {}) {
+  fixture = { sources, configured, latest, jobs, summary: stats, requests: [], startError: null, cancelError: null, retryError: null };
   FakeEventSource.instances.length = 0;
   installFetch();
   root = createRoot(container);
@@ -250,7 +252,7 @@ test('leaving the screen closes the stream and stops polling (no leaks)', async 
 });
 
 test('the admin dashboard has a "Quét đồng bộ" section that loads the latest job and sources', async () => {
-  fixture = { sources: [src()], configured: true, latest: [], jobs: {}, requests: [] };
+  fixture = { sources: [src()], configured: true, latest: [], jobs: {}, summary, requests: [] };
   FakeEventSource.instances.length = 0;
   installFetch();
   root = createRoot(container);
@@ -283,14 +285,15 @@ test('several sources: the chosen one is the one scanned', async () => {
   assert.equal(calls('/api/admin/drive/sync-jobs', 'POST')[0].body.sourceId, 'src-2');
 });
 
-test('INCREMENTAL is offered but honestly labelled: the note appears only for it, and it still sends mode INCREMENTAL', async () => {
+test('INCREMENTAL explains that it pairs previews with the latest full-scan snapshot', async () => {
   await mount();
-  assert.equal(/chưa khác/.test(container.textContent), false, 'no note for the full scan');
+  assert.ok(container.querySelector('[data-testid="full-note"]'), 'full scan explanation is shown by default');
   await pick('mode', 'INCREMENTAL');
   const note = container.querySelector('[data-testid="incremental-note"]');
   assert.ok(note, 'note shown for INCREMENTAL');
-  assert.match(note.textContent, /chưa khác "Quét đầy đủ"/);
-  assert.match(note.textContent, /quét toàn bộ/);
+  assert.match(note.textContent, /snapshot file nén/);
+  assert.match(note.textContent, /không gọi Drive/);
+  assert.match(note.textContent, /chỉ được nhận ra sau lần quét đầy đủ/);
   await click(mustButton('Quét đồng bộ'));
   assert.equal(calls('/api/admin/drive/sync-jobs', 'POST')[0].body.mode, 'INCREMENTAL');
   await pick('mode', 'FULL').catch(() => {}); // o chon bi khoa khi job dang chay: khong the doi

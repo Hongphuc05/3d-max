@@ -8,9 +8,13 @@ import { adminError, dateTime, panel, secondary } from './AdminShared.jsx';
 const PAGE = 10;
 const th = 'px-3 py-3 text-left text-xs font-medium text-mute';
 const td = 'border-t border-line px-3 py-3 align-top text-sm';
-const megabytes = (n) => `${(Number(n) / 1048576).toLocaleString('vi-VN', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MB`;
 const hasErrors = (job) => job.counters.errors > 0 || job.status === 'FAILED';
-const summary = (c) => `${c.scannedFiles} file · ${c.new} mới · ${c.updated} cập nhật · ${c.unchanged} không đổi · ${c.errors} lỗi`;
+const summary = (job) => {
+  const c = job.counters;
+  const count = job.mode === 'FULL' ? c.scannedFiles : c.new + c.updated + c.unchanged;
+  const unit = job.mode === 'FULL' ? 'file Drive' : 'file nén đối chiếu';
+  return `${count} ${unit} · ${c.new} mới · ${c.updated} cập nhật · ${c.errors} lỗi`;
+};
 
 function JobErrors({ job }) {
   const [state, setState] = useState({ items: null, error: '' });
@@ -74,17 +78,16 @@ export default function AdminSyncHistory({ refreshKey = 0 }) {
     {state.loading && state.items.length === 0 && !state.error && <p role="status" className="text-sm text-mute">Đang tải lịch sử…</p>}
     {!state.loading && !state.error && state.items.length === 0 && <p className="py-3 text-sm text-mute">Chưa có lượt đồng bộ nào.</p>}
     {state.items.length > 0 && <div className="overflow-x-auto"><table className="w-full">
-      <thead><tr><th className={th}>Thời gian</th><th className={th}>Kiểu</th><th className={th}>Kết quả</th><th className={th}>Số liệu</th><th className={th}>Dung lượng</th><th className={th}>Lỗi</th></tr></thead>
+      <thead><tr><th className={th}>Thời gian</th><th className={th}>Kiểu</th><th className={th}>Kết quả</th><th className={th}>Số liệu</th><th className={th}>Lỗi</th></tr></thead>
       <tbody>{state.items.flatMap((job) => [
         <tr key={job.id} data-job={job.id}>
           <td className={`${td} whitespace-nowrap text-xs text-mute`}>{dateTime(job.startedAt ?? job.finishedAt)}</td>
           <td className={td}>{modeLabels[job.mode] || job.mode}</td>
           <td className={td}>{statusLabels[job.status] || job.status}</td>
-          <td className={`${td} text-xs`}>{summary(job.counters)}</td>
-          <td className={`${td} whitespace-nowrap text-xs`}>{megabytes(job.bytesDownloaded)}</td>
+          <td className={`${td} text-xs`}>{summary(job)}</td>
           <td className={td}>{hasErrors(job) && <button className={secondary} onClick={() => setOpen(open === job.id ? null : job.id)}>{open === job.id ? 'Ẩn lỗi' : 'Xem lỗi'}</button>}</td>
         </tr>,
-        open === job.id && <tr key={`${job.id}-errors`}><td className={td} colSpan={6}><JobErrors job={job} /></td></tr>,
+        open === job.id && <tr key={`${job.id}-errors`}><td className={td} colSpan={5}><JobErrors job={job} /></td></tr>,
       ])}</tbody></table></div>}
     {state.next && <button className={secondary} disabled={more} onClick={loadMore}>Xem thêm</button>}
   </section>;

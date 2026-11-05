@@ -133,6 +133,10 @@ test('cancel: QUEUED becomes CANCELLED, RUNNING becomes CANCELLING, finished job
 });
 
 test('retry: a finished job can be retried (202 {jobId}, same source+mode); an active one is 409', { skip }, async () => {
+  const baseline = (await pool.query(
+    `insert into drive_sync_jobs(source_id,mode,status,checkpoint,finished_at)
+     values($1,'FULL','COMPLETED','{"scan":{"done":true}}',now()) returning id`, [sourceId])).rows[0].id;
+  await pool.query('insert into drive_archive_snapshot_runs(job_id,source_id,archive_count) values($1,$2,0)', [baseline, sourceId]);
   const old = (await pool.query("insert into drive_sync_jobs(source_id,mode,status,finished_at) values($1,'INCREMENTAL','FAILED',now()) returning id", [sourceId])).rows[0].id;
   const r = await j(`/sync-jobs/${old}/retry`, { method: 'POST' });
   assert.equal(r.status, 202);
@@ -145,7 +149,7 @@ test('retry: a finished job can be retried (202 {jobId}, same source+mode); an a
   assert.equal(dup.status, 409); assert.equal((await dup.json()).error.code, 'SYNC_ALREADY_RUNNING');
   assert.equal((await j(`/sync-jobs/${randomUUID()}/retry`, { method: 'POST' })).status, 422);
   assert.equal((await j(`/sync-jobs/${old}/retry`, { method: 'POST', user: 'user' })).status, 403);
-  assert.equal((await pool.query('select count(*)::int n from drive_sync_jobs')).rows[0].n, 2, 'a refused retry queues nothing');
+  assert.equal((await pool.query('select count(*)::int n from drive_sync_jobs')).rows[0].n, 3, 'a refused retry queues nothing');
   await pool.query('delete from drive_sync_jobs where id <> $1', [old]);
   await pool.query('update drive_sources set enabled=false where id=$1', [sourceId]);
   assert.equal((await j(`/sync-jobs/${old}/retry`, { method: 'POST' })).status, 400, 'disabled source cannot be retried');

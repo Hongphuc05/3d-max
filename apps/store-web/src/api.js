@@ -26,6 +26,7 @@ export const login = (email, password) => request('POST', '/auth/login', { body:
 export const logout = () => request('POST', '/auth/logout', { body: {} });
 
 export const adminDriveStatus = (signal) => get('/admin/drive/status', null, signal);
+export const adminDriveSummary = (sourceId, signal) => get('/admin/drive/summary', { sourceId }, signal);
 export const adminDriveAddSource = (body) => request('POST', '/admin/drive/sources', { body });
 export const adminDriveTestAccess = (sourceId, signal) => request('POST', '/admin/drive/test-access', { body: { sourceId }, signal });
 // P3.2 (plan §2.2): luot dong bo. Huy/Thu lai tra 202; huy khong co noi dung.

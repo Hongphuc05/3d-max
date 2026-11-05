@@ -3,6 +3,7 @@
 import express from 'express';
 import { apiError } from './errors.js';
 import { cancelJob, enqueueJob } from '../worker/queue.js';
+import { latestArchiveSnapshot } from '../worker/archive-snapshot.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ITEM_STATUSES = new Set(['PENDING', 'DONE', 'FAILED', 'SKIPPED']);
@@ -34,12 +35,42 @@ export function createSyncJobsRouter({ pool, pollMs = 2000, maxStreams = 5 }) {
   const getJob = async (id) => (await pool.query(`select ${COLUMNS} from drive_sync_jobs where id = $1`, [id])).rows[0] ?? null;
   const mustGet = async (id) => (await getJob(uuidParam(id))) ?? (() => { throw apiError('JOB_NOT_FOUND'); })();
 
+  router.get('/summary', async (req, res, next) => {
+    try {
+      const sourceId = typeof req.query.sourceId === 'string' ? req.query.sourceId : '';
+      if (!UUID.test(sourceId)) throw apiError('INVALID_PARAMS');
+      const source = (await pool.query('select 1 from drive_sources where id = $1', [sourceId])).rowCount;
+      if (!source) throw apiError('INVALID_PARAMS');
+      const [snapshot, models, reviews] = await Promise.all([
+        latestArchiveSnapshot(pool, sourceId),
+        pool.query(`select
+          count(*) filter (where has_preview)::int as preview_count,
+          count(*) filter (where m.status = 'PUBLISHED' and f.id is not null
+            and f.download_status not in ('MISSING','ERROR','RESTRICTED') and f.can_download is not false and has_preview)::int as ready_count,
+          count(*) filter (where m.primary_file_id is null and has_preview)::int as preview_only_count,
+          count(*) filter (where m.primary_file_id is not null and not has_preview)::int as archive_only_count
+          from models m
+          left join model_files f on f.id = m.primary_file_id
+          cross join lateral (select exists (select 1 from model_previews p where p.model_id = m.id and p.is_primary and p.variant = 'sm') as has_preview) preview_state`),
+        pool.query("select count(*)::int n from review_items where source_id = $1 and status = 'OPEN'", [sourceId]),
+      ]);
+      res.json({
+        hasFullScan: Boolean(snapshot), driveArchiveCount: snapshot ? Number(snapshot.archive_count) : null,
+        lastFullScanAt: snapshot?.finished_at ?? null,
+        previewCount: models.rows[0].preview_count, readyCount: models.rows[0].ready_count,
+        previewOnlyCount: models.rows[0].preview_only_count, archiveOnlyCount: models.rows[0].archive_only_count,
+        openReviewCount: Number(reviews.rows[0].n),
+      });
+    } catch (e) { next(e); }
+  });
+
   router.post('/sync-jobs', express.json({ limit: '1kb' }), async (req, res, next) => {
     try {
       const { sourceId, mode } = bodyKeys(req.body, ['sourceId', 'mode']);
       if (!UUID.test(sourceId ?? '') || !['FULL', 'INCREMENTAL'].includes(mode)) throw apiError('INVALID_PARAMS');
       const source = (await pool.query('select enabled from drive_sources where id = $1', [sourceId])).rows[0];
       if (!source?.enabled) throw apiError('INVALID_PARAMS');
+      if (mode === 'INCREMENTAL' && !(await latestArchiveSnapshot(pool, sourceId))) throw apiError('FULL_SCAN_REQUIRED');
       const job = await enqueueJob(pool, { sourceId, mode, requestedBy: req.user?.id ?? null });
       res.status(202).json({ jobId: job.id });
     } catch (e) { next(e); }
@@ -97,6 +128,7 @@ export function createSyncJobsRouter({ pool, pollMs = 2000, maxStreams = 5 }) {
       const job = await mustGet(req.params.id);
       const source = (await pool.query('select enabled from drive_sources where id = $1', [job.source_id])).rows[0];
       if (!source?.enabled) throw apiError('INVALID_PARAMS');
+      if (job.mode === 'INCREMENTAL' && !(await latestArchiveSnapshot(pool, job.source_id))) throw apiError('FULL_SCAN_REQUIRED');
       const created = await enqueueJob(pool, { sourceId: job.source_id, mode: job.mode, requestedBy: req.user?.id ?? null });
       res.status(202).json({ jobId: created.id });
     } catch (e) { next(e); }

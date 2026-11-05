@@ -1,33 +1,38 @@
-// Giai doan COMPARING (D29): so anh chup Drive (drive_inventory cua job nay) voi catalog. CHI DOC, khong ghi gi.
-// Drive chi cung cap FILE NEN (.zip/.rar/.7z); anh tren Drive bi bo qua hoan toan. Ghep cap theo stem (worker/stem.js), khong theo thu muc.
+// Giai doan COMPARING: doi chieu snapshot file nen ZIP/RAR/7Z voi model va preview tren VPS. Anh Drive bi bo qua.
+// FULL dung snapshot vua quet; INCREMENTAL dung snapshot FULL thanh cong gan nhat va bo qua phat hien file mat.
+// Ghep cap theo stem (worker/stem.js), khong theo thu muc. Publish ap dung ke hoach trong mot transaction.
 // Hai file nen cung stem = mo ho -> muc "can duyet", khong ghep. Publish (publish.js) ap dung ke hoach trong 1 transaction.
 import { createHash } from 'node:crypto';
-import { ARCHIVE, displayName, normalizeStem } from './stem.js';
+import { displayName, normalizeStem } from './stem.js';
 
 const toDbPath = (p) => (p ? p.split('/').join(' / ') : 'Uncategorized');
 const dirOf = (p) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '');
 const fingerprint = (kind, path, parts) => createHash('sha256').update([kind, path, ...[...parts].sort()].join('\n')).digest('hex');
 const num = (v) => (v === null || v === undefined ? null : Number(v));
 
-export async function computeDiff(pool, { sourceId, jobId }) {
+export async function computeDiff(pool, { sourceId, jobId, includeDriveTree = true, detectMissing = true }) {
   const job = await pool.query('select checkpoint from drive_sync_jobs where id = $1 and source_id = $2', [jobId, sourceId]);
   // last_seen_job_id chi dang tin khi lan quet da xong; quet do thi "mat" se bi danh dau nham hang loat.
   if (job.rows[0]?.checkpoint?.scan?.done !== true) throw Object.assign(new Error('SCAN_NOT_COMPLETE'), { code: 'SCAN_NOT_COMPLETE' });
 
+  const snapshot = await pool.query('select 1 from drive_archive_snapshot_runs where source_id = $1 and job_id = $2', [sourceId, jobId]);
+  if (!snapshot.rowCount) throw Object.assign(new Error('SCAN_NOT_COMPLETE'), { code: 'SCAN_NOT_COMPLETE' });
   const inv = (await pool.query(
-    `select drive_file_id, path, filename, size_bytes, md5_checksum, is_folder, is_shortcut
-       from drive_inventory where source_id = $1 and last_seen_job_id = $2`, [sourceId, jobId])).rows;
+    `select drive_file_id, path, filename, size_bytes, md5_checksum, file_type
+       from drive_archive_snapshot_files where job_id = $1 order by drive_file_id`, [jobId])).rows;
   const seen = new Set(inv.map((r) => r.drive_file_id));
 
-  const folders = new Set(), byStem = new Map();
-  let skipped = 0;
+  const folders = new Set(includeDriveTree ? (await pool.query(
+    `select path from drive_inventory where source_id = $1 and last_seen_job_id = $2 and is_folder`, [sourceId, jobId])).rows.map((r) => toDbPath(r.path)) : []);
+  const skipped = includeDriveTree ? Number((await pool.query(
+    `select count(*)::int n from drive_inventory
+      where source_id = $1 and last_seen_job_id = $2 and not is_folder and not is_shortcut
+        and not (right(lower(filename), 4) in ('.zip', '.rar') or right(lower(filename), 3) = '.7z')`, [sourceId, jobId])).rows[0].n) : 0;
+  const byStem = new Map();
   for (const r of inv) {
-    if (r.is_folder) { folders.add(toDbPath(r.path)); continue; }
-    if (r.is_shortcut) continue;
-    if (!ARCHIVE.test(r.filename)) { skipped++; continue; } // anh va file khac tren Drive: bo qua (D29)
     const stem = normalizeStem(r.filename);
-    if (!stem) { skipped++; continue; }
-    const f = { id: r.drive_file_id, name: r.filename, size: num(r.size_bytes), md5: r.md5_checksum, type: r.filename.match(/\.([^.]+)$/)[1].toLowerCase(), dir: dirOf(r.path) };
+    if (!stem) continue;
+    const f = { id: r.drive_file_id, name: r.filename, size: num(r.size_bytes), md5: r.md5_checksum, type: r.file_type, dir: dirOf(r.path) };
     (byStem.get(stem) ?? byStem.set(stem, []).get(stem)).push(f);
   }
 
@@ -61,7 +66,7 @@ export async function computeDiff(pool, { sourceId, jobId }) {
   }
 
   const missing = new Set();
-  for (const r of existing.values()) if (!seen.has(r.drive_file_id)) missing.add(r.model_id);
+  if (detectMissing) for (const r of existing.values()) if (!seen.has(r.drive_file_id)) missing.add(r.model_id);
   plan.missing = [...missing];
 
   const count = (a) => plan.archives.filter((m) => m.action === a).length;
