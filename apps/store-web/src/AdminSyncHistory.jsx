@@ -13,7 +13,7 @@ const summary = (job) => {
   const c = job.counters;
   const count = job.mode === 'FULL' ? c.scannedFiles : c.new + c.updated + c.unchanged;
   const unit = job.mode === 'FULL' ? 'file Drive' : 'file nén đối chiếu';
-  return `${count} ${unit} · ${c.new} mới · ${c.updated} cập nhật · ${c.errors} lỗi`;
+  return `${count} ${unit} · ${c.new} mới · ${c.updated} cập nhật · ${c.unchanged} không đổi · ${c.errors} lỗi`;
 };
 
 function JobErrors({ job }) {

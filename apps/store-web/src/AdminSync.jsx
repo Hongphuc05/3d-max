@@ -9,7 +9,7 @@ import { adminError, dateTime, inputClass, panel, primary, ResourceState, second
 const ACTIVE = new Set(['QUEUED', 'RUNNING', 'CANCELLING']);
 const TERMINAL = new Set(['COMPLETED', 'COMPLETED_WITH_ERRORS', 'FAILED', 'CANCELLED']);
 const RETRYABLE = new Set(['FAILED', 'CANCELLED', 'COMPLETED_WITH_ERRORS']);
-const stageLabels = { SCANNING: 'Đang quét thư mục', COMPARING: 'Đang ghép dữ liệu', DOWNLOADING_PREVIEWS: 'Tải ảnh (lượt cũ)', PUBLISHING: 'Đang cập nhật thư viện' };
+const stageLabels = { SCANNING: 'Đang quét thư mục', COMPARING: 'Đang so sánh/ghép dữ liệu', DOWNLOADING_PREVIEWS: 'Đang tải ảnh xem trước', PUBLISHING: 'Đang cập nhật thư viện' };
 const megabytes = (n) => `${(Number(n) / 1048576).toLocaleString('vi-VN', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MB`;
 
 // Theo doi mot job: SSE truoc, loi thi polling. Don dep ca hai khi doi job hoac roi man hinh.
