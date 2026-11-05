@@ -15,8 +15,30 @@ const view = (r) => ({ id: r.id, code: r.code, deviceId: r.device_id, amountVnd:
 const audit = (db, actor, action, orderId, details) => db.query(
   "insert into audit_events (actor_kind, actor_ref, action, target_type, target_id, details) values ($1, $2, $3, 'order', $4, $5)",
   [actor.kind, actor.ref == null ? null : String(actor.ref), action, orderId, JSON.stringify(details)]);
+const cleanActorName = (value, fallback) => (typeof value === 'string' ? value : fallback)
+  .replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || fallback;
 
 export function createOrderService({ pool }) {
+  async function priorDecisionName(db, orderId, status) {
+    const action = status === 'CONFIRMED' ? 'ORDER_CONFIRMED' : status === 'REJECTED' ? 'ORDER_REJECTED' : null;
+    if (!action) return null;
+    const auditRow = (await db.query(`select actor_kind, actor_ref, details->>'decidedBy' as decided_by_name
+      from audit_events where target_type='order' and target_id=$1 and action=$2 order by created_at desc, id desc limit 1`, [orderId, action])).rows[0];
+    if (!auditRow) return null;
+    if (auditRow.decided_by_name) return cleanActorName(auditRow.decided_by_name, 'Admin');
+    if (auditRow.actor_kind === 'ADMIN') {
+      const user = (await db.query('select display_name, username from users where id::text=$1 limit 1', [auditRow.actor_ref])).rows[0];
+      return cleanActorName(user?.display_name || user?.username, 'Admin');
+    }
+    if (auditRow.actor_kind === 'TELEGRAM_OWNER') {
+      const linked = (await db.query(`select coalesce(nullif(u.display_name,''),nullif(u.username,''),nullif(a.display_name,'')) as name
+        from telegram_admin_accounts a left join users u on u.id=a.admin_user_id
+        where a.telegram_user_id::text=$1 order by a.linked_at desc limit 1`, [auditRow.actor_ref])).rows[0];
+      return cleanActorName(linked?.name, `Telegram ID ${auditRow.actor_ref}`);
+    }
+    return 'Admin';
+  }
+
   const own = async (db, deviceId, orderId) => {
     if (!UUID.test(orderId ?? '')) throw apiError('ORDER_NOT_FOUND');
     const r = (await db.query(`select ${ORDER_COLUMNS} from purchase_orders where id = $1 and device_id = $2`, [orderId, deviceId])).rows[0];
@@ -104,6 +126,8 @@ export function createOrderService({ pool }) {
     if (!UUID.test(orderId ?? '')) return { outcome: 'NOT_FOUND' };
     // Chi don khach DA bao chuyen khoan (claimed_paid_at); don da het han van xac nhan duoc vi tien da chuyen that (quyet dinh chu, 2026-11-04).
     const tgUser = actor.kind === 'TELEGRAM_OWNER' && /^\d{1,18}$/.test(String(actor.ref)) ? String(actor.ref) : null;
+    const fallbackName = actor.kind === 'TELEGRAM_OWNER' ? `Telegram ID ${actor.ref}` : 'Admin';
+    const decidedByName = cleanActorName(actor.displayName, fallbackName);
     const confirm = action === 'CONFIRM';
     return inTransaction(pool, async (db) => {
       const done = (await db.query(
@@ -113,15 +137,22 @@ export function createOrderService({ pool }) {
       if (!done) {
         const cur = (await db.query(`select ${ORDER_COLUMNS} from purchase_orders where id = $1`, [orderId])).rows[0];
         if (!cur) return { outcome: 'NOT_FOUND' };
-        return { outcome: 'ALREADY_DECIDED', order: view(cur) };
+        return { outcome: 'ALREADY_DECIDED', order: view(cur), decidedByName: await priorDecisionName(db, orderId, cur.status) };
       }
       if (confirm) {
         await db.query(
           `insert into entitlements (device_id, source, order_id) values ($1, 'ORDER', $2) on conflict do nothing`, [done.device_id, orderId]);
       }
-      await audit(db, actor, confirm ? 'ORDER_CONFIRMED' : 'ORDER_REJECTED', orderId, { code: done.code, amountVnd: done.amount_vnd });
-      return { outcome: confirm ? 'CONFIRMED' : 'REJECTED', order: view(done) };
+      await audit(db, actor, confirm ? 'ORDER_CONFIRMED' : 'ORDER_REJECTED', orderId,
+        { code: done.code, amountVnd: done.amount_vnd, decidedBy: decidedByName });
+      return { outcome: confirm ? 'CONFIRMED' : 'REJECTED', order: view(done), decidedByName };
     });
+  }
+
+  async function decisionForOrder(orderId) {
+    const order = (await pool.query('select status, code from purchase_orders where id=$1', [orderId])).rows[0];
+    if (!order || !['CONFIRMED', 'REJECTED'].includes(order.status)) return null;
+    return { outcome: order.status, code: order.code, decidedByName: await priorDecisionName(pool, orderId, order.status) };
   }
 
   async function expireDue() {
@@ -141,5 +172,5 @@ export function createOrderService({ pool }) {
       claimedPaidAt: o.claimed_paid_at, decidedAt: o.decided_at, deviceName: o.device_name, deviceId: o.device_id }));
   }
 
-  return { createOrder, getOrder, claimPaid, cancelOrder, summary, saveTelegramMessage, telegramMessagesForOrder, recordNotifyFailure, decide, expireDue, listOrders };
+  return { createOrder, getOrder, claimPaid, cancelOrder, summary, saveTelegramMessage, telegramMessagesForOrder, recordNotifyFailure, decide, decisionForOrder, expireDue, listOrders };
 }

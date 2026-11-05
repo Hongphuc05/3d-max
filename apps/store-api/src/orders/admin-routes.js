@@ -2,8 +2,7 @@
 // Giong Telegram, chi quyet duoc don AWAITING_OWNER (plan P5.6). Guard gan tung route.
 import express from 'express';
 import { apiError, requestId, v3ErrorHandler } from '../drive/errors.js';
-
-const MARK = { CONFIRMED: '✅ ĐÃ XÁC NHẬN trên web — đã cấp license thư viện cho thiết bị.', REJECTED: '❌ ĐÃ TỪ CHỐI trên web.' };
+import { decisionMessage } from './decision-message.js';
 
 export function createOrderAdminRouter({ service, client, guards = [], rateLimit }) {
   const router = express.Router();
@@ -14,7 +13,8 @@ export function createOrderAdminRouter({ service, client, guards = [], rateLimit
   });
 
   const decide = (action) => async (req, res) => {
-    const result = await service.decide(req.params.id, action, { kind: 'ADMIN', ref: req.user.id });
+    const result = await service.decide(req.params.id, action,
+      { kind: 'ADMIN', ref: req.user.id, displayName: req.user.displayName || req.user.username });
     if (result.outcome === 'NOT_FOUND') throw apiError('ORDER_NOT_FOUND');
     if (result.outcome !== 'CONFIRMED' && result.outcome !== 'REJECTED') throw apiError('ORDER_STATE_INVALID'); // da xu ly / het han
     const { telegramChatId, telegramMessageId, code } = result.order;
@@ -22,8 +22,9 @@ export function createOrderAdminRouter({ service, client, guards = [], rateLimit
       // Tat ca ban sao gui cho cac admin deu duoc dong nut sau khi web xu ly.
       const copies = service.telegramMessagesForOrder ? await service.telegramMessagesForOrder(req.params.id).catch(() => []) : [];
       if (!copies.length && telegramChatId && telegramMessageId) copies.push({ chatId: telegramChatId, messageId: telegramMessageId });
+      const text = decisionMessage(result.outcome, result.decidedByName || req.user.displayName || req.user.username, 'web');
       await Promise.allSettled(copies.map(({ chatId, messageId }) => client.editMessageText({
-        chatId: String(chatId), messageId: String(messageId), text: `Đơn ${code}\n\n${MARK[result.outcome]}` } )));
+        chatId: String(chatId), messageId: String(messageId), text: `Đơn ${code}\n\n${text}` } )));
     }
     res.json({ status: result.outcome });
   };

@@ -3,16 +3,23 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import express from 'express';
 import { apiError, requestId, v3ErrorHandler } from '../drive/errors.js';
+import { alreadyDecidedMessage, decisionMessage } from '../orders/decision-message.js';
 
 const DATA = /^o:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):(ok|no)$/;
 const same = (a, b) => timingSafeEqual(createHash('sha256').update(String(a)).digest(), createHash('sha256').update(String(b)).digest());
 const isId = (v) => Number.isSafeInteger(v);
 
 const REPLIES = {
-  CONFIRMED: { answer: 'Đã xác nhận, đã cấp license thư viện cho khách.', mark: '✅ ĐÃ XÁC NHẬN — đã cấp license thư viện cho thiết bị.' },
-  REJECTED: { answer: 'Đã từ chối đơn.', mark: '❌ ĐÃ TỪ CHỐI.' },
-  EXPIRED: { answer: 'Đơn đã hết hạn, không cấp quyền.', mark: '⌛ Đơn đã hết hạn, không cấp quyền.' },
+  CONFIRMED: { answer: 'Đã xác nhận, đã cấp license thư viện cho khách.' },
+  REJECTED: { answer: 'Đã từ chối đơn.' },
+  EXPIRED: { answer: 'Đơn đã hết hạn, không cấp quyền.' },
 };
+function decisionMark(result, fallbackName) {
+  if (result.outcome === 'CONFIRMED' || result.outcome === 'REJECTED') return decisionMessage(result.outcome, result.decidedByName || fallbackName);
+  if (result.outcome === 'ALREADY_DECIDED') return alreadyDecidedMessage(result.order, result.decidedByName);
+  if (result.outcome === 'EXPIRED') return '⌛ Đơn đã hết hạn, không cấp quyền.';
+  return null;
+}
 
 export function createTelegramRouter({ config, client, service, accounts, linking }) {
   const router = express.Router();
@@ -40,15 +47,20 @@ export function createTelegramRouter({ config, client, service, accounts, linkin
     const chatId = cq.message?.chat?.id;
     if (!isId(cq.from?.id) || !isId(chatId)) return;
     const legacyOwner = owners.has(String(cq.from.id)) && owners.has(String(chatId));
-    const linkedAdmin = !legacyOwner && accounts ? await accounts.isAuthorized(cq.from.id, chatId) : false;
+    const identity = accounts?.adminIdentity ? await accounts.adminIdentity(cq.from.id, chatId) : null;
+    const linkedAdmin = Boolean(identity) || (!legacyOwner && accounts ? await accounts.isAuthorized(cq.from.id, chatId) : false);
     if (!legacyOwner && !linkedAdmin) return; // nguoi la: im lang
     const m = DATA.exec(cq.data);
     if (!m) return;
     const messageId = cq.message?.message_id;
-    const result = await service.decide(m[1], m[2] === 'ok' ? 'CONFIRM' : 'REJECT', { kind: 'TELEGRAM_OWNER', ref: cq.from.id });
+    const actorName = identity?.displayName || `Telegram ID ${cq.from.id}`;
+    const result = await service.decide(m[1], m[2] === 'ok' ? 'CONFIRM' : 'REJECT',
+      { kind: 'TELEGRAM_OWNER', ref: cq.from.id, displayName: actorName });
     const reply = REPLIES[result.outcome];
-    const answer = reply?.answer ?? (result.outcome === 'NOT_FOUND' ? 'Không tìm thấy đơn.' : `Đơn đã được xử lý hoặc chưa ở trạng thái chờ xác nhận (${result.order?.status ?? '?'}).`);
-    const mark = reply?.mark ?? (result.outcome === 'ALREADY_DECIDED' ? `ℹ️ Đơn đã được xử lý: ${result.order?.status}.` : null);
+    const answer = result.outcome === 'ALREADY_DECIDED' && result.decidedByName
+      ? alreadyDecidedMessage(result.order, result.decidedByName)
+      : reply?.answer ?? (result.outcome === 'NOT_FOUND' ? 'Không tìm thấy đơn.' : `Đơn đã được xử lý hoặc chưa ở trạng thái chờ xác nhận (${result.order?.status ?? '?'}).`);
+    const mark = decisionMark(result, actorName);
     await client.answerCallbackQuery(cq.id, answer).catch(() => {});
     if (mark && isId(messageId)) {
       const original = typeof cq.message?.text === 'string' ? cq.message.text.slice(0, 3500) : `Đơn ${result.order?.code ?? ''}`;

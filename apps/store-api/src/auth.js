@@ -75,7 +75,7 @@ export async function currentUser(req) {
   const claims = await verifySessionJwt(token);
   if (!claims) return null;
   const { rows } = await pool.query(
-    `select u.id, u.email, u.role, u.username, u.must_change_credentials, u.is_admin_owner from sessions s join users u on u.id = s.user_id
+    `select u.id, u.email, u.role, u.username, u.display_name, u.must_change_credentials, u.is_admin_owner from sessions s join users u on u.id = s.user_id
      where s.id = $1 and s.user_id = $2 and s.expires_at > now() and u.admin_disabled_at is null`, [claims.sessionId, claims.userId]);
   // Read admin privileges from PostgreSQL on every request, never JWT claims.
   if (rows[0]) req.auth = { sessionId: claims.sessionId };
@@ -111,7 +111,7 @@ authRouter.post('/login', requireJson, requireAuthConfiguration, async (req, res
     const result = await tx(pool, async db => {
       // Serialize session issuance with account credential changes. A login that
       // checked the old password cannot create a session after a password reset.
-      const row = (await db.query(`select id,email,password_hash,role,username,must_change_credentials,is_admin_owner
+      const row = (await db.query(`select id,email,password_hash,role,username,display_name,must_change_credentials,is_admin_owner
         from users where username=$1 and role='ADMIN' and admin_disabled_at is null for share`, [email])).rows[0];
       const ok = await verifyPassword(password, row ? row.password_hash : await dummyHash);
       return row && ok ? { user: publicUser(row), session: await createSession(req, row.id, db) } : null;

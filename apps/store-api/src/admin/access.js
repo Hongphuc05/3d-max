@@ -7,6 +7,7 @@ export function isAdminUser(user) {
 export function publicUser(row) {
   const base = { id: row.id, email: row.email };
   return isAdminUser(row) ? { ...base, role: 'ADMIN', username: row.username || '',
+    displayName: row.display_name || row.username || '',
     mustChangeCredentials: Boolean(row.must_change_credentials), isAdminOwner: Boolean(row.is_admin_owner) } : base;
 }
 

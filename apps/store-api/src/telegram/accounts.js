@@ -25,6 +25,16 @@ export function createTelegramAccountStore({ pool }) {
     return result.rowCount > 0;
   }
 
+  async function adminIdentity(telegramUserId, chatId) {
+    if (String(telegramUserId) !== String(chatId)) return null;
+    const result = await pool.query(`select u.username, u.display_name as admin_display_name, a.display_name as telegram_display_name
+      from telegram_admin_accounts a join users u on u.id=a.admin_user_id
+      where a.telegram_user_id=$1 and a.revoked_at is null and u.role='ADMIN' and u.admin_disabled_at is null limit 1`, [String(telegramUserId)]);
+    const row = result.rows[0];
+    if (!row) return null;
+    return { displayName: row.admin_display_name || row.username || row.telegram_display_name || `Telegram ${telegramUserId}` };
+  }
+
   async function link(adminId, profile) {
     try {
       return await inTransaction(pool, async (db) => {
@@ -71,5 +81,5 @@ export function createTelegramAccountStore({ pool }) {
     await pool.query('update telegram_admin_accounts set last_notified_at=now() where id=$1 and revoked_at is null', [accountId]);
   }
 
-  return { listForAdmin, listRecipients, isAuthorized, link, revoke, markNotified };
+  return { listForAdmin, listRecipients, isAuthorized, adminIdentity, link, revoke, markNotified };
 }

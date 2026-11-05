@@ -1,5 +1,6 @@
 // P5.4: tin nhan gui chu (nhieu chu duoc). Van ban thuan (khong parse_mode): ten thiet bi/model do khach/may khach dat nen khong duoc chen dinh dang.
 // KHONG chua thong tin ngan hang. callback_data = o:<orderId>:ok|no (<= 64 byte).
+import { decisionMessage } from '../orders/decision-message.js';
 const vnd = (n) => `${new Intl.NumberFormat('vi-VN').format(n)} ₫`;
 const clean = (value, max) => String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
 
@@ -31,6 +32,7 @@ export function createTelegramNotifier({ client, service, ownerChatIds = [], lis
       for (const item of linked) recipients.set(String(item.chatId), { chatId: String(item.chatId), accountId: item.accountId });
       const list = [...recipients.values()];
       const results = new Array(list.length);
+      const delivered = [];
       let next = 0;
       await Promise.all(Array.from({ length: Math.min(5, list.length) }, async () => {
         while (next < list.length) {
@@ -38,12 +40,26 @@ export function createTelegramNotifier({ client, service, ownerChatIds = [], lis
           const recipient = list[index];
           try {
             const sent = await client.sendMessage({ chatId: recipient.chatId, text, keyboard });
+            delivered.push(sent);
             await service.saveTelegramMessage(summary.orderId, sent.chatId, sent.messageId);
             if (recipient.accountId && accounts?.markNotified) await accounts.markNotified(recipient.accountId);
             results[index] = { status: 'fulfilled', value: sent };
           } catch (reason) { results[index] = { status: 'rejected', reason }; }
         }
       }));
+      if (delivered.length && service.decisionForOrder && client.editMessageText) {
+        try {
+          const decision = await service.decisionForOrder(summary.orderId);
+          if (decision) {
+            const copies = await service.telegramMessagesForOrder(summary.orderId).catch(() => []);
+            for (const sent of delivered) if (!copies.some((copy) => copy.chatId === sent.chatId && copy.messageId === sent.messageId)) copies.push(sent);
+            const mark = decisionMessage(decision.outcome, decision.decidedByName);
+            await Promise.allSettled(copies.map((copy) => client.editMessageText({
+              chatId: String(copy.chatId), messageId: String(copy.messageId), text: `Đơn ${summary.code}\n\n${mark}`,
+            })));
+          }
+        } catch { /* the decision callback already reconciles messages it can see */ }
+      }
       if (!results.some((result) => result.status === 'fulfilled')) throw new Error('Telegram: no admin could be notified');
     },
   };
