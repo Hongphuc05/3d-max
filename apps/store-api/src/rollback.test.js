@@ -23,7 +23,21 @@ after(async () => { if (dispose) await dispose(pool); });
 // (chi xoa dong ghi nhan; KHONG chay lai migrate() vi 024 khong chay lai duoc tren schema da don).
 const hideIrreversible = () => pool.query("delete from schema_migrations where name in ('023_drop_legacy_tables.sql', '024_library_license.sql')");
 
+test('028 (optional Drive project id) refuses rollback while a slot has no project id, then re-applies cleanly', { skip }, async () => {
+  const migration = '028_drive_key_project_optional.sql';
+  assert.equal((await applied())[0], migration);
+  await pool.query("insert into drive_api_key_slots(slot,project_id,encrypted_key) values(1,null,'ciphertext')");
+  await assert.rejects(rollbackMigration(pool, migration), (e) => e.code === 'ROLLBACK_REFUSED' && /no project id/.test(e.message));
+  await pool.query('delete from drive_api_key_slots');
+  await rollbackMigration(pool, migration);
+  assert.equal((await applied())[0], '027_drive_api_key_slots.sql');
+  await pool.query(readFileSync(new URL('../migrations/028_drive_key_project_optional.sql', import.meta.url), 'utf8'));
+  await pool.query('insert into schema_migrations(name) values ($1)', [migration]);
+  assert.equal((await applied())[0], migration);
+});
+
 test('027 (Drive API key slots) refuses rollback with saved credentials, then rolls back and re-applies when empty', { skip }, async () => {
+  await rollbackMigration(pool, '028_drive_key_project_optional.sql');
   const migration = '027_drive_api_key_slots.sql';
   assert.equal((await applied())[0], migration);
   await pool.query("insert into drive_api_key_slots(slot,project_id,encrypted_key) values(1,'project-x','ciphertext')");
@@ -35,11 +49,14 @@ test('027 (Drive API key slots) refuses rollback with saved credentials, then ro
   assert.equal((await applied())[0], '026_drive_archive_snapshots.sql');
   await pool.query(readFileSync(new URL('../migrations/027_drive_api_key_slots.sql', import.meta.url), 'utf8'));
   await pool.query('insert into schema_migrations(name) values ($1)', [migration]);
+  await pool.query(readFileSync(new URL('../migrations/028_drive_key_project_optional.sql', import.meta.url), 'utf8'));
+  await pool.query("insert into schema_migrations(name) values ('028_drive_key_project_optional.sql')");
   assert.ok((await tables()).includes('drive_api_key_slots'));
-  assert.equal((await applied())[0], migration);
+  assert.equal((await applied())[0], '028_drive_key_project_optional.sql');
 });
 
 test('026 (archive snapshots) rolls back and re-applies; older rollback tests start from 025', { skip }, async () => {
+  await rollbackMigration(pool, '028_drive_key_project_optional.sql');
   await rollbackMigration(pool, '027_drive_api_key_slots.sql');
   const migration = '026_drive_archive_snapshots.sql';
   assert.equal((await applied())[0], migration);
@@ -55,9 +72,12 @@ test('026 (archive snapshots) rolls back and re-applies; older rollback tests st
   assert.equal((await applied())[0], migration);
   await pool.query(readFileSync(new URL('../migrations/027_drive_api_key_slots.sql', import.meta.url), 'utf8'));
   await pool.query("insert into schema_migrations(name) values ('027_drive_api_key_slots.sql')");
+  await pool.query(readFileSync(new URL('../migrations/028_drive_key_project_optional.sql', import.meta.url), 'utf8'));
+  await pool.query("insert into schema_migrations(name) values ('028_drive_key_project_optional.sql')");
 });
 
 test('025 (uploaded previews) rolls back cleanly when no upload exists, and refuses when one does', { skip }, async () => {
+  if ((await applied())[0] === '028_drive_key_project_optional.sql') await rollbackMigration(pool, '028_drive_key_project_optional.sql');
   if ((await applied())[0] === '027_drive_api_key_slots.sql') await rollbackMigration(pool, '027_drive_api_key_slots.sql');
   if ((await applied())[0] === '026_drive_archive_snapshots.sql') await rollbackMigration(pool, '026_drive_archive_snapshots.sql');
   assert.equal((await applied())[0], '025_upload_previews.sql');

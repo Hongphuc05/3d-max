@@ -56,13 +56,13 @@ export function createDriveClient({
   // One logical call = retries for transient errors + a single forced token refresh on 401.
   async function call({ path, params, headers, signal, media = false }) {
     let refreshed = false;
-    const excludedProjectIds = new Set();
+    const excludedSlots = new Set();
     return withRetry(async () => {
-      const credential = apiKey ? { apiKey } : getApiKey ? await getApiKey({ excludeProjectIds: [...excludedProjectIds] }) : null;
+      const credential = apiKey ? { apiKey } : getApiKey ? await getApiKey({ excludeSlots: [...excludedSlots] }) : null;
       const requestKey = credential?.apiKey ?? apiKey;
       if (getApiKey && !requestKey) {
         if (credential?.notConfigured) throw apiError('DRIVE_NOT_CONNECTED');
-        if (credential?.retryAfterMs == null) excludedProjectIds.clear();
+        if (credential?.retryAfterMs == null) excludedSlots.clear();
         throw apiError('DRIVE_QUOTA_EXCEEDED', { retryable: true, retryAfterMs: credential?.retryAfterMs, reason: 'allKeysCoolingDown' });
       }
       const token = requestKey ? null : await getAccessToken({ force: refreshed });
@@ -86,10 +86,9 @@ export function createDriveClient({
       const body = await response.json().catch(() => null); // error bodies are small JSON, also for alt=media
       response.body?.cancel?.().catch(() => {});
       const error = classifyDriveError(response.status, body, response.headers);
-      const canFailOver = error.code === 'DRIVE_QUOTA_EXCEEDED' && credential?.projectId && !credential.legacy
-        && (response.status === 429 || ['rateLimitExceeded', 'userRateLimitExceeded', 'quotaExceeded'].includes(error.reason));
+      const canFailOver = error.code === 'DRIVE_QUOTA_EXCEEDED' && credential?.slot > 0 && !credential.legacy;
       if (canFailOver) {
-        excludedProjectIds.add(credential.projectId);
+        excludedSlots.add(credential.slot);
         await onRateLimit?.(credential, error);
       }
       // A 401 may only mean the cached access token expired: refresh once, then retry immediately.

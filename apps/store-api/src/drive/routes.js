@@ -93,7 +93,7 @@ export function createDriveRouter({ pool, guards = [], rateLimit, fetchImpl, dri
   router.put('/keys/:slot', async (req, res, next) => {
     try {
       if (!credentialStore) throw apiError('DRIVE_NOT_CONNECTED');
-      bodyKeys(req.body, ['projectId', 'apiKey']);
+      bodyKeys(req.body, ['apiKey']);
       const saved = await credentialStore.saveSlot(req.params.slot, req.body);
       res.json(saved);
     } catch (e) { next(e); }
