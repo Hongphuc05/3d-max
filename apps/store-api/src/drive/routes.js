@@ -59,13 +59,16 @@ export function parseFolderRef(input, explicitKey) {
   return { id, resourceKey: key || null };
 }
 
-// Quet bang API key (D26): key chi di tu env cua server toi Google; khong bao gio nhan tu request hay tra ra response.
-// `apiKey` null = chua cau hinh DRIVE_API_KEY.
-export function createDriveRouter({ pool, guards = [], rateLimit, fetchImpl, driveBase, apiKey }) {
+// Drive API keys come from encrypted admin slots; DRIVE_API_KEY remains a server-side legacy fallback.
+// Secret material is never returned to browsers or included in API errors.
+export function createDriveRouter({ pool, guards = [], rateLimit, fetchImpl, driveBase, apiKey, credentialStore }) {
   const repo = createDriveRepository(pool);
   const apiClient = () => {
-    if (!apiKey) throw apiError('DRIVE_NOT_CONNECTED');
-    return createDriveClient({ apiKey, ...(driveBase ? { baseUrl: driveBase } : {}), ...(fetchImpl ? { fetchImpl } : {}) });
+    if (!credentialStore && !apiKey) throw apiError('DRIVE_NOT_CONNECTED');
+    return credentialStore
+      ? createDriveClient({ getApiKey: options => credentialStore.getActiveCredential(options), onRateLimit: credentialStore.markRateLimited,
+        ...(driveBase ? { baseUrl: driveBase } : {}), ...(fetchImpl ? { fetchImpl } : {}) })
+      : createDriveClient({ apiKey, ...(driveBase ? { baseUrl: driveBase } : {}), ...(fetchImpl ? { fetchImpl } : {}) });
   };
   const router = Router();
   router.use(requestId, ...(rateLimit ? [rateLimit] : []));
@@ -74,7 +77,54 @@ export function createDriveRouter({ pool, guards = [], rateLimit, fetchImpl, dri
 
   router.get('/status', async (_req, res, next) => {
     try {
-      res.json({ configured: Boolean(apiKey), missingConfig: apiKey ? [] : ['DRIVE_API_KEY'], connection: null, sources: await repo.listSources() });
+      const configured = credentialStore ? await credentialStore.hasConfiguredKeys() : Boolean(apiKey);
+      res.json({ configured, missingConfig: configured ? [] : ['DRIVE_API_KEY'], connection: null, sources: await repo.listSources() });
+    } catch (e) { next(e); }
+  });
+
+  router.get('/keys', async (_req, res, next) => {
+    try {
+      res.json({ slots: credentialStore ? await credentialStore.listSlots() : [], automaticCheckMinutes: 10,
+        configured: credentialStore ? await credentialStore.hasConfiguredKeys() : Boolean(apiKey),
+        legacyFallback: credentialStore ? await credentialStore.legacyKeyActive() : Boolean(apiKey) });
+    } catch (e) { next(e); }
+  });
+
+  router.put('/keys/:slot', async (req, res, next) => {
+    try {
+      if (!credentialStore) throw apiError('DRIVE_NOT_CONNECTED');
+      bodyKeys(req.body, ['projectId', 'apiKey']);
+      const saved = await credentialStore.saveSlot(req.params.slot, req.body);
+      res.json(saved);
+    } catch (e) { next(e); }
+  });
+
+  router.delete('/keys/:slot', async (req, res, next) => {
+    try {
+      if (!credentialStore) throw apiError('DRIVE_NOT_CONNECTED');
+      await credentialStore.clearSlot(req.params.slot);
+      res.status(204).end();
+    } catch (e) { next(e); }
+  });
+
+  router.post('/keys/:slot/test', async (req, res, next) => {
+    try {
+      if (!credentialStore) throw apiError('DRIVE_NOT_CONNECTED');
+      const credential = await credentialStore.credentialForSlot(req.params.slot);
+      if (!credential) throw apiError('INVALID_PARAMS');
+      const source = await repo.firstEnabledSourceInternal();
+      if (!source) throw apiError('INVALID_PARAMS');
+      const client = createDriveClient({ apiKey: credential.apiKey, apiKeyHeader: true, retry: { retries: 0 },
+        ...(driveBase ? { baseUrl: driveBase } : {}), ...(fetchImpl ? { fetchImpl } : {}) });
+      try {
+        await client.getFile(source.root_folder_id, { resourceKey: source.root_resource_key, driveId: source.drive_id });
+        await credentialStore.markHealthy(credential);
+        res.json({ ok: true, status: 'HEALTHY', checkedAt: new Date().toISOString() });
+      } catch (error) {
+        if (error.code === 'DRIVE_QUOTA_EXCEEDED') await credentialStore.markRateLimited(credential, error);
+        else await credentialStore.markFailed(credential, error.reason ?? error.code);
+        throw error;
+      }
     } catch (e) { next(e); }
   });
 

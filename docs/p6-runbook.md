@@ -37,7 +37,7 @@ Tên và ý nghĩa từng biến: `apps/store-api/.env.example`. Bắt buộc ch
 | Nhóm | Biến |
 |---|---|
 | Lõi | `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGINS`, `NODE_ENV=production` (unit đã đặt), `TRUST_PROXY=127.0.0.1` (unit đã đặt) |
-| Drive | `DRIVE_API_KEY` |
+| Drive | Tối đa 5 key trong admin → Kết nối Drive; `DRIVE_API_KEY` vẫn được hỗ trợ làm key tương thích cũ |
 | Dữ liệu | `PREVIEW_DIR`, `MIN_FREE_DISK_BYTES`, `MODEL_CACHE_*` |
 | Telegram | `TELEGRAM_*` (để trống hết = tắt) |
 | Giám sát | `MONITOR_*` (tùy chọn; mặc định: đĩa trống < 20%, RAM > 800 MB, > 20 lỗi Drive/giờ, > 5 GiB/giờ, đơn chờ chủ > 60 phút) |
@@ -104,7 +104,7 @@ Chưa có: giám sát từ bên ngoài (khi cả VPS sập thì không ai báo) 
 
 | # | Kịch bản | Cách làm | Mong đợi | Kết quả |
 |---|---|---|---|---|
-| F1 | API key Drive bị thu hồi/hết quota giữa job | Đổi `DRIVE_API_KEY` sai khi job đang chạy | Job FAILED hoặc COMPLETED_WITH_ERRORS, **catalog giữ nguyên**, có cảnh báo `jobs-failed`/`drive-errors` | chưa chạy |
+| F1 | API key Drive bị thu hồi/hết quota giữa job | Thu hồi key thử nghiệm hoặc áp quota thấp cho project trên staging | Hệ thống báo trạng thái lỗi/quota; khi project khác còn khả dụng, worker chuyển key theo cấu hình; catalog vẫn nhất quán | chưa chạy |
 | F2 | Reboot VPS giữa sync | `reboot` khi job RUNNING | Sau khi lên, job được nhận lại sau khi lease hết, không chạy trùng, không file `.part` mồ côi | chưa chạy |
 | F3 | Đầy đĩa (giả lập) | Tạo file lớn đến khi trống < `MIN_FREE_DISK_BYTES` | Worker từ chối khởi động/dừng phần ảnh; cảnh báo `disk:storage`; API vẫn trả lời | chưa chạy |
 | F4 | Rút mạng plugin giữa tải | Ngắt Internet khi đang tải model | Plugin báo lỗi, không import file dở, tải lại được | chưa chạy |

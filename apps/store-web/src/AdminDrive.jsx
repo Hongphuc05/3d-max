@@ -1,6 +1,6 @@
-// P3.1 — Ket noi Drive (plan §2.1: "cau hinh API key va thu muc goc"). Khoa API chi nam trong .env cua may chu:
-// man nay chi hien da/chua cau hinh, khong nhan va khong hien khoa. ID thu muc/Drive khong bao gio duoc hien lai.
-import { useState } from 'react';
+// Kết nối Drive: key được gửi một lần qua form password, mã hóa và giữ ở máy chủ; status chỉ trả metadata đã che.
+// Drive ID nội bộ không được render lại trên trang admin.
+import { useEffect, useState } from 'react';
 import * as api from './api.js';
 import { adminError, dateTime, inputClass, panel, primary, ResourceState, secondary, useAdminResource } from './AdminShared.jsx';
 
@@ -39,12 +39,85 @@ function SourceRow({ source }) {
   </tr>;
 }
 
+function DriveKeySlot({ slot, onChanged }) {
+  const [projectId, setProjectId] = useState(slot.projectId ?? '');
+  const [apiKey, setApiKey] = useState('');
+  const [state, setState] = useState({ busy: false, error: '', notice: '' });
+  useEffect(() => setProjectId(slot.projectId ?? ''), [slot.projectId]);
+
+  async function save(event) {
+    event.preventDefault();
+    if (!projectId.trim() || !apiKey.trim()) {
+      setState({ busy: false, error: 'Nhập Project ID và API key để lưu slot này.', notice: '' });
+      return;
+    }
+    setState({ busy: true, error: '', notice: '' });
+    try {
+      await api.adminSaveDriveKey(slot.slot, { projectId: projectId.trim(), apiKey: apiKey.trim() });
+      setApiKey('');
+      setState({ busy: false, error: '', notice: 'Đã lưu key an toàn trên máy chủ.' });
+      onChanged();
+    } catch (error) { setState({ busy: false, error: adminError(error), notice: '' }); }
+  }
+
+  async function test() {
+    setState({ busy: true, error: '', notice: '' });
+    try {
+      const result = await api.adminTestDriveKey(slot.slot);
+      setState({ busy: false, error: '', notice: result.ok ? 'Kiểm tra thư mục gốc thành công.' : 'Kiểm tra chưa thành công.' });
+      onChanged();
+    } catch (error) { setState({ busy: false, error: adminError(error), notice: '' }); onChanged(); }
+  }
+
+  async function clear() {
+    setState({ busy: true, error: '', notice: '' });
+    try {
+      await api.adminDeleteDriveKey(slot.slot);
+      setApiKey(''); setProjectId('');
+      setState({ busy: false, error: '', notice: 'Đã xóa key khỏi slot.' });
+      onChanged();
+    } catch (error) { setState({ busy: false, error: adminError(error), notice: '' }); }
+  }
+
+  const health = slot.status === 'HEALTHY' ? 'Hoạt động'
+    : slot.status === 'RATE_LIMITED' ? 'Đang nghỉ do quota'
+      : slot.status === 'FAILED' ? `Lỗi${slot.reason ? ` (${slot.reason})` : ''}`
+        : slot.configured ? 'Chưa kiểm tra' : 'Chưa cấu hình';
+  return <form className={`${panel} space-y-3`} onSubmit={save}>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <h4 className="font-bold">Key {slot.slot}</h4>
+      <div className="flex flex-wrap gap-2 text-xs">
+        {slot.active && <span className="rounded-full bg-accent/10 px-2 py-1 text-accent">Đang dùng</span>}
+        <span className={slot.status === 'HEALTHY' ? 'text-accent' : slot.status === 'FAILED' || slot.status === 'RATE_LIMITED' ? 'text-warn' : 'text-mute'}>{health}</span>
+      </div>
+    </div>
+    <label className="block text-sm"><span className="text-mute">Google Cloud Project ID</span>
+      <input className={`${inputClass} mt-1`} name={`projectId-${slot.slot}`} maxLength={100} autoComplete="off" value={projectId}
+        onChange={(event) => setProjectId(event.target.value)} placeholder="Ví dụ: 3dsmood-drive-prod" /></label>
+    <label className="block text-sm"><span className="text-mute">API key</span>
+      <input className={`${inputClass} mt-1`} name={`apiKey-${slot.slot}`} type="password" autoComplete="new-password" maxLength={256} value={apiKey}
+        onChange={(event) => setApiKey(event.target.value)} placeholder={slot.configured ? 'Đã lưu — nhập key mới nếu muốn thay' : 'Nhập Google Drive API key'} /></label>
+    {slot.lastCheckedAt && <p className="text-xs text-mute">Kiểm tra gần nhất: {dateTime(slot.lastCheckedAt)}{slot.cooldownUntil ? ` · Thử lại sau ${dateTime(slot.cooldownUntil)}` : ''}</p>}
+    {state.error && <p role="alert" className="text-sm text-danger">{state.error}</p>}
+    {state.notice && <p role="status" className="text-sm text-accent">{state.notice}</p>}
+    <div className="flex flex-wrap gap-2">
+      <button type="submit" className={primary} disabled={state.busy}>Lưu key</button>
+      <button type="button" className={secondary} disabled={!slot.configured || state.busy} onClick={test}>Kiểm tra ngay</button>
+      {slot.configured && <button type="button" className={secondary} disabled={state.busy} onClick={clear}>Xóa key</button>}
+    </div>
+  </form>;
+}
+
 export default function AdminDrive() {
   const [version, setVersion] = useState(0);
   const resource = useAdminResource(api.adminDriveStatus, [version]);
+  const keyResource = useAdminResource(api.adminDriveKeys, [version]);
   const [form, setForm] = useState({ rootFolderUrlOrId: '', resourceKey: '' });
   const [save, setSave] = useState({ busy: false, error: '' });
   const status = resource.data;
+  const keySlots = keyResource.data?.slots ?? [];
+  const slotPlaceholders = Array.from({ length: 5 }, (_, index) => keySlots[index] ?? ({ slot: index + 1, projectId: '', configured: false, active: false, status: 'EMPTY' }));
+  const refresh = () => setVersion((value) => value + 1);
 
   async function submit(event) {
     event.preventDefault();
@@ -61,16 +134,21 @@ export default function AdminDrive() {
   }
 
   return <section className="space-y-5">
-    <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-bold">Kết nối Google Drive</h2><button className={secondary} onClick={() => setVersion((value) => value + 1)}>Làm mới</button></div>
+    <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-bold">Kết nối Google Drive</h2><button className={secondary} onClick={refresh}>Làm mới</button></div>
     <ResourceState {...resource} retry={() => setVersion((value) => value + 1)} />
     {status && <>
       <div className={`${panel} space-y-2`}>
-        <h3 className="font-bold">Khóa API</h3>
+        <h3 className="font-bold">Tối đa 5 API key</h3>
         {status.configured
           ? <p className="text-sm text-accent">Đã cấu hình khóa API Drive trên máy chủ.</p>
-          : <p role="alert" className="text-sm text-warn">Chưa cấu hình. Máy chủ thiếu biến: {status.missingConfig.join(', ')}. Đặt biến này trong file .env của máy chủ rồi khởi động lại.</p>}
-        <p className="text-xs text-mute">Khóa chỉ nằm trên máy chủ, không nhập và không hiển thị ở đây.</p>
+          : <p role="alert" className="text-sm text-warn">Chưa cấu hình. Hãy thêm ít nhất một API key ở slot bên dưới.</p>}
+        {keyResource.data?.legacyFallback && <p className="text-xs text-mute">Hiện hệ thống đang dùng key tương thích cũ từ cấu hình máy chủ. Lưu key vào một slot để quản lý và xoay project trên giao diện.</p>}
+        <p className="text-sm text-mute">Worker kiểm tra key đang dùng mỗi {keyResource.data?.automaticCheckMinutes ?? 10} phút bằng một request metadata tới thư mục gốc. Khi project bị giới hạn tốc độ, hệ thống tạm nghỉ project đó và chuyển sang project khác còn hoạt động.</p>
+        <p className="text-xs text-mute">Nhập đúng Project ID cho từng key. Các key cùng một Google Cloud project phải dùng cùng Project ID để hệ thống gom quota chính xác. Key được mã hóa trong database; giá trị key không bao giờ được đọc lại hoặc gửi về trình duyệt.</p>
+        <ResourceState {...keyResource} retry={refresh} />
       </div>
+
+      {slotPlaceholders.map((slot) => <DriveKeySlot key={slot.slot} slot={slot} onChanged={refresh} />)}
 
       <form className={`${panel} space-y-3`} onSubmit={submit}>
         <h3 className="font-bold">Thư mục gốc</h3>

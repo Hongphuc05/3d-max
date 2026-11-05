@@ -6,6 +6,7 @@ import { migrate, pool } from './db.js';
 import { errorHandler, originGuard, rateLimit } from './security.js';
 import { adminRouter } from './admin/routes.js';
 import { createDriveRouter } from './drive/routes.js';
+import { createDriveCredentialStore, deriveDriveKeyEncryptionKey } from './drive/credentials.js';
 import { loadWorkerConfig } from './worker/config.js';
 import { createCatalogAdminRouter } from './catalog-admin/routes.js';
 import { requireAdmin } from './admin/access.js';
@@ -33,6 +34,9 @@ const STORAGE = process.env.STORAGE_DIR || path.resolve(import.meta.dirname, '..
 // Preview (ten = sha256 noi dung); thu muc rieng, tmp/*.part khong bao gio duoc phuc vu.
 const PREVIEW_DIR = process.env.PREVIEW_DIR || path.join(STORAGE, 'previews-v3');
 export const catalogEvents = createCatalogEvents({ pool });
+const driveConfig = loadWorkerConfig(process.env);
+const driveCredentialStore = createDriveCredentialStore({ pool,
+  encryptionKey: deriveDriveKeyEncryptionKey(process.env.JWT_SECRET, { allowEphemeral: true }), legacyApiKey: driveConfig.apiKey });
 
 export const app = express();
 app.disable('x-powered-by');
@@ -43,8 +47,8 @@ app.use('/api', (_req, res, next) => { res.set('Cache-Control', 'no-store'); nex
 app.use(originGuard);
 app.use('/previews', createPreviewRouter({ dir: PREVIEW_DIR }));
 app.use('/api/auth', rateLimit({ limit: 120 }), authRouter);
-// Quet Drive bang API key (D26); null = chua dat DRIVE_API_KEY (status bao `missingConfig`).
-app.use('/api/admin/drive', createDriveRouter({ pool, apiKey: loadWorkerConfig(process.env).apiKey ?? null,
+// Drive key slots live encrypted in PostgreSQL; DRIVE_API_KEY remains a legacy fallback.
+app.use('/api/admin/drive', createDriveRouter({ pool, apiKey: driveConfig.apiKey ?? null, credentialStore: driveCredentialStore,
   guards: [requireAuth, requireAdmin], rateLimit: rateLimit({ limit: 60 }) }));
 // v3 P5: don hang + Telegram. Khong dat bien TELEGRAM_* = tat bot (khach van mua, admin xac nhan tren web); dat thieu/sai = dung ngay, chi neu TEN bien.
 const telegramConfig = loadTelegramConfig(process.env);

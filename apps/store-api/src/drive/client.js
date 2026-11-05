@@ -42,31 +42,40 @@ export function classifyDriveError(status, body, headers) {
 }
 
 // Two auth modes: OAuth/service account (getAccessToken, P1) or a plain API key for publicly shared folders (D26).
-// The API key travels in the URL query, so it must never reach logs or errors: errors are built from status codes only.
+// Slot-managed keys use x-goog-api-key; legacy static callers retain query compatibility. Errors never include the key.
 export function createDriveClient({
-  getAccessToken, apiKey, baseUrl = DRIVE_BASE, fetchImpl = globalThis.fetch,
+  getAccessToken, apiKey, apiKeyHeader = false, getApiKey, onRateLimit, baseUrl = DRIVE_BASE, fetchImpl = globalThis.fetch,
   retry = {}, metadataTimeoutMs = 30_000, mediaHeadersTimeoutMs = 60_000,
 }) {
   if (apiKey !== undefined) {
     if (typeof apiKey !== 'string' || !API_KEY_RE.test(apiKey)) throw new TypeError('apiKey is malformed');
-  } else if (typeof getAccessToken !== 'function') throw new TypeError('getAccessToken or apiKey is required');
+  } else if (typeof getApiKey !== 'function' && typeof getAccessToken !== 'function') throw new TypeError('getAccessToken, apiKey, or getApiKey is required');
 
   const resourceKeyHeader = (id, key) => (key ? { 'X-Goog-Drive-Resource-Keys': `${id}/${key}` } : {});
 
   // One logical call = retries for transient errors + a single forced token refresh on 401.
   async function call({ path, params, headers, signal, media = false }) {
-    const url = new URL(path, baseUrl);
-    for (const [k, v] of Object.entries(params ?? {})) if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
-    if (apiKey) url.searchParams.set('key', apiKey);
     let refreshed = false;
+    const excludedProjectIds = new Set();
     return withRetry(async () => {
-      const token = apiKey ? null : await getAccessToken({ force: refreshed });
+      const credential = apiKey ? { apiKey } : getApiKey ? await getApiKey({ excludeProjectIds: [...excludedProjectIds] }) : null;
+      const requestKey = credential?.apiKey ?? apiKey;
+      if (getApiKey && !requestKey) {
+        if (credential?.notConfigured) throw apiError('DRIVE_NOT_CONNECTED');
+        if (credential?.retryAfterMs == null) excludedProjectIds.clear();
+        throw apiError('DRIVE_QUOTA_EXCEEDED', { retryable: true, retryAfterMs: credential?.retryAfterMs, reason: 'allKeysCoolingDown' });
+      }
+      const token = requestKey ? null : await getAccessToken({ force: refreshed });
+      const url = new URL(path, baseUrl);
+      for (const [k, v] of Object.entries(params ?? {})) if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
+      const keyHeader = requestKey && (apiKeyHeader || getApiKey) ? { 'x-goog-api-key': requestKey } : {};
+      if (requestKey && !Object.keys(keyHeader).length) url.searchParams.set('key', requestKey);
       const timer = new AbortController();
       const timeout = setTimeout(() => timer.abort(new DOMException('Timeout', 'TimeoutError')), media ? mediaHeadersTimeoutMs : metadataTimeoutMs);
       const link = signal ? AbortSignal.any([signal, timer.signal]) : timer.signal;
       let response;
       try {
-        response = await fetchImpl(url, { headers: { ...(apiKey ? {} : { Authorization: `Bearer ${token}` }), ...headers }, signal: link });
+        response = await fetchImpl(url, { headers: { ...(requestKey ? keyHeader : { Authorization: `Bearer ${token}` }), ...headers }, signal: link });
       } catch (error) {
         clearTimeout(timeout);
         if (signal?.aborted) throw error; // caller cancelled: not a Drive failure
@@ -77,6 +86,12 @@ export function createDriveClient({
       const body = await response.json().catch(() => null); // error bodies are small JSON, also for alt=media
       response.body?.cancel?.().catch(() => {});
       const error = classifyDriveError(response.status, body, response.headers);
+      const canFailOver = error.code === 'DRIVE_QUOTA_EXCEEDED' && credential?.projectId && !credential.legacy
+        && (response.status === 429 || ['rateLimitExceeded', 'userRateLimitExceeded', 'quotaExceeded'].includes(error.reason));
+      if (canFailOver) {
+        excludedProjectIds.add(credential.projectId);
+        await onRateLimit?.(credential, error);
+      }
       // A 401 may only mean the cached access token expired: refresh once, then retry immediately.
       if (response.status === 401 && !apiKey && !refreshed) { refreshed = true; error.retryable = true; error.retryAfterMs = 0; }
       throw error;

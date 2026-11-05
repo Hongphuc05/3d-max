@@ -26,6 +26,10 @@ export const login = (email, password) => request('POST', '/auth/login', { body:
 export const logout = () => request('POST', '/auth/logout', { body: {} });
 
 export const adminDriveStatus = (signal) => get('/admin/drive/status', null, signal);
+export const adminDriveKeys = (signal) => get('/admin/drive/keys', null, signal);
+export const adminSaveDriveKey = (slot, body) => request('PUT', `/admin/drive/keys/${encodeURIComponent(slot)}`, { body });
+export const adminDeleteDriveKey = (slot) => request('DELETE', `/admin/drive/keys/${encodeURIComponent(slot)}`);
+export const adminTestDriveKey = (slot) => request('POST', `/admin/drive/keys/${encodeURIComponent(slot)}/test`, { body: {} });
 export const adminDriveSummary = (sourceId, signal) => get('/admin/drive/summary', { sourceId }, signal);
 export const adminDriveAddSource = (body) => request('POST', '/admin/drive/sources', { body });
 export const adminDriveTestAccess = (sourceId, signal) => request('POST', '/admin/drive/test-access', { body: { sourceId }, signal });

@@ -32,8 +32,10 @@ const planCounters = (plan, scanSkipped) => ({
   missingCount: plan.counters.missingCount, reviewCount: plan.counters.reviewCount, skippedCount: scanSkipped + plan.counters.skippedCount,
 });
 
-export function createSyncHandler({ pool, apiKey, createClient }) {
-  const makeClient = createClient ?? (() => createDriveClient({ apiKey }));
+export function createSyncHandler({ pool, apiKey, credentialStore, createClient }) {
+  const makeClient = createClient ?? (() => credentialStore
+    ? createDriveClient({ getApiKey: options => credentialStore.getActiveCredential(options), onRateLimit: credentialStore.markRateLimited })
+    : createDriveClient({ apiKey }));
   const reload = async (id) => (await pool.query('select * from drive_sync_jobs where id = $1', [id])).rows[0];
 
   async function run(job, ctx) {

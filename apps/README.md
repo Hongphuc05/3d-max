@@ -16,13 +16,13 @@ Node 22.9+ (cần `--env-file-if-exists`), PostgreSQL 16 (hoặc `docker compose
 ```bash
 cd apps/store-api
 npm install
-cp .env.example .env      # điền JWT_SECRET (32 byte base64) và DRIVE_API_KEY; mặc định khớp docker-compose
+cp .env.example .env      # điền JWT_SECRET (32 byte base64); DRIVE_API_KEY là key env tương thích cũ, key mới thêm trong admin
 npm run dev               # http://localhost:4000, tự tạo bảng ở môi trường dev
 ADMIN_PASSWORD='<mật khẩu>' npm run create-admin -- <tên-đăng-nhập>   # tạo/đặt lại admin (chạy lại được)
-npm run worker            # (terminal khác) worker quét Drive
 
 cd ../store-web && npm install && npm run dev    # http://localhost:5173/admin
 ```
+Đăng nhập admin, thêm API key ở **Kết nối Drive**, lưu thư mục gốc; sau đó mở terminal khác trong `apps/store-api` và chạy `npm run worker`.
 Production không tự migrate: `npm run migrate` (xem runbook). Không có tài khoản mặc định; admin chỉ tạo bằng `create-admin`
 (email nội bộ `<tên>@admin.local`, mật khẩu 8–128 ký tự). Xem giao diện plugin trên trình duyệt: `http://localhost:5173/?mockMax=1`.
 

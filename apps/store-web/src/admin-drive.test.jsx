@@ -19,7 +19,7 @@ const v3Error = (status, code, message) => response({ error: { code, message, re
 const source = (over = {}) => ({ id: 'src-1', connectionId: null, rootFolderName: 'Thu vien 3DS', sourceType: 'MY_DRIVE', enabled: true, lastSuccessfulSyncAt: null, ...over });
 
 async function mount({ configured = true, sources = [] } = {}) {
-  fixture = { sources, configured, requests: [], addError: null, testResult: null };
+  fixture = { sources, configured, keys: Array.from({ length: 5 }, (_, index) => ({ slot: index + 1, projectId: '', configured: false, active: false, status: 'EMPTY' })), requests: [], addError: null, testResult: null };
   globalThis.fetch = async (url, init = {}) => {
     const path = String(url).split('?')[0], body = init.body ? JSON.parse(init.body) : null;
     fixture.requests.push({ path, body, method: init.method ?? 'GET' });
@@ -27,6 +27,7 @@ async function mount({ configured = true, sources = [] } = {}) {
     if (path === '/api/auth/logout') return response({ ok: true });
     if (path === '/api/admin/catalog/sync/permission') return response({ allowed: true });
     if (path === '/api/admin/drive/status') return response({ configured: fixture.configured, missingConfig: fixture.configured ? [] : ['DRIVE_API_KEY'], connection: null, sources: fixture.sources });
+    if (path === '/api/admin/drive/keys') return response({ configured: fixture.configured, automaticCheckMinutes: 10, legacyFallback: false, slots: fixture.keys });
     if (path === '/api/admin/drive/sources' && init.method === 'POST') {
       if (fixture.addError) return fixture.addError;
       if (fixture.gate) await fixture.gate;
@@ -65,15 +66,16 @@ test('the Drive section loads only when opened; configured key and sources are s
   assert.match(container.textContent, /Drive của tôi/);
   assert.match(container.textContent, /Đang bật/);
   assert.equal(container.textContent.includes(SECRET_KEY), false);
-  assert.equal(container.querySelector('input[name="apiKey"]'), null, 'the API key is never typed in the UI (it lives in .env)');
+  assert.equal(container.querySelectorAll('input[type="password"]').length, 5, 'five secret inputs are shown');
+  assert.equal([...container.querySelectorAll('input[type="password"]')].some(input => input.value === SECRET_KEY), false, 'the saved API key is never returned to the browser');
 });
 
 test('missing key: shows the variable NAME, tells the admin to set it on the server, and blocks the folder form', async () => {
   await mount({ configured: false });
   await openDrive();
   assert.match(container.textContent, /Chưa cấu hình/);
-  assert.match(container.textContent, /DRIVE_API_KEY/);
-  assert.equal(container.querySelector('button[type="submit"]').disabled, true);
+  assert.match(container.textContent, /thêm ít nhất một API key/);
+  assert.equal(container.querySelector('[name="rootFolderUrlOrId"]').closest('form').querySelector('button[type="submit"]').disabled, true);
   assert.equal(calls('/api/admin/drive/sources', 'POST').length, 0);
 });
 
@@ -82,7 +84,7 @@ test('add root folder: sends only the filled fields, refreshes the list, resets 
   await openDrive();
   assert.match(container.textContent, /Chưa có thư mục gốc/);
   await input('rootFolderUrlOrId', '  https://drive.google.com/drive/folders/abc123  ');
-  await submit(container.querySelector('form'));
+  await submit(container.querySelector('[name="rootFolderUrlOrId"]').closest('form'));
   const post = calls('/api/admin/drive/sources', 'POST');
   assert.equal(post.length, 1);
   assert.deepEqual(post[0].body, { rootFolderUrlOrId: 'https://drive.google.com/drive/folders/abc123' }, 'trimmed, no empty resourceKey');
@@ -91,20 +93,20 @@ test('add root folder: sends only the filled fields, refreshes the list, resets 
 
   await input('rootFolderUrlOrId', 'xyz');
   await input('resourceKey', 'rk-1');
-  await submit(container.querySelector('form'));
+  await submit(container.querySelector('[name="rootFolderUrlOrId"]').closest('form'));
   assert.deepEqual(calls('/api/admin/drive/sources', 'POST')[1].body, { rootFolderUrlOrId: 'xyz', resourceKey: 'rk-1' });
 });
 
 test('add root folder: empty input is not sent; a server refusal shows its Vietnamese message and keeps the form', async () => {
   await mount();
   await openDrive();
-  await submit(container.querySelector('form'));
+  await submit(container.querySelector('[name="rootFolderUrlOrId"]').closest('form'));
   assert.equal(calls('/api/admin/drive/sources', 'POST').length, 0, 'empty input never reaches the server');
   assert.match(container.textContent, /Hãy nhập/);
 
   fixture.addError = v3Error(422, 'DRIVE_NOT_FOUND', 'Không tìm thấy thư mục hoặc file trên Google Drive.');
   await input('rootFolderUrlOrId', 'missingFolder1');
-  await submit(container.querySelector('form'));
+  await submit(container.querySelector('[name="rootFolderUrlOrId"]').closest('form'));
   assert.match(container.querySelector('[role="alert"]').textContent, /Không tìm thấy thư mục/);
   assert.equal(container.querySelector('[name="rootFolderUrlOrId"]').value, 'missingFolder1', 'input kept so the admin can fix it');
 });
@@ -114,12 +116,13 @@ test('add root folder cannot be double-submitted while the request is pending', 
   await openDrive();
   let release; fixture.gate = new Promise((r) => { release = r; });
   await input('rootFolderUrlOrId', 'abc123');
-  await submit(container.querySelector('form'));
-  assert.equal(container.querySelector('button[type="submit"]').disabled, true);
-  await submit(container.querySelector('form'));
+  const rootForm = container.querySelector('[name="rootFolderUrlOrId"]').closest('form');
+  await submit(rootForm);
+  assert.equal(rootForm.querySelector('button[type="submit"]').disabled, true);
+  await submit(rootForm);
   assert.equal(calls('/api/admin/drive/sources', 'POST').length, 1, 'second submit ignored while pending');
   await act(async () => { release(); await new Promise((r) => setImmediate(r)); });
-  assert.equal(container.querySelector('button[type="submit"]').disabled, false);
+  assert.equal(rootForm.querySelector('button[type="submit"]').disabled, false);
 });
 
 test('test access: shows each check separately, including a failure with its code', async () => {

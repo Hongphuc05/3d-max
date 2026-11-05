@@ -1,4 +1,4 @@
-// Cau hinh worker tu bien moi truong. Loi chi neu TEN bien: gia tri (nhat la API key) khong bao gio duoc in ra.
+// Worker tuning plus the legacy DRIVE_API_KEY fallback. The worker can also load saved DB key slots.
 import path from 'node:path';
 
 const API_KEY = /^[A-Za-z0-9_-]{20,256}$/;
