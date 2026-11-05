@@ -3,10 +3,8 @@ import { adminTelegramConnections, adminTelegramDisconnect } from './api.js';
 import { adminError, dateTime, panel, primary, ResourceState, secondary, useAdminResource } from './AdminShared.jsx';
 
 const resultMessages = {
+  pending: ['Bot đã mở trong tab mới. Nhấn Start trong Telegram để hoàn tất liên kết.', 'text-mute'],
   connected: ['Đã kết nối Telegram. Tài khoản này sẽ nhận thông báo và có thể duyệt đơn.', 'text-accent'],
-  'already-linked': ['Tài khoản Telegram này đã được liên kết với một admin khác.', 'text-danger'],
-  cancelled: ['Đã hủy kết nối Telegram.', 'text-mute'],
-  failed: ['Không xác minh được Telegram. Hãy thử kết nối lại.', 'text-danger'],
 };
 
 function ConnectionPanel() {
@@ -17,13 +15,15 @@ function ConnectionPanel() {
   const resource = useAdminResource(adminTelegramConnections, [version]);
 
   useEffect(() => {
-    const status = new URLSearchParams(window.location.search).get('telegram');
-    if (resultMessages[status]) setNotice(status);
     const refresh = () => setVersion((value) => value + 1);
     window.addEventListener('focus', refresh);
     const timer = window.setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 15_000);
     return () => { window.removeEventListener('focus', refresh); window.clearInterval(timer); };
   }, []);
+
+  useEffect(() => {
+    if (notice === 'pending' && resource.data?.accounts?.length) setNotice('connected');
+  }, [notice, resource.data]);
 
   const disconnect = async (account) => {
     if (!window.confirm(`Ngắt kết nối Telegram ${account.displayName}?`)) return;
@@ -37,23 +37,21 @@ function ConnectionPanel() {
   return <section className={`${panel} space-y-4`} aria-labelledby="telegram-connections-title">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><h3 id="telegram-connections-title" className="text-base font-bold">Kết nối Telegram bot</h3>
-        <p className="mt-1 max-w-3xl text-sm text-mute">Mỗi admin có thể liên kết nhiều tài khoản Telegram. Tài khoản đã liên kết nhận thông báo đơn mới và có thể xác nhận hoặc từ chối đơn ngay trong Telegram.</p>
+        <p className="mt-1 max-w-3xl text-sm text-mute">Mỗi admin liên kết một tài khoản Telegram. Tài khoản đã liên kết nhận thông báo đơn mới và có thể xác nhận hoặc từ chối đơn ngay trong Telegram.</p>
       </div>
-      <form method="post" action="/api/admin/telegram/connections/authorize" target="_blank" rel="noopener noreferrer">
-        <button type="submit" className={primary} disabled={!data?.loginConfigured || Boolean(busyId)}>
-          {data?.accounts?.length ? 'Kết nối thêm tài khoản' : 'Kết nối Telegram bot'}
+      {!data?.accounts?.length && <form method="post" action="/api/admin/telegram/connections/authorize" target="_blank" rel="noopener noreferrer" onSubmit={() => setNotice('pending')}>
+        <button type="submit" className={primary} disabled={!data?.canConnect || Boolean(busyId)}>
+          Kết nối Telegram bot
         </button>
-      </form>
+      </form>}
     </div>
 
     {notice && resultMessages[notice] && <p role="status" className={`text-sm ${resultMessages[notice][1]}`}>{resultMessages[notice][0]}</p>}
     <ResourceState {...resource} retry={() => setVersion((value) => value + 1)} />
     {actionError && <p role="alert" className="text-sm text-danger">{actionError}</p>}
 
-    {data && !data.loginConfigured && <div className="rounded-md border border-line bg-base p-3 text-sm text-mute">
-      <p>Chưa bật Telegram Login trên máy chủ. Cần cấu hình Client ID và Client Secret do BotFather cấp, rồi cho phép callback:</p>
-      <code className="mt-2 block break-all font-mono text-xs text-fg">https://3dsmood.io.vn/api/telegram/login/callback</code>
-      {data.loginErrors?.length > 0 && <p className="mt-2">Cấu hình còn thiếu hoặc sai: <code className="font-mono">{data.loginErrors.join(', ')}</code></p>}
+    {data && !data.canConnect && <div className="rounded-md border border-line bg-base p-3 text-sm text-mute">
+      <p>Bot chưa sẵn sàng. Kiểm tra cấu hình Telegram bot và webhook trên máy chủ.</p>
     </div>}
 
     {data && <>

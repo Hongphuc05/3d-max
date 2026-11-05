@@ -1,29 +1,21 @@
-# Liên kết nhiều tài khoản Telegram cho admin
+# Liên kết Telegram cho admin
 
 ## Cách hoạt động
 
-- Mỗi admin đăng nhập vào web rồi chọn **Cài đặt → Kết nối Telegram bot**. Telegram Login mở trong tab mới và xin quyền `telegram:bot_access` để bot có thể nhắn trực tiếp.
-- API kiểm tra `state`, PKCE, `nonce` và chữ ký ID token; mỗi lần liên kết chỉ dùng được một lần và hết hạn sau 10 phút. PKCE verifier được mã hóa trong PostgreSQL bằng khóa suy ra từ `JWT_SECRET`.
-- Danh tính Telegram được lưu riêng theo admin. Admin có thể liên kết nhiều tài khoản và tự ngắt từng liên kết. Telegram ID chỉ được liên kết với tối đa một admin tại một thời điểm.
-- Khi khách báo đã chuyển khoản, bot gửi tin tới mọi tài khoản Telegram đang liên kết admin và các chat ID cũ trong `TELEGRAM_OWNER_CHAT_IDS`. Các bản sao tin nhắn được lưu để thao tác từ web có thể đóng nút trên toàn bộ bản sao.
-- Telegram Login chỉ xác thực Telegram và cấp quyền nhắn tin cho bot. Admin vẫn cần đăng nhập vào tài khoản admin trên website trước khi bắt đầu liên kết.
+- Mỗi tài khoản admin chỉ liên kết một Telegram. Admin chưa kết nối bấm **Kết nối Telegram bot**; trang mở bot bằng deep link.
+- Admin nhấn **Start**. Webhook nhận mã dùng một lần, kiểm tra hạn 10 phút và liên kết chat đó với admin đã tạo mã.
+- Nếu hệ thống cũ có nhiều Telegram liên kết với cùng một admin, migration giữ liên kết cũ nhất và ngắt các liên kết còn lại.
+- Bot gửi thông báo đơn tới các Telegram admin đã liên kết và các chat ID cũ trong `TELEGRAM_OWNER_CHAT_IDS`. Admin bấm nút trong tin nhắn để xác nhận hoặc từ chối; quyết định vẫn idempotent.
+- Không cần Telegram Login Client ID/Secret hay cấu hình URL trong BotFather. Cần bot token và webhook hiện có.
 
-## Thiết lập production một lần
+## Quản lí tài khoản admin
 
-1. Trong cài đặt Telegram Login của bot ở BotFather, cấu hình website `https://3dsmood.io.vn` và callback được phép:
-   `https://3dsmood.io.vn/api/telegram/login/callback`
-2. Lấy Login Client ID và Client Secret từ BotFather. Không đặt chúng trong mã frontend, Git, hoặc gửi qua chat.
-3. Thêm các biến sau vào `/etc/3dsmood/store.env`:
+- Admin hiện có đầu tiên được chọn làm **admin chủ quản** khi migration chạy; nếu chưa có admin thì tài khoản đầu tiên tạo bằng `create-admin.js` sẽ là chủ quản.
+- Chỉ admin chủ quản được tạo, khóa/mở khóa và đặt lại mật khẩu admin khác. Admin khác chỉ xử lý nghiệp vụ.
+- Tài khoản mới phải đổi mật khẩu ở lần đăng nhập đầu. Khóa tài khoản sẽ thu hồi các phiên đăng nhập và dừng nhận thông báo Telegram.
 
-   ```dotenv
-   TELEGRAM_LOGIN_CLIENT_ID=<client-id>
-   TELEGRAM_LOGIN_CLIENT_SECRET=<client-secret>
-   TELEGRAM_LOGIN_REDIRECT_URI=https://3dsmood.io.vn/api/telegram/login/callback
-   ```
+## Cấu hình webhook
 
-   `TELEGRAM_LOGIN_REDIRECT_URI` có thể để trống nếu `TELEGRAM_WEBHOOK_BASE_URL` đã là `https://3dsmood.io.vn`.
-4. Giữ nguyên `JWT_SECRET` hiện tại. Đổi khóa này sẽ làm các phiên admin hết hạn và khiến những Telegram Login attempt đang mở không dùng được.
-5. Deploy bản mới để migration `029_telegram_admin_links.sql` được áp dụng, sau đó khởi động lại `store-api` để nạp biến môi trường.
-6. Đăng nhập từng admin vào web và dùng nút kết nối. Mỗi tài khoản phải tự đồng ý quyền Telegram Login.
+Giữ các biến bot hiện có trong `/etc/3dsmood/store.env`. `TELEGRAM_WEBHOOK_BASE_URL` cần là origin HTTPS của website, ví dụ `https://3dsmood.io.vn`. Khi API khởi động, bot tự cập nhật webhook để nhận cả tin `/start` và callback nút duyệt đơn.
 
-Nếu chưa cấu hình Client ID/Secret, phần quản trị vẫn mở được nhưng sẽ báo rõ biến còn thiếu và không bắt đầu luồng kết nối.
+Sau deploy, vào **Cài đặt → Kết nối Telegram bot** để liên kết. Muốn tạo hoặc khóa admin, dùng mục **Quản lý admin** của tài khoản chủ quản.

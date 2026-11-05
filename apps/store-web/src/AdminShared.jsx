@@ -23,9 +23,18 @@ const messages = {
   ORDER_NOT_FOUND: 'Không tìm thấy đơn hàng.',
   DEVICE_NOT_FOUND: 'Không tìm thấy thiết bị.',
   ALREADY_ENTITLED: 'Thiết bị đích đã có license thư viện.',
-  TELEGRAM_LOGIN_NOT_CONFIGURED: 'Máy chủ chưa cấu hình Telegram Login. Cần thiết lập Client ID và Client Secret từ BotFather.',
+  TELEGRAM_BOT_NOT_READY: 'Bot Telegram chưa sẵn sàng. Hãy kiểm tra cấu hình bot và thử lại.',
+  TELEGRAM_ADMIN_ALREADY_CONNECTED: 'Tài khoản admin này đã liên kết Telegram. Hãy ngắt kết nối cũ trước.',
+  TELEGRAM_LINK_TOKEN_INVALID: 'Mã kết nối Telegram hết hạn. Hãy bấm kết nối lại.',
   TELEGRAM_ACCOUNT_ALREADY_LINKED: 'Tài khoản Telegram này đã được liên kết với một admin khác.',
   TELEGRAM_CONNECTION_NOT_FOUND: 'Không tìm thấy kết nối Telegram này.',
+  ADMIN_OWNER_REQUIRED: 'Chỉ admin chủ quản mới được quản lí tài khoản admin.',
+  ADMIN_USERNAME_INVALID: 'Tên đăng nhập cần 3–64 ký tự hợp lệ, viết thường.',
+  ADMIN_PASSWORD_TOO_SHORT: 'Mật khẩu cần ít nhất 8 ký tự.',
+  ADMIN_PASSWORD_TOO_LONG: 'Mật khẩu tối đa 128 ký tự.',
+  ADMIN_USERNAME_TAKEN: 'Tên đăng nhập này đã được sử dụng.',
+  ADMIN_ACCOUNT_NOT_FOUND: 'Không tìm thấy tài khoản admin.',
+  ADMIN_ACCOUNT_PROTECTED: 'Không thể khóa hoặc đổi mật khẩu admin chủ quản.',
 };
 export const adminError = error => messages[error?.code] || error?.detail || 'Không thể hoàn tất yêu cầu. Vui lòng thử lại.';
 export const dateTime = value => value ? new Date(value).toLocaleString('vi-VN') : '—';

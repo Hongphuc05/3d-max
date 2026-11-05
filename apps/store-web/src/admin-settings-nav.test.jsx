@@ -24,7 +24,7 @@ test('the dashboard has lazy "Cài đặt" and "Model" (gallery cards with thumb
     if (path === '/api/auth/me') return response({ user: { id: 'admin-id', email: 'a@a.invalid', role: 'ADMIN', username: 'owner', mustChangeCredentials: false } });
     if (path === '/api/admin/catalog/sync/permission') return response({ allowed: true });
     if (path === '/api/admin/settings') return response({ bankName: null, bankBin: null, accountNo: null, accountName: null, defaultModelPriceVnd: 15000, orderTtlMinutes: 1440, maxPendingOrdersPerDevice: 3, updatedAt: null });
-    if (path === '/api/admin/telegram/connections') return response({ loginConfigured: true, loginErrors: [], ownerChatIdsCount: 0, accounts: [] });
+    if (path === '/api/admin/telegram/connections') return response({ canConnect: true, ownerChatIdsCount: 0, accounts: [] });
     if (path === '/api/admin/categories') return response({ items: [{ id: 'cat-1', parentId: null, name: 'Living', fullPath: 'Living', modelCount: 1 }] });
     if (path === '/api/admin/models') return response({ items: [{ id: 'm1', name: 'Sofa A', categoryPath: 'Living / Sofa', priceVnd: 15000, status: 'PUBLISHED', nameOverridden: false, priceOverridden: false, updatedAt: '2026-11-01T08:00:00Z', thumbUrl: '/previews/abc.webp' }], total: 1, page: 1, limit: 20 });
     throw new Error(`Unhandled ${path}`);

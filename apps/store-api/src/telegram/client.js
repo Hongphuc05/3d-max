@@ -1,4 +1,4 @@
-// P5.4: Telegram Bot API qua fetch (khong them thu vien). Chi dung 4 method plan can: sendMessage, editMessageText, answerCallbackQuery, setWebhook.
+// P5.4: Telegram Bot API qua fetch (khong them thu vien). Chi dung cac method can cho notify + link tai khoan admin.
 // [Doi chieu tai lieu Bot API hien hanh: setWebhook.secret_token 1-256 ky tu A-Za-z0-9_-, header X-Telegram-Bot-Api-Secret-Token,
 //  editMessageText.text 1-4096, answerCallbackQuery.text 0-200 da kiem; cau truc InlineKeyboardMarkup/callback_data<=64 byte dua tren hieu biet, chua doi chieu voi bot that.]
 // Token nam trong URL nen moi loi duoc lam sach: khong bao gio dua token vao message/stack/log.
@@ -29,6 +29,10 @@ export function createTelegramClient({ token, fetchImpl = fetch, timeoutMs = 800
   const text = (value, max) => { if (typeof value !== 'string' || value.length < 1) throw bad('text'); return value.slice(0, max); };
 
   return {
+    async getMe() {
+      const bot = await call('getMe', {});
+      return { id: String(bot?.id ?? ''), username: typeof bot?.username === 'string' ? bot.username : null };
+    },
     async sendMessage({ chatId, text: body, keyboard }) {
       const payload = { chat_id: chat(chatId), text: text(body, 4096) };
       if (keyboard) payload.reply_markup = { inline_keyboard: keyboard };
@@ -47,7 +51,7 @@ export function createTelegramClient({ token, fetchImpl = fetch, timeoutMs = 800
     async setWebhook({ url, secretToken }) {
       if (typeof url !== 'string' || !url.startsWith('https://')) throw bad('webhook url must be https');
       if (typeof secretToken !== 'string' || !/^[A-Za-z0-9_-]{16,256}$/.test(secretToken)) throw bad('secret token');
-      await call('setWebhook', { url, secret_token: secretToken, allowed_updates: ['callback_query'] });
+      await call('setWebhook', { url, secret_token: secretToken, allowed_updates: ['message', 'callback_query'] });
     },
   };
 }

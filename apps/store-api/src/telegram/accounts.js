@@ -14,21 +14,21 @@ export function createTelegramAccountStore({ pool }) {
   async function listRecipients() {
     const rows = await pool.query(`select a.telegram_user_id as chat_id, a.id as account_id
       from telegram_admin_accounts a join users u on u.id = a.admin_user_id
-      where a.revoked_at is null and u.role = 'ADMIN' order by a.linked_at`);
+      where a.revoked_at is null and u.role = 'ADMIN' and u.admin_disabled_at is null order by a.linked_at`);
     return rows.rows.map((row) => ({ chatId: String(row.chat_id), accountId: row.account_id }));
   }
 
   async function isAuthorized(telegramUserId, chatId) {
     if (String(telegramUserId) !== String(chatId)) return false;
     const result = await pool.query(`select 1 from telegram_admin_accounts a join users u on u.id = a.admin_user_id
-      where a.telegram_user_id = $1 and a.revoked_at is null and u.role = 'ADMIN' limit 1`, [String(telegramUserId)]);
+      where a.telegram_user_id = $1 and a.revoked_at is null and u.role = 'ADMIN' and u.admin_disabled_at is null limit 1`, [String(telegramUserId)]);
     return result.rowCount > 0;
   }
 
   async function link(adminId, profile) {
     try {
       return await inTransaction(pool, async (db) => {
-        const admin = await db.query("select 1 from users where id = $1 and role = 'ADMIN' for update", [adminId]);
+        const admin = await db.query("select 1 from users where id = $1 and role = 'ADMIN' and admin_disabled_at is null for update", [adminId]);
         if (!admin.rowCount) throw apiError('FORBIDDEN');
         const existing = await db.query(`select id, admin_user_id from telegram_admin_accounts
           where revoked_at is null and (telegram_user_id = $1 or telegram_subject = $2) for update`, [profile.telegramUserId, profile.subject]);
@@ -41,6 +41,9 @@ export function createTelegramAccountStore({ pool }) {
           [same.id, profile.telegramUserId, profile.subject, profile.username, profile.displayName]);
           return accountView(updated.rows[0]);
         }
+        const current = await db.query(`select id from telegram_admin_accounts
+          where admin_user_id=$1 and revoked_at is null for update`, [adminId]);
+        if (current.rowCount) throw apiError('TELEGRAM_ADMIN_ALREADY_CONNECTED');
         const inserted = await db.query(`insert into telegram_admin_accounts
           (admin_user_id, telegram_subject, telegram_user_id, telegram_username, display_name)
           values ($1,$2,$3,$4,$5)
@@ -49,7 +52,10 @@ export function createTelegramAccountStore({ pool }) {
         return accountView(inserted.rows[0]);
       });
     } catch (error) {
-      if (error?.code === '23505') throw apiError('TELEGRAM_ACCOUNT_ALREADY_LINKED');
+      if (error?.code === '23505') {
+        const current = await pool.query('select 1 from telegram_admin_accounts where admin_user_id=$1 and revoked_at is null limit 1', [adminId]);
+        throw apiError(current.rowCount ? 'TELEGRAM_ADMIN_ALREADY_CONNECTED' : 'TELEGRAM_ACCOUNT_ALREADY_LINKED');
+      }
       throw error;
     }
   }

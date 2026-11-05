@@ -10,6 +10,18 @@ const skip = !configured;
 let dispose, pool, rollbackMigration;
 const tables = async () => (await pool.query("select table_name from information_schema.tables where table_schema = current_schema()")).rows.map((r) => r.table_name);
 const applied = async () => (await pool.query('select name from schema_migrations order by name desc')).rows.map((r) => r.name);
+const applyFile = async (name) => {
+  await pool.query(readFileSync(new URL(`../migrations/${name}`, import.meta.url), 'utf8'));
+  await pool.query('insert into schema_migrations(name) values ($1)', [name]);
+};
+const rollbackUntil = async (name) => {
+  let latest = (await applied())[0];
+  while (latest && latest !== name) {
+    await rollbackMigration(pool, latest);
+    latest = (await applied())[0];
+  }
+  assert.equal(latest, name);
+};
 
 before(async () => {
   if (!configured) return;
@@ -25,6 +37,7 @@ const hideIrreversible = () => pool.query("delete from schema_migrations where n
 
 test('029 (Telegram admin links) refuses rollback while account links exist, then re-applies cleanly', { skip }, async () => {
   const migration = '029_telegram_admin_links.sql';
+  await rollbackUntil(migration);
   assert.equal((await applied())[0], migration);
   const admin = (await pool.query("insert into users(email,password_hash,role,username) values($1,'x','ADMIN',$2) returning id",
     [`${randomUUID()}@test.invalid`, `admin_${randomUUID().slice(0, 8)}`])).rows[0].id;
@@ -35,13 +48,37 @@ test('029 (Telegram admin links) refuses rollback while account links exist, the
   await rollbackMigration(pool, migration);
   assert.equal((await applied())[0], '028_drive_key_project_optional.sql');
   assert.ok(!(await tables()).includes('telegram_admin_accounts'));
-  await pool.query(readFileSync(new URL('../migrations/029_telegram_admin_links.sql', import.meta.url), 'utf8'));
-  await pool.query('insert into schema_migrations(name) values ($1)', [migration]);
-  assert.equal((await applied())[0], migration);
+  await applyFile(migration);
+  await applyFile('030_telegram_start_link.sql');
+  await applyFile('031_admin_account_management.sql');
+  assert.equal((await applied())[0], '031_admin_account_management.sql');
+});
+
+test('030 (Telegram Start linking) refuses rollback while an admin link exists, then re-applies cleanly', { skip }, async () => {
+  await rollbackUntil('030_telegram_start_link.sql');
+  const admin = (await pool.query("insert into users(email,password_hash,role,username) values($1,'x','ADMIN',$2) returning id",
+    [`${randomUUID()}@test.invalid`, `admin_${randomUUID().slice(0, 8)}`])).rows[0].id;
+  await pool.query("insert into telegram_admin_accounts(admin_user_id,telegram_subject,telegram_user_id,display_name) values($1,'telegram-subject',123456789,'Test Admin')", [admin]);
+  await assert.rejects(rollbackMigration(pool, '030_telegram_start_link.sql'), (e) => e.code === 'ROLLBACK_REFUSED' && /active Telegram admin links/.test(e.message));
+  await pool.query('delete from telegram_admin_accounts');
+  await pool.query('delete from users where id=$1', [admin]);
+  await rollbackMigration(pool, '030_telegram_start_link.sql');
+  assert.equal((await applied())[0], '029_telegram_admin_links.sql');
+  await applyFile('030_telegram_start_link.sql');
+  await applyFile('031_admin_account_management.sql');
+});
+
+test('031 (admin account management) adds owner and disable fields and rolls back cleanly', { skip }, async () => {
+  assert.equal((await applied())[0], '031_admin_account_management.sql');
+  assert.ok((await tables()).includes('users'));
+  await rollbackMigration(pool, '031_admin_account_management.sql');
+  assert.equal((await applied())[0], '030_telegram_start_link.sql');
+  await applyFile('031_admin_account_management.sql');
+  assert.equal((await applied())[0], '031_admin_account_management.sql');
 });
 
 test('028 (optional Drive project id) refuses rollback while a slot has no project id, then re-applies cleanly', { skip }, async () => {
-  await rollbackMigration(pool, '029_telegram_admin_links.sql');
+  await rollbackUntil('028_drive_key_project_optional.sql');
   const migration = '028_drive_key_project_optional.sql';
   assert.equal((await applied())[0], migration);
   await pool.query("insert into drive_api_key_slots(slot,project_id,encrypted_key) values(1,null,'ciphertext')");
@@ -51,14 +88,14 @@ test('028 (optional Drive project id) refuses rollback while a slot has no proje
   assert.equal((await applied())[0], '027_drive_api_key_slots.sql');
   await pool.query(readFileSync(new URL('../migrations/028_drive_key_project_optional.sql', import.meta.url), 'utf8'));
   await pool.query('insert into schema_migrations(name) values ($1)', [migration]);
-  await pool.query(readFileSync(new URL('../migrations/029_telegram_admin_links.sql', import.meta.url), 'utf8'));
-  await pool.query("insert into schema_migrations(name) values ('029_telegram_admin_links.sql')");
-  assert.equal((await applied())[0], '029_telegram_admin_links.sql');
+  await applyFile('029_telegram_admin_links.sql');
+  await applyFile('030_telegram_start_link.sql');
+  await applyFile('031_admin_account_management.sql');
+  assert.equal((await applied())[0], '031_admin_account_management.sql');
 });
 
 test('027 (Drive API key slots) refuses rollback with saved credentials, then rolls back and re-applies when empty', { skip }, async () => {
-  await rollbackMigration(pool, '029_telegram_admin_links.sql');
-  await rollbackMigration(pool, '028_drive_key_project_optional.sql');
+  await rollbackUntil('027_drive_api_key_slots.sql');
   const migration = '027_drive_api_key_slots.sql';
   assert.equal((await applied())[0], migration);
   await pool.query("insert into drive_api_key_slots(slot,project_id,encrypted_key) values(1,'project-x','ciphertext')");
@@ -70,18 +107,16 @@ test('027 (Drive API key slots) refuses rollback with saved credentials, then ro
   assert.equal((await applied())[0], '026_drive_archive_snapshots.sql');
   await pool.query(readFileSync(new URL('../migrations/027_drive_api_key_slots.sql', import.meta.url), 'utf8'));
   await pool.query('insert into schema_migrations(name) values ($1)', [migration]);
-  await pool.query(readFileSync(new URL('../migrations/028_drive_key_project_optional.sql', import.meta.url), 'utf8'));
-  await pool.query("insert into schema_migrations(name) values ('028_drive_key_project_optional.sql')");
-  await pool.query(readFileSync(new URL('../migrations/029_telegram_admin_links.sql', import.meta.url), 'utf8'));
-  await pool.query("insert into schema_migrations(name) values ('029_telegram_admin_links.sql')");
+  await applyFile('028_drive_key_project_optional.sql');
+  await applyFile('029_telegram_admin_links.sql');
+  await applyFile('030_telegram_start_link.sql');
+  await applyFile('031_admin_account_management.sql');
   assert.ok((await tables()).includes('drive_api_key_slots'));
-  assert.equal((await applied())[0], '029_telegram_admin_links.sql');
+  assert.equal((await applied())[0], '031_admin_account_management.sql');
 });
 
 test('026 (archive snapshots) rolls back and re-applies; older rollback tests start from 025', { skip }, async () => {
-  await rollbackMigration(pool, '029_telegram_admin_links.sql');
-  await rollbackMigration(pool, '028_drive_key_project_optional.sql');
-  await rollbackMigration(pool, '027_drive_api_key_slots.sql');
+  await rollbackUntil('026_drive_archive_snapshots.sql');
   const migration = '026_drive_archive_snapshots.sql';
   assert.equal((await applied())[0], migration);
   await rollbackMigration(pool, migration);
@@ -94,19 +129,15 @@ test('026 (archive snapshots) rolls back and re-applies; older rollback tests st
   names = await tables();
   assert.ok(names.includes('drive_archive_snapshot_runs') && names.includes('drive_archive_snapshot_files'));
   assert.equal((await applied())[0], migration);
-  await pool.query(readFileSync(new URL('../migrations/027_drive_api_key_slots.sql', import.meta.url), 'utf8'));
-  await pool.query("insert into schema_migrations(name) values ('027_drive_api_key_slots.sql')");
-  await pool.query(readFileSync(new URL('../migrations/028_drive_key_project_optional.sql', import.meta.url), 'utf8'));
-  await pool.query("insert into schema_migrations(name) values ('028_drive_key_project_optional.sql')");
-  await pool.query(readFileSync(new URL('../migrations/029_telegram_admin_links.sql', import.meta.url), 'utf8'));
-  await pool.query("insert into schema_migrations(name) values ('029_telegram_admin_links.sql')");
+  await applyFile('027_drive_api_key_slots.sql');
+  await applyFile('028_drive_key_project_optional.sql');
+  await applyFile('029_telegram_admin_links.sql');
+  await applyFile('030_telegram_start_link.sql');
+  await applyFile('031_admin_account_management.sql');
 });
 
 test('025 (uploaded previews) rolls back cleanly when no upload exists, and refuses when one does', { skip }, async () => {
-  if ((await applied())[0] === '029_telegram_admin_links.sql') await rollbackMigration(pool, '029_telegram_admin_links.sql');
-  if ((await applied())[0] === '028_drive_key_project_optional.sql') await rollbackMigration(pool, '028_drive_key_project_optional.sql');
-  if ((await applied())[0] === '027_drive_api_key_slots.sql') await rollbackMigration(pool, '027_drive_api_key_slots.sql');
-  if ((await applied())[0] === '026_drive_archive_snapshots.sql') await rollbackMigration(pool, '026_drive_archive_snapshots.sql');
+  await rollbackUntil('025_upload_previews.sql');
   assert.equal((await applied())[0], '025_upload_previews.sql');
   const cat = (await pool.query("insert into categories(name,slug,full_path) values('A','a','A') returning id")).rows[0].id;
   const m = (await pool.query("insert into models(category_id,name,status,stem) values($1,'x','PUBLISHED','x') returning id", [cat])).rows[0].id;

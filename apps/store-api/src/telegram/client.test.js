@@ -39,10 +39,10 @@ test('editMessageText removes the keyboard explicitly; answerCallbackQuery sends
   assert.equal(calls[1].body.callback_query_id, 'cbq-1'); assert.equal(calls[1].body.text.length, 200);
 });
 
-test('setWebhook sends the url, the secret_token and only callback_query updates', async () => {
+test('setWebhook subscribes to private messages and order callback updates', async () => {
   const { client, calls } = rig(() => reply({ ok: true, result: true }));
   await client.setWebhook({ url: 'https://example.com/api/telegram/webhook/abc', secretToken: 'S3cret_token-OK-123456' });
-  assert.deepEqual(calls[0].body, { url: 'https://example.com/api/telegram/webhook/abc', secret_token: 'S3cret_token-OK-123456', allowed_updates: ['callback_query'] });
+  assert.deepEqual(calls[0].body, { url: 'https://example.com/api/telegram/webhook/abc', secret_token: 'S3cret_token-OK-123456', allowed_updates: ['message', 'callback_query'] });
   for (const bad of [{ url: 'http://example.com/x', secretToken: 'S3cret_token-OK-123456' }, { url: 'https://example.com/x', secretToken: 'short' }, { url: 'https://example.com/x', secretToken: 'has space in it 123456' }])
     await assert.rejects(client.setWebhook(bad), (e) => e instanceof TelegramError && e.code === 'TELEGRAM_BAD_REQUEST');
 });

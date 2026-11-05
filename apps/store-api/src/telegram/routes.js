@@ -1,5 +1,5 @@
-// P5.5: webhook Telegram. Thu tu kiem: duong dan bi mat (sai -> 404, khong lo gi), header secret (sai -> 401), roi chi nhan callback_query
-// tu chu trong allowlist (ca nguoi bam lan chat chua nut). Sau do LUON tra 200 de Telegram khong gui lai; loi Telegram khong duoc hoan tac quyet dinh.
+// Telegram webhook: kiem tra duong dan bi mat va secret header; xu ly link qua /start payload va callback cua admin.
+// Sau do LUON tra 200 de Telegram khong gui lai; loi Telegram khong duoc hoan tac quyet dinh.
 import { createHash, timingSafeEqual } from 'node:crypto';
 import express from 'express';
 import { apiError, requestId, v3ErrorHandler } from '../drive/errors.js';
@@ -14,27 +14,26 @@ const REPLIES = {
   EXPIRED: { answer: 'Đơn đã hết hạn, không cấp quyền.', mark: '⌛ Đơn đã hết hạn, không cấp quyền.' },
 };
 
-export function createTelegramRouter({ config, client, service, accounts, login }) {
+export function createTelegramRouter({ config, client, service, accounts, linking }) {
   const router = express.Router();
   const owners = new Set((config.ownerChatIds ?? []).map(String));
 
-  router.get('/login/callback', requestId, async (req, res) => {
-    const { state, code, error } = req.query;
-    if (Array.isArray(state) || Array.isArray(code) || Array.isArray(error) || typeof state !== 'string') return res.redirect(303, '/admin?telegram=failed');
-    if (error) {
-      try { await login?.reject(state); } catch { /* one-time state expired or invalid */ }
-      return res.redirect(303, '/admin?telegram=cancelled');
-    }
-    if (typeof code !== 'string' || !login) return res.redirect(303, '/admin?telegram=failed');
+  async function handleStart(message) {
+    if (message?.chat?.type !== 'private' || !isId(message.chat.id) || !isId(message.from?.id)
+      || String(message.chat.id) !== String(message.from.id) || typeof message.text !== 'string') return;
+    const command = /^\/start(?:@[A-Za-z0-9_]{5,32})?(?:\s+([A-Za-z0-9_-]{1,64}))?$/.exec(message.text.trim());
+    if (!command?.[1]) return;
+    let response = 'Mã kết nối không hợp lệ hoặc đã hết hạn. Hãy quay lại trang admin và bấm Kết nối Telegram lần nữa.';
     try {
-      const result = await login.complete(state, code);
-      await accounts.link(result.adminId, result.profile);
-      return res.redirect(303, '/admin?telegram=connected');
-    } catch (e) {
-      const status = e?.code === 'TELEGRAM_ACCOUNT_ALREADY_LINKED' ? 'already-linked' : 'failed';
-      return res.redirect(303, `/admin?telegram=${status}`);
+      const link = await linking.complete(command[1], message.from);
+      await accounts.link(link.adminId, link.profile);
+      response = '✅ Đã kết nối Telegram với tài khoản admin. Tài khoản này sẽ nhận thông báo đơn hàng.';
+    } catch (error) {
+      if (error?.code === 'TELEGRAM_ACCOUNT_ALREADY_LINKED') response = 'Tài khoản Telegram này đã được liên kết với một admin khác.';
+      else if (error?.code === 'TELEGRAM_ADMIN_ALREADY_CONNECTED') response = 'Tài khoản admin đã có Telegram liên kết. Hãy ngắt kết nối cũ trong trang quản trị.';
     }
-  });
+    await client.sendMessage({ chatId: String(message.chat.id), text: response });
+  }
 
   async function handle(cq) {
     if (!cq || typeof cq !== 'object' || typeof cq.id !== 'string' || !cq.id || cq.id.length > 200 || typeof cq.data !== 'string' || cq.data.length > 64) return;
@@ -67,7 +66,10 @@ export function createTelegramRouter({ config, client, service, accounts, login 
   router.post('/webhook/:path', requestId, async (req, res) => {
     if (!same(req.params.path, config.webhookPath)) return res.sendStatus(404);
     if (!same(req.get('x-telegram-bot-api-secret-token') ?? '', config.webhookSecret)) throw apiError('UNAUTHENTICATED');
-    try { await handle(req.body?.callback_query); } catch (e) { console.error('[telegram] handler failed', e?.code ?? e?.name ?? 'INTERNAL'); }
+    try {
+      await handleStart(req.body?.message);
+      await handle(req.body?.callback_query);
+    } catch (e) { console.error('[telegram] handler failed', e?.code ?? e?.name ?? 'INTERNAL'); }
     res.sendStatus(200);
   });
 

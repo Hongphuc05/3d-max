@@ -9,7 +9,7 @@ import { createDriveRouter } from './drive/routes.js';
 import { createDriveCredentialStore, deriveDriveKeyEncryptionKey } from './drive/credentials.js';
 import { loadWorkerConfig } from './worker/config.js';
 import { createCatalogAdminRouter } from './catalog-admin/routes.js';
-import { requireAdmin } from './admin/access.js';
+import { requireAdmin, requireAdminOwner } from './admin/access.js';
 import { createCatalogEvents, createCatalogV1Router, createPreviewRouter } from './catalog-v1/routes.js';
 import { createDeviceRouter } from './devices/routes.js';
 import { loadDownloadConfig } from './downloads/config.js';
@@ -28,8 +28,10 @@ import { createTelegramClient } from './telegram/client.js';
 import { createTelegramNotifier } from './telegram/notifier.js';
 import { createTelegramRouter } from './telegram/routes.js';
 import { createTelegramAccountStore } from './telegram/accounts.js';
-import { createTelegramLoginService } from './telegram/login.js';
+import { createTelegramLinkService } from './telegram/linking.js';
 import { createTelegramAdminRouter } from './telegram/admin-routes.js';
+import { buildWebhookUrl } from './telegram/setup.js';
+import { createAdminUsersRouter } from './admin/users-routes.js';
 
 const publicLink = createPublicLinkFetcher();
 
@@ -58,10 +60,11 @@ const telegramConfig = loadTelegramConfig(process.env);
 if (telegramConfig.errors.length) throw new Error(`Invalid Telegram configuration: ${telegramConfig.errors.join(', ')}`);
 const telegramClient = telegramConfig.enabled ? createTelegramClient({ token: telegramConfig.botToken }) : null;
 const telegramAccounts = createTelegramAccountStore({ pool });
-const telegramLogin = telegramConfig.loginConfigured ? createTelegramLoginService({ pool, config: telegramConfig, jwtSecret: process.env.JWT_SECRET }) : null;
+const telegramLinking = telegramClient ? createTelegramLinkService({ pool }) : null;
 const orders = createOrderService({ pool });
-app.use('/api/admin/telegram', createTelegramAdminRouter({ config: telegramConfig, accounts: telegramAccounts, login: telegramLogin,
+app.use('/api/admin/telegram', createTelegramAdminRouter({ config: telegramConfig, accounts: telegramAccounts, linking: telegramLinking, client: telegramClient,
   guards: [requireAuth, requireAdmin], rateLimit: rateLimit({ limit: 30 }) }));
+app.use('/api/admin', createAdminUsersRouter({ pool, guards: [requireAuth, requireAdmin, requireAdminOwner], rateLimit: rateLimit({ limit: 30 }) }));
 // Admin xu ly don: gan TRUOC adminRouter (cung tien to /api/admin); plan §2.7: /api/admin/orders.
 app.use('/api/admin', createOrderAdminRouter({ service: orders, client: telegramClient, guards: [requireAuth, requireAdmin], rateLimit: rateLimit({ limit: 60 }) }));
 app.use('/api/admin', createDeviceAdminRouter({ pool, guards: [requireAuth, requireAdmin], rateLimit: rateLimit({ limit: 60 }) }));
@@ -80,7 +83,7 @@ app.use('/api/v1', createOrderRouter({ pool, service: orders, rateLimit: rateLim
   notifier: telegramClient ? createTelegramNotifier({ client: telegramClient, service: orders, ownerChatIds: telegramConfig.ownerChatIds,
     listRecipients: () => telegramAccounts.listRecipients(), accounts: telegramAccounts }) : null }));
 if (telegramClient) app.use('/api/telegram', rateLimit({ limit: 120 }), createTelegramRouter({ config: telegramConfig, client: telegramClient,
-  service: orders, accounts: telegramAccounts, login: telegramLogin }));
+  service: orders, accounts: telegramAccounts, linking: telegramLinking }));
 // v3 P4.2: phien tai model (D26: VPS tai ho tu link cong khai, luu ban sao tren dia). Cau hinh sai -> dung ngay, chi neu TEN bien.
 const downloadConfig = loadDownloadConfig(process.env);
 if (downloadConfig.errors.length) throw new Error(`Invalid download configuration: ${downloadConfig.errors.join(', ')}`);
@@ -104,7 +107,18 @@ if (process.argv[1] === import.meta.filename) {
   if (!telegramConfig.enabled) console.warn('Telegram disabled: set TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, TELEGRAM_WEBHOOK_PATH; orders can still be confirmed from the admin web.');
   const orderMaintenance = createOrderMaintenance({ service: orders, client: telegramClient });
   orderMaintenance.start();
-  const server = app.listen(port, process.env.HOST || '127.0.0.1', () => console.log(`store-api http://localhost:${port}`));
+  const server = app.listen(port, process.env.HOST || '127.0.0.1', () => {
+    console.log(`store-api http://localhost:${port}`);
+    // Keep Telegram subscribed to both order callbacks and /start deep-link messages after deployment.
+    if (telegramClient && process.env.TELEGRAM_WEBHOOK_BASE_URL) {
+      try {
+        const url = buildWebhookUrl(process.env.TELEGRAM_WEBHOOK_BASE_URL, telegramConfig.webhookPath);
+        telegramClient.setWebhook({ url, secretToken: telegramConfig.webhookSecret })
+          .then(() => console.log('[telegram] webhook subscriptions updated'))
+          .catch((e) => console.warn('[telegram] webhook setup failed:', e?.code ?? 'TELEGRAM_API'));
+      } catch { console.warn('[telegram] webhook setup skipped: invalid TELEGRAM_WEBHOOK_BASE_URL'); }
+    }
+  });
   const stop = () => { orderMaintenance.stop(); const eventsStopped = catalogEvents.stop(); server.close(async() => { await eventsStopped; await pool.end(); }); };
   process.once('SIGINT', stop);
   process.once('SIGTERM', stop);
