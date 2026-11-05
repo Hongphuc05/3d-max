@@ -13,6 +13,7 @@ export function createTelegramAdminRouter({ config, accounts, linking, client, g
   });
 
   router.post('/connections/authorize', ...pre, async (req, res) => {
+    if (!req.is('application/json')) throw apiError('INVALID_PARAMS');
     if (!config.enabled || !client || !linking) throw apiError('TELEGRAM_BOT_NOT_READY');
     if ((await accounts.listForAdmin(req.user.id)).length) throw apiError('TELEGRAM_ADMIN_ALREADY_CONNECTED');
     const bot = await client.getMe();
@@ -20,7 +21,7 @@ export function createTelegramAdminRouter({ config, accounts, linking, client, g
     const token = await linking.createAttempt(req.user.id);
     const url = new URL(`https://t.me/${bot.username}`);
     url.searchParams.set('start', token);
-    res.redirect(303, url.href);
+    res.json({ url: url.href });
   });
 
   router.delete('/connections/:id', ...pre, async (req, res) => {

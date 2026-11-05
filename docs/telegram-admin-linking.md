@@ -11,11 +11,11 @@
 ## Quản lí tài khoản admin
 
 - Admin hiện có đầu tiên được chọn làm **admin chủ quản** khi migration chạy; nếu chưa có admin thì tài khoản đầu tiên tạo bằng `create-admin.js` sẽ là chủ quản.
-- Chỉ admin chủ quản được tạo, khóa/mở khóa và đặt lại mật khẩu admin khác. Admin khác chỉ xử lý nghiệp vụ.
+- Chỉ admin chủ quản được tạo, khóa/mở khóa và đặt lại mật khẩu admin khác. Tên đăng nhập, họ tên, vai trò, trạng thái và ngày tạo hiển thị trong bảng quản lý. Admin khác chỉ xử lý nghiệp vụ.
 - Tài khoản mới phải đổi mật khẩu ở lần đăng nhập đầu. Khóa tài khoản sẽ thu hồi các phiên đăng nhập và dừng nhận thông báo Telegram.
 
 ## Cấu hình webhook
 
 Giữ các biến bot hiện có trong `/etc/3dsmood/store.env`. `TELEGRAM_WEBHOOK_BASE_URL` cần là origin HTTPS của website, ví dụ `https://3dsmood.io.vn`. Khi API khởi động, bot tự cập nhật webhook để nhận cả tin `/start` và callback nút duyệt đơn.
 
-Sau deploy, vào **Cài đặt → Kết nối Telegram bot** để liên kết. Muốn tạo hoặc khóa admin, dùng mục **Quản lý admin** của tài khoản chủ quản.
+Sau deploy, vào **Cài đặt → Kết nối Telegram bot** để liên kết. Admin chủ quản tạo hoặc khóa admin tại **Thông tin đăng nhập → Quản lý tài khoản**.

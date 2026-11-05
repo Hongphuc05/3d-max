@@ -5,11 +5,14 @@ import { adminError, dateTime, inputClass, panel, primary, ResourceState, second
 export default function AdminUsers() {
   const [version, setVersion] = useState(0);
   const [username, setUsername] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
   const [resetId, setResetId] = useState('');
   const [resetPassword, setResetPassword] = useState('');
   const [busyId, setBusyId] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [showDisabled, setShowDisabled] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const resource = useAdminResource(adminUsers, [version]);
@@ -17,8 +20,9 @@ export default function AdminUsers() {
   const create = async (event) => {
     event.preventDefault(); setBusy(true); setError(''); setNotice('');
     try {
-      const result = await adminCreateUser({ username: username.trim().toLowerCase(), password });
-      setUsername(''); setPassword(''); setNotice(`Tài khoản ${result.account.username} đã được tạo. Admin mới phải đổi mật khẩu ở lần đăng nhập đầu.`);
+      const result = await adminCreateUser({ username: username.trim().toLowerCase(), displayName: displayName.trim(), password });
+      setUsername(''); setDisplayName(''); setPassword(''); setShowCreate(false);
+      setNotice(`Tài khoản ${result.account.username} đã được tạo. Admin mới phải đổi mật khẩu ở lần đăng nhập đầu.`);
       setVersion((value) => value + 1);
     } catch (failure) { setError(adminError(failure)); }
     finally { setBusy(false); }
@@ -36,38 +40,64 @@ export default function AdminUsers() {
     finally { setBusyId(''); }
   };
 
-  return <section className="space-y-5">
-    <div><h2 className="text-xl font-bold">Quản lý admin</h2><p className="mt-1 text-sm text-mute">Admin chủ quản tạo, khóa/mở khóa và đặt lại mật khẩu cho các admin khác. Tài khoản mới phải đổi mật khẩu ở lần đăng nhập đầu.</p></div>
-    <form onSubmit={create} className={`${panel} space-y-4`}>
+  const accounts = (resource.data?.accounts ?? []).filter((account) => showDisabled || !account.disabledAt);
+
+  return <section className="space-y-5 border-t border-line pt-6" aria-labelledby="admin-users-title">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div><h2 id="admin-users-title" className="text-xl font-bold">Quản lý tài khoản</h2>
+        <p className="mt-1 text-sm text-mute">Tạo và quản lý các tài khoản admin. Admin mới phải đổi mật khẩu ở lần đăng nhập đầu.</p>
+      </div>
+      <button type="button" className={primary} onClick={() => { setShowCreate((value) => !value); setError(''); }}>
+        {showCreate ? 'Đóng biểu mẫu' : 'Tạo tài khoản mới'}
+      </button>
+    </div>
+
+    {showCreate && <form onSubmit={create} className={`${panel} space-y-4`}>
       <h3 className="text-base font-bold">Tạo tài khoản admin</h3>
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-3">
         <label className="space-y-1 text-sm"><span>Tên đăng nhập</span><input className={inputClass} value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="off" pattern="[a-z0-9][a-z0-9_.-]{2,63}" minLength={3} maxLength={64} required /></label>
+        <label className="space-y-1 text-sm"><span>Họ và tên</span><input className={inputClass} value={displayName} onChange={(event) => setDisplayName(event.target.value)} autoComplete="name" minLength={1} maxLength={120} required /></label>
         <label className="space-y-1 text-sm"><span>Mật khẩu ban đầu</span><input className={inputClass} type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" minLength={8} maxLength={128} required /></label>
       </div>
       <button className={primary} disabled={busy}>{busy ? 'Đang tạo…' : 'Tạo admin'}</button>
-    </form>
+    </form>}
 
     {error && <p role="alert" className="text-sm text-danger">{error}</p>}
     {notice && <p role="status" className="text-sm text-accent">{notice}</p>}
+    <label className="flex items-center gap-2 text-sm text-mute">
+      <input type="checkbox" checked={showDisabled} onChange={(event) => setShowDisabled(event.target.checked)} />
+      Hiện cả tài khoản đã khóa
+    </label>
     <ResourceState {...resource} retry={() => setVersion((value) => value + 1)} />
-    {resource.data && <section className={`${panel} space-y-3`} aria-label="Danh sách tài khoản admin">
-      <h3 className="text-base font-bold">Tài khoản admin ({resource.data.accounts.length})</h3>
-      <ul className="space-y-3">
-        {resource.data.accounts.map((account) => <li key={account.id} className="rounded-md border border-line bg-base p-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div><p className="font-semibold">{account.username}{account.isOwner && <span className="ml-2 rounded bg-accent/10 px-2 py-1 text-xs text-accent">Admin chủ quản</span>}</p>
-              <p className="mt-1 text-xs text-mute">{account.isOwner ? 'Không thể khóa hoặc đặt lại từ danh sách này' : account.disabledAt ? 'Đã khóa' : 'Đang hoạt động'} · Tạo {dateTime(account.createdAt)}{account.mustChangeCredentials ? ' · Chờ đổi mật khẩu' : ''}</p></div>
-            {!account.isOwner && <div className="flex flex-wrap gap-2">
-              <button type="button" className={secondary} disabled={busyId === account.id} onClick={() => manage(account, account.disabledAt ? 'enable' : 'disable')}>{account.disabledAt ? 'Mở khóa' : 'Khóa admin'}</button>
-              <button type="button" className={secondary} disabled={busyId === account.id} onClick={() => { setResetId(resetId === account.id ? '' : account.id); setResetPassword(''); }}>{resetId === account.id ? 'Đóng' : 'Đặt lại mật khẩu'}</button>
-            </div>}
-          </div>
-          {resetId === account.id && <form className="mt-3 flex flex-wrap gap-2" onSubmit={(event) => { event.preventDefault(); manage(account, 'reset_password', resetPassword); }}>
-            <input aria-label={`Mật khẩu mới cho ${account.username}`} className={`${inputClass} min-w-56 flex-1`} type="password" value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} autoComplete="new-password" minLength={8} maxLength={128} required />
-            <button className={primary} disabled={busyId === account.id}>{busyId === account.id ? 'Đang lưu…' : 'Lưu mật khẩu mới'}</button>
-          </form>}
-        </li>)}
-      </ul>
-    </section>}
+
+    {resource.data && <div className="overflow-x-auto rounded-lg border border-line bg-panel">
+      <table className="w-full min-w-[760px] border-collapse text-left text-sm" aria-label="Danh sách tài khoản admin">
+        <thead className="bg-raised text-xs uppercase tracking-wide text-mute"><tr>
+          <th scope="col" className="px-4 py-3">Tên tài khoản</th><th scope="col" className="px-4 py-3">Họ và tên</th><th scope="col" className="px-4 py-3">Vai trò</th>
+          <th scope="col" className="px-4 py-3">Trạng thái</th><th scope="col" className="px-4 py-3">Ngày tạo</th>
+          <th scope="col" className="px-4 py-3 text-right">Hành động</th>
+        </tr></thead>
+        <tbody className="divide-y divide-line">
+          {accounts.map((account) => <tr key={account.id}>
+            <td className="px-4 py-3 font-semibold">{account.username}</td>
+            <td className="px-4 py-3">{account.displayName || '—'}</td>
+            <td className="px-4 py-3"><span className="rounded-md border border-accent/30 px-2 py-1 text-xs text-accent">ADMIN</span>{account.isOwner && <span className="ml-2 text-xs text-mute">Chủ quản</span>}</td>
+            <td className={`px-4 py-3 ${account.disabledAt ? 'text-danger' : 'text-accent'}`}>{account.disabledAt ? 'Đã khóa' : account.mustChangeCredentials ? 'Chờ đổi mật khẩu' : 'Hoạt động'}</td>
+            <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-mute">{dateTime(account.createdAt)}</td>
+            <td className="px-4 py-3">
+              {account.isOwner ? <span className="block text-right text-xs text-mute">Tài khoản chủ quản</span> : <div className="flex justify-end gap-2">
+                <button type="button" className={secondary} disabled={busyId === account.id} onClick={() => manage(account, account.disabledAt ? 'enable' : 'disable')}>{account.disabledAt ? 'Mở khóa' : 'Khóa'}</button>
+                <button type="button" className={secondary} disabled={busyId === account.id} onClick={() => { setResetId(resetId === account.id ? '' : account.id); setResetPassword(''); }}>{resetId === account.id ? 'Đóng' : 'Đặt lại mật khẩu'}</button>
+              </div>}
+              {resetId === account.id && <form className="mt-3 flex min-w-64 justify-end gap-2" onSubmit={(event) => { event.preventDefault(); manage(account, 'reset_password', resetPassword); }}>
+                <input aria-label={`Mật khẩu mới cho ${account.username}`} className={`${inputClass} max-w-56`} type="password" value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} autoComplete="new-password" minLength={8} maxLength={128} required />
+                <button className={primary} disabled={busyId === account.id}>{busyId === account.id ? 'Đang lưu…' : 'Lưu'}</button>
+              </form>}
+            </td>
+          </tr>)}
+          {accounts.length === 0 && <tr><td colSpan="6" className="px-4 py-8 text-center text-mute">{resource.data.accounts.length ? 'Không có tài khoản nào trong bộ lọc này.' : 'Chưa có tài khoản admin.'}</td></tr>}
+        </tbody>
+      </table>
+    </div>}
   </section>;
 }

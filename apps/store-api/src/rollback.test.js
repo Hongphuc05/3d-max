@@ -51,7 +51,8 @@ test('029 (Telegram admin links) refuses rollback while account links exist, the
   await applyFile(migration);
   await applyFile('030_telegram_start_link.sql');
   await applyFile('031_admin_account_management.sql');
-  assert.equal((await applied())[0], '031_admin_account_management.sql');
+  await applyFile('032_admin_display_name.sql');
+  assert.equal((await applied())[0], '032_admin_display_name.sql');
 });
 
 test('030 (Telegram Start linking) refuses rollback while an admin link exists, then re-applies cleanly', { skip }, async () => {
@@ -66,15 +67,17 @@ test('030 (Telegram Start linking) refuses rollback while an admin link exists, 
   assert.equal((await applied())[0], '029_telegram_admin_links.sql');
   await applyFile('030_telegram_start_link.sql');
   await applyFile('031_admin_account_management.sql');
+  await applyFile('032_admin_display_name.sql');
 });
 
 test('031 (admin account management) adds owner and disable fields and rolls back cleanly', { skip }, async () => {
-  assert.equal((await applied())[0], '031_admin_account_management.sql');
+  await rollbackUntil('031_admin_account_management.sql');
   assert.ok((await tables()).includes('users'));
   await rollbackMigration(pool, '031_admin_account_management.sql');
   assert.equal((await applied())[0], '030_telegram_start_link.sql');
   await applyFile('031_admin_account_management.sql');
-  assert.equal((await applied())[0], '031_admin_account_management.sql');
+  await applyFile('032_admin_display_name.sql');
+  assert.equal((await applied())[0], '032_admin_display_name.sql');
 });
 
 test('028 (optional Drive project id) refuses rollback while a slot has no project id, then re-applies cleanly', { skip }, async () => {
@@ -91,7 +94,8 @@ test('028 (optional Drive project id) refuses rollback while a slot has no proje
   await applyFile('029_telegram_admin_links.sql');
   await applyFile('030_telegram_start_link.sql');
   await applyFile('031_admin_account_management.sql');
-  assert.equal((await applied())[0], '031_admin_account_management.sql');
+  await applyFile('032_admin_display_name.sql');
+  assert.equal((await applied())[0], '032_admin_display_name.sql');
 });
 
 test('027 (Drive API key slots) refuses rollback with saved credentials, then rolls back and re-applies when empty', { skip }, async () => {
@@ -111,8 +115,9 @@ test('027 (Drive API key slots) refuses rollback with saved credentials, then ro
   await applyFile('029_telegram_admin_links.sql');
   await applyFile('030_telegram_start_link.sql');
   await applyFile('031_admin_account_management.sql');
+  await applyFile('032_admin_display_name.sql');
   assert.ok((await tables()).includes('drive_api_key_slots'));
-  assert.equal((await applied())[0], '031_admin_account_management.sql');
+  assert.equal((await applied())[0], '032_admin_display_name.sql');
 });
 
 test('026 (archive snapshots) rolls back and re-applies; older rollback tests start from 025', { skip }, async () => {
@@ -134,6 +139,7 @@ test('026 (archive snapshots) rolls back and re-applies; older rollback tests st
   await applyFile('029_telegram_admin_links.sql');
   await applyFile('030_telegram_start_link.sql');
   await applyFile('031_admin_account_management.sql');
+  await applyFile('032_admin_display_name.sql');
 });
 
 test('025 (uploaded previews) rolls back cleanly when no upload exists, and refuses when one does', { skip }, async () => {

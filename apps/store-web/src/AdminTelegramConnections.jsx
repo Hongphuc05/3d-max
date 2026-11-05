@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { adminTelegramConnections, adminTelegramDisconnect } from './api.js';
+import { adminTelegramAuthorize, adminTelegramConnections, adminTelegramDisconnect } from './api.js';
 import { adminError, dateTime, panel, primary, ResourceState, secondary, useAdminResource } from './AdminShared.jsx';
 
 const resultMessages = {
@@ -10,6 +10,7 @@ const resultMessages = {
 function ConnectionPanel() {
   const [version, setVersion] = useState(0);
   const [busyId, setBusyId] = useState('');
+  const [connecting, setConnecting] = useState(false);
   const [actionError, setActionError] = useState('');
   const [notice, setNotice] = useState('');
   const resource = useAdminResource(adminTelegramConnections, [version]);
@@ -33,17 +34,37 @@ function ConnectionPanel() {
     finally { setBusyId(''); }
   };
 
+  const connect = async () => {
+    let popup;
+    try { popup = window.open('about:blank', '_blank'); }
+    catch { popup = null; }
+    if (!popup) {
+      setActionError('Trình duyệt đang chặn tab mới. Cho phép mở pop-up rồi bấm kết nối lại.');
+      return;
+    }
+    popup.opener = null;
+    setConnecting(true); setActionError(''); setNotice('');
+    try {
+      const result = await adminTelegramAuthorize();
+      const destination = new URL(result.url);
+      if (destination.origin !== 'https://t.me') throw new Error('TELEGRAM_BOT_NOT_READY');
+      popup.location.replace(destination.href);
+      setNotice('pending');
+    } catch (error) {
+      popup.close();
+      setActionError(adminError(error));
+    } finally { setConnecting(false); }
+  };
+
   const data = resource.data;
   return <section className={`${panel} space-y-4`} aria-labelledby="telegram-connections-title">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><h3 id="telegram-connections-title" className="text-base font-bold">Kết nối Telegram bot</h3>
         <p className="mt-1 max-w-3xl text-sm text-mute">Mỗi admin liên kết một tài khoản Telegram. Tài khoản đã liên kết nhận thông báo đơn mới và có thể xác nhận hoặc từ chối đơn ngay trong Telegram.</p>
       </div>
-      {!data?.accounts?.length && <form method="post" action="/api/admin/telegram/connections/authorize" target="_blank" rel="noopener noreferrer" onSubmit={() => setNotice('pending')}>
-        <button type="submit" className={primary} disabled={!data?.canConnect || Boolean(busyId)}>
+      {!data?.accounts?.length && <button type="button" className={primary} disabled={!data?.canConnect || connecting || Boolean(busyId)} onClick={connect}>
           Kết nối Telegram bot
-        </button>
-      </form>}
+        </button>}
     </div>
 
     {notice && resultMessages[notice] && <p role="status" className={`text-sm ${resultMessages[notice][1]}`}>{resultMessages[notice][0]}</p>}

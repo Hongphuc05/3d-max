@@ -76,6 +76,7 @@ export const adminOverview = (signal) => get('/admin/overview', null, signal);
 export const adminHealth = (signal) => get('/admin/health', null, signal);
 export const adminTelegramTest = () => request('POST', '/admin/health/telegram-test', { body: {} });
 export const adminTelegramConnections = (signal) => get('/admin/telegram/connections', null, signal);
+export const adminTelegramAuthorize = () => request('POST', '/admin/telegram/connections/authorize', { body: {} });
 export const adminTelegramDisconnect = (id) => request('DELETE', `/admin/telegram/connections/${encodeURIComponent(id)}`);
 export const adminUsers = (signal) => get('/admin/admins', null, signal);
 export const adminCreateUser = (body) => request('POST', '/admin/admins', { body });

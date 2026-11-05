@@ -30,6 +30,7 @@ const messages = {
   TELEGRAM_CONNECTION_NOT_FOUND: 'Không tìm thấy kết nối Telegram này.',
   ADMIN_OWNER_REQUIRED: 'Chỉ admin chủ quản mới được quản lí tài khoản admin.',
   ADMIN_USERNAME_INVALID: 'Tên đăng nhập cần 3–64 ký tự hợp lệ, viết thường.',
+  ADMIN_DISPLAY_NAME_INVALID: 'Họ và tên cần từ 1 đến 120 ký tự.',
   ADMIN_PASSWORD_TOO_SHORT: 'Mật khẩu cần ít nhất 8 ký tự.',
   ADMIN_PASSWORD_TOO_LONG: 'Mật khẩu tối đa 128 ký tự.',
   ADMIN_USERNAME_TAKEN: 'Tên đăng nhập này đã được sử dụng.',
