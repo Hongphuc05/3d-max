@@ -57,10 +57,12 @@ export const owns = (entitlements) => Boolean(entitlements?.allModels);
 
 /** Trang thai nut hanh dong cua mot model (thuan; component chi ve theo ket qua).
  * entitlements: undefined = dang tai, null = khong xac minh duoc, object = quyen cua thiet bi nay. "owned" = owns(entitlements, id). */
-export function actionState({ max, entitlements, owned, offline, job }) {
+export function actionState({ max, entitlements, owned, offline, job, downloaded }) {
   if (!max) return { kind: 'view', label: 'Trong plugin 3ds Max', disabled: true };
   if (job?.status === 'queued') return { kind: 'queued', label: 'Trong hàng đợi', disabled: true };
   if (job?.status === 'running') return { kind: 'running', label: 'Đang tải…', disabled: true };
+  // Da co tren o dia: import lai khong can mang va khong can xac minh quyen (license vinh vien, file da nam tren may khach).
+  if (downloaded) return job?.status === 'done' ? { kind: 'done', label: '✓ Đã import · Lại', disabled: false } : { kind: 'cached', label: '✓ Đã tải · Import', disabled: false };
   if (entitlements === undefined) return { kind: 'wait', label: 'Đang xác minh quyền…', disabled: true };
   if (entitlements === null) return { kind: 'wait', label: offline ? 'Cần Internet để xác minh quyền' : 'Chưa xác minh được quyền', disabled: true };
   if (!owned) return { kind: 'locked', label: '🔒 Cần license thư viện', disabled: true };

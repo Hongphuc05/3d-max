@@ -235,7 +235,8 @@ namespace MaxWebViewHost
                     StartUrl = PackagedAppRuntime.StartUrl;
                     ApiBase = configuration.ApiBaseUri.AbsoluteUri.TrimEnd('/');
                     _v3 = V3Library.Create(configuration, _deviceIdentity, MachineCode.Read(),
-                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "3dMood"));
+                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "3dMood"),
+                        Path.Combine(PlatformAgent.CacheRoot, "Models"));
                     _v3.HostEvent += PostHostEvent;
                     TrustedOrigins = PackagedAppRuntime.AppOrigin;
                 }
@@ -549,12 +550,19 @@ namespace MaxWebViewHost
                 if (!p.ContainsKey("modelId")) { PostError(id, "INVALID_PARAMS", "Thiếu mã model."); return; }
                 var assetId = (string)p["modelId"];
                 if (!await ValidateSelectedTargetAsync(id, selectedTarget).ConfigureAwait(false)) return;
+                // Downloaded before: import from this disk. No network, no download session, so it also works offline (D30).
+                // The catalog size tells a replaced zip (different size) from the stored one; the model is then downloaded again.
+                var cached = v3.Models.TryGet(assetId, ModelCacheService.SizeInCatalog(v3.GetCached()?.CatalogJson, assetId));
+                string entry = cached == null ? null : cached.EntryPath;
+                if (cached == null)
+                {
                 // A catalog ID is not necessarily a valid Windows directory name (e.g. CON).
-                // Use an independently generated directory under the agent's trusted cache root.
-                workDir = Path.Combine(PlatformAgent.CacheRoot, Guid.NewGuid().ToString("N"));
+                // Use an independently generated staging directory under the agent's trusted cache root.
+                workDir = v3.Models.NewStaging();
                 var extractDir = Path.Combine(workDir, "content");
                 Directory.CreateDirectory(extractDir);
                 var pkg = Path.Combine(workDir, "package.bin");
+                long packageSize = 0;
                 try
                 {
                     var progressClock = Stopwatch.StartNew();
@@ -567,7 +575,7 @@ namespace MaxWebViewHost
                         PostProgress(id, received, total);
                     };
                     var info = await v3.Downloader.DownloadAsync(assetId, pkg, token, progress).ConfigureAwait(false);
-                    fileName = "model." + info.FileType; entryFile = info.EntryFile;
+                    fileName = "model." + info.FileType; entryFile = info.EntryFile; packageSize = info.SizeBytes;
                     PostProgress(id, lastReceived, lastTotal);
                 }
                 catch (ApiException error)
@@ -591,7 +599,6 @@ namespace MaxWebViewHost
                 }
                 else files = ArchivePackage.Extract(pkg, extractDir, token, null).ToArray();
 
-                string entry = null;
                 if (!string.IsNullOrEmpty(entryFile))
                 {
                     var specified = Path.GetFullPath(Path.Combine(extractDir, entryFile.Replace('/', Path.DirectorySeparatorChar)));
@@ -604,6 +611,12 @@ namespace MaxWebViewHost
                     if (entry != null) break;
                 }
                 if (entry == null) { PostError(id, "ASSET_NO_IMPORTABLE_FILE", "Gói không có file .fbx/.obj/.max"); return; }
+                // Keep the extracted model for next time (staging -> atomic move). When it cannot be stored (older copy in use by an open scene)
+                // the import still runs from the staged files, which stay on disk because scene textures may refer to them.
+                if (File.Exists(pkg)) File.Delete(pkg);
+                var stored = v3.Models.Commit(assetId, workDir, Path.GetFullPath(entry).Substring(Path.GetFullPath(extractDir).Length).TrimStart('\\', '/'), packageSize);
+                if (stored != null) entry = stored.EntryPath;
+                }
                 // 4) giao cho adapter (MAXScript) chạy trên UI thread. Method này KHÔNG nằm trong allowlist
                 //    nên web không gọi trực tiếp được; đường dẫn do host tự tính.
                 token.ThrowIfCancellationRequested();

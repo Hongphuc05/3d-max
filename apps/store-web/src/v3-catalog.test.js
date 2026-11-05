@@ -75,6 +75,16 @@ test('action state: browser views only; queue states win; unknown rights never o
   assert.equal(actionState({ ...base, entitlements: { allModels: false }, owned: false, job: { status: 'failed' } }).kind, 'locked', 'a stale failed job never unlocks a library the device does not own');
 });
 
+test('action state: a model already on disk can be imported again whatever the rights/offline state; a queue state still wins', () => {
+  const base = { max: true, entitlements: null, owned: false, offline: true, job: undefined, downloaded: true };
+  assert.deepEqual(actionState(base), { kind: 'cached', label: '✓ Đã tải · Import', disabled: false });
+  assert.equal(actionState({ ...base, entitlements: { allModels: false } }).kind, 'cached', 'a revoked licence keeps what is already on this disk');
+  assert.equal(actionState({ ...base, job: { status: 'running' } }).kind, 'running');
+  assert.equal(actionState({ ...base, job: { status: 'done' } }).kind, 'done');
+  assert.equal(actionState({ ...base, max: false }).kind, 'view');
+  assert.equal(actionState({ ...base, downloaded: false }).kind, 'wait', 'not on disk + unknown rights: still no download');
+});
+
 test('a model whose category sits in a parent cycle still gets a finite ancestry; a model with only a large preview uses it for the thumbnail too', () => {
   const cyc = [{ id: 'a', parentId: 'b', name: 'A', fullPath: 'A' }, { id: 'b', parentId: 'a', name: 'B', fullPath: 'B' }];
   const { products } = buildCatalog({ catalog: { models: [{ id: id(300), name: 'Cyclic', categoryId: 'a', status: 'PUBLISHED' }] }, categories: cyc, manifest: { previews: [] } });

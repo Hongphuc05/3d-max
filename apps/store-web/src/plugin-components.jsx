@@ -3,7 +3,7 @@
 import { mb } from './api.js';
 import { Preview, rendererLabel } from './components.jsx';
 import { Icon } from './icons.jsx';
-import { enqueue, useJob } from './queue.js';
+import { enqueue, useDownloaded, useJob } from './queue.js';
 import { actionState, owns } from './v3-catalog.js';
 
 const styles = {
@@ -14,13 +14,14 @@ const styles = {
 
 export function ModelAction({ p, ctx, big }) {
   const job = useJob(p.slug);
-  const state = actionState({ max: ctx.max, entitlements: ctx.entitlements, owned: owns(ctx.entitlements), offline: ctx.offline, job });
+  const downloaded = useDownloaded().has(p.slug);
+  const state = actionState({ max: ctx.max, entitlements: ctx.entitlements, owned: owns(ctx.entitlements), offline: ctx.offline, job, downloaded });
   const size = `${styles.base} ${big ? 'py-3 text-sm' : 'py-1.5 text-xs'}`;
   const click = (e) => { e.stopPropagation(); enqueue(p); };
   if (state.kind === 'view') return <div className="font-mono text-xs text-mute">{state.label}</div>;
   if (state.disabled) return <button disabled className={`${size} ${styles.ghost} ${state.kind === 'running' ? 'animate-pulse text-accent' : ''}`}>{state.label}</button>;
   if (state.kind === 'failed') return <button onClick={click} className={`${size} border border-danger/50 text-danger hover:bg-danger/10`}>{state.label}</button>;
-  if (state.kind === 'done') return <button onClick={click} className={`${size} border border-accent/50 text-accent hover:bg-accent/10`}>{state.label}</button>;
+  if (state.kind === 'done' || state.kind === 'cached') return <button onClick={click} className={`${size} border border-accent/50 text-accent hover:bg-accent/10`}>{state.label}</button>;
   return <button onClick={click} className={`${size} ${styles.solid}`}>{big ? 'Download & import vào 3ds Max' : state.label}</button>;
 }
 

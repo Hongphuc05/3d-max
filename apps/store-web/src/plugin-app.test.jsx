@@ -7,12 +7,13 @@ const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/' });
 Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });
 const listeners = new Set(); const calls = [];
 let importOutcome = { ok: true };
+let hostDownloaded = []; // ids the host reports as already stored on this disk
 dom.window.chrome = { webview: {
   addEventListener: (_t, f) => listeners.add(f),
   postMessage({ id, method, params }) {
     calls.push({ method, params });
     const reply = (data) => setTimeout(() => listeners.forEach((f) => f({ data })), 5);
-    if (method === 'library.status') return reply({ id, ok: true, result: { machineCode: 'MAX-TESTCODE', offline: false } });
+    if (method === 'library.status') return reply({ id, ok: true, result: { machineCode: 'MAX-TESTCODE', offline: false, downloadedModelIds: hostDownloaded } });
     if (method === 'host.getInfo') return reply({ id, ok: true, result: { hostVersion: '3ds Max 2022' } });
     if (method === 'scene.getInfo') return reply({ id, ok: true, result: { objects: 1, renderer: 'Corona' } });
     if (method === 'asset.import') return reply(importOutcome.ok ? { id, ok: true, result: { imported: 1 } } : { id, ok: false, error: { code: 'NOT_ENTITLED', message: 'english' } });
@@ -117,7 +118,7 @@ test('Mua thư viện opens the order dialog; after the owner confirms, the card
 test('tab "Đã tải" lists the models imported in this session; it starts empty; unknown rights never list anything', async () => {
   server(); const root = await mount();
   await act(async () => { button('Đã tải').click(); await flush(); });
-  assert.equal(document.querySelectorAll('.group').length, 0); assert.match(text(), /Chưa import model nào/);
+  assert.equal(document.querySelectorAll('.group').length, 0); assert.match(text(), /Chưa tải model nào/);
   await act(async () => { button('Online').click(); await flush(); });
   await act(async () => { [...document.querySelectorAll('.group')][1].querySelectorAll('button')[2].click(); await flush(); });
   await act(flush); await act(flush);
@@ -128,6 +129,22 @@ test('tab "Đã tải" lists the models imported in this session; it starts empt
   await act(async () => { button('Đã tải').click(); await flush(); });
   assert.equal(document.querySelectorAll('.group').length, 0);
   await done(root2);
+});
+
+test('tab "Đã tải" reads what the host has on disk: after a restart it still lists the models, and they import again even with unknown rights (offline)', async () => {
+  server(); rights = null; hostDownloaded = [id(101)];
+  const root = await mount();
+  await act(async () => { button('Đã tải').click(); await flush(); });
+  assert.deepEqual(cards().map((c) => c.match(/Sofa One|Sofa Two|Bed One/)[0]), ['Sofa One']);
+  assert.match(cards()[0], /Đã tải · Import/);
+  const action = document.querySelector('.group').querySelectorAll('button')[2];
+  assert.equal(action.disabled, false);
+  const before = calls.filter((c) => c.method === 'asset.import').length;
+  await act(async () => { action.click(); await flush(); });
+  await act(flush); await act(flush);
+  assert.deepEqual(calls.filter((c) => c.method === 'asset.import').slice(before).map((c) => c.params), [{ modelId: id(101) }]);
+  await done(root);
+  hostDownloaded = [];
 });
 
 test('unknown rights: every card says it cannot verify instead of offering Download or Mua', async () => {

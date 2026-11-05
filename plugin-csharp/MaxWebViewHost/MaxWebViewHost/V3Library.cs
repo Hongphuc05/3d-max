@@ -25,6 +25,7 @@ namespace MaxWebViewHost
         public PreviewCacheService Previews { get; private set; }
         public CatalogUpdateWatcher Watcher { get; private set; }
         public BackendModelDownloader Downloader { get; private set; }
+        public ModelCacheService Models { get; private set; }
         public OrdersClient Orders { get; private set; }
         public bool Offline { get; private set; }
 
@@ -34,7 +35,9 @@ namespace MaxWebViewHost
         private V3Library() { }
 
         /// <param name="dataRoot">%LOCALAPPDATA%\3dMood — Catalog\ and Previews\ live below it.</param>
-        public static V3Library Create(PluginConfiguration configuration, IDeviceSigner signer, string machineCode, string dataRoot)
+        /// <param name="modelsRoot">Where downloaded models are kept. The plugin passes a folder below PlatformAgent.CacheRoot (the import pipe to
+        /// another Max only accepts paths there); null = dataRoot\Models.</param>
+        public static V3Library Create(PluginConfiguration configuration, IDeviceSigner signer, string machineCode, string dataRoot, string modelsRoot = null)
         {
             if (configuration == null || configuration.ApiBaseUri == null || signer == null) throw new ArgumentNullException();
             var library = new V3Library { MachineCode = machineCode };
@@ -48,6 +51,7 @@ namespace MaxWebViewHost
             library.Previews = new PreviewCacheService(Path.Combine(dataRoot, "Previews"), api);
             library.Watcher = new CatalogUpdateWatcher(library.Catalog, library.Previews, api, TimeSpan.FromMinutes(5));
             library.Downloader = new BackendModelDownloader(downloadApi, library.Session);
+            library.Models = new ModelCacheService(modelsRoot ?? Path.Combine(dataRoot, "Models"));
             library.Orders = new OrdersClient(api, library.Session);
             library.Watcher.Updated += c => library.Raise("library.updated", new Dictionary<string, object> { { "catalogVersion", c.CatalogVersion } });
             library.Watcher.OfflineChanged += offline => { library.Offline = offline; library.Raise("library.offline", new Dictionary<string, object> { { "offline", offline } }); };
@@ -121,6 +125,7 @@ namespace MaxWebViewHost
                 { "catalogVersion", cached == null ? (object)null : cached.CatalogVersion },
                 { "allModels", session != null && session.Entitlements.AllModels },
                 { "modelIds", session == null ? new string[0] : session.Entitlements.ModelIds },
+                { "downloadedModelIds", Models.ListDownloaded() }, // read from this disk: survives closing the panel and works offline
             };
         }
 

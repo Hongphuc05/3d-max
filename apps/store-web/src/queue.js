@@ -1,12 +1,22 @@
 // Hang doi Download (trong 3ds Max): moi san pham 1 job. Download = xin ticket -> host tai goi -> import vao scene.
-// ponytail: chay tuan tu 1 job/lan, chi luu trong RAM cua trang (F5 la mat), khong co % tien do vi native chua
-// gui event tien do. Nang cap: xem docs/download-queue-plan.md (native gui event, chay song song, huy, nho lich su).
+// ponytail: chay tuan tu 1 job/lan; job chi nam trong RAM cua trang (F5 la mat). Model DA TAI thi host luu tren o dia khach
+// (library.status.downloadedModelIds) -> tab "Đã tải" va nut Import doc tu day, khong tu job. Nang cap: docs/download-queue-plan.md.
 import { useSyncExternalStore } from 'react';
-import { importModel } from './integrations/3dsmax/bridge.js';
+import { getLibraryStatus, importModel } from './integrations/3dsmax/bridge.js';
 
 let jobs = []; // [{ slug, name, sizeMB, status: queued|running|done|failed, error, startedAt, finishedAt, result }]
+let downloaded = new Set(); // model id da nam tren o dia (host bao); them ngay khi job xong, khoi tao lai tu host moi lan mo panel
 const subs = new Set();
 const update = (next) => { jobs = next; subs.forEach((f) => f()); };
+const setDownloaded = (next) => { downloaded = next; subs.forEach((f) => f()); };
+
+/** Hoi host danh sach model da luu tren may nay. Ngoai 3ds Max hoac host loi: giu nguyen (rong). */
+export async function loadDownloaded() {
+  try {
+    const status = await getLibraryStatus();
+    setDownloaded(new Set(Array.isArray(status?.downloadedModelIds) ? status.downloadedModelIds : []));
+  } catch { /* offline/host chua san sang: khong co danh sach thi khong co model "da tai" */ }
+}
 const patch = (slug, p) => update(jobs.map((j) => (j.slug === slug ? { ...j, ...p } : j)));
 
 const MESSAGES = {
@@ -41,6 +51,7 @@ async function pump() {
     // v3: slug = UUID cua model. Native tu xin phien tai (dung 1 lan) tu backend; thu lai thi xin phien moi.
     const result = await importModel(job.slug, progress => patch(job.slug, {progress}));
     patch(job.slug, { status: 'done', finishedAt: Date.now(), result });
+    setDownloaded(new Set([...downloaded, job.slug]));
   } catch (e) {
     patch(job.slug, { status: 'failed', finishedAt: Date.now(), error: errorText(e) });
   } finally {
@@ -64,5 +75,6 @@ export function remove(slug) {
 }
 
 export const getJobs = () => jobs;
+export const useDownloaded = () => useSyncExternalStore((f) => (subs.add(f), () => subs.delete(f)), () => downloaded);
 export const useJobs = () => useSyncExternalStore((f) => (subs.add(f), () => subs.delete(f)), getJobs);
 export const useJob = (slug) => useJobs().find((j) => j.slug === slug);

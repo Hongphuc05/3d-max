@@ -321,3 +321,13 @@ Google Drive giới hạn tải ảnh nên **worker không còn tải ảnh từ
 | D29.6 | Migration 025: xóa các hàng `model_previews` nguồn `DRIVE_IMAGE` (file .webp trên đĩa giữ nguyên, dọn tay). Model cũ (stem NULL) được lần quét sau nhận lại theo `drive_file_id` |
 
 Số liệu kiểm trên dữ liệu thật: 320 ảnh cục bộ / 360 zip Drive → 318 khớp theo stem, danh mục trùng cả 318.
+
+## D30 (2026-11-05): model tải về lưu trên ổ đĩa khách, tab "Đã tải" đọc từ ổ đĩa
+
+| Mục | Quyết định |
+|---|---|
+| D30.1 | Tải xong, plugin giữ bản giải nén ở `%LOCALAPPDATA%\MaxWebViewHost\cache\Models\<modelId>\{content\, manifest.json}`. Nằm dưới `PlatformAgent.CacheRoot` vì pipe import sang Max khác chỉ nhận đường dẫn dưới thư mục đó. Dựng trong `.staging\` rồi chuyển vào bằng một lệnh rename (temp → verify → atomic move) |
+| D30.2 | Import lại model đã có: không xin phiên tải, không cần mạng, **không kiểm quyền** (license vĩnh viễn; file đã nằm trên máy khách, chặn offline không bảo vệ được gì). Quyền chỉ chặn **tải mới** |
+| D30.3 | Phát hiện zip bị thay: so `packageSize` trong manifest với `sizeBytes` của catalog; lệch thì tải lại. Hạn chế đã biết: zip mới trùng đúng dung lượng thì không phát hiện (hướng B: thêm phiên bản file vào catalog, chưa làm) |
+| D30.4 | Tab "Đã tải" và nhãn nút lấy từ `library.status.downloadedModelIds` (host quét ổ đĩa), không dùng danh sách job trong RAM. Không thêm method mới vào allowlist bridge |
+| D30.5 | Chưa làm: giới hạn dung lượng cache, nút xóa cache, dọn `.staging\` mồ côi sau khi crash, dọn các thư mục GUID cũ của bản 1.0.0 |

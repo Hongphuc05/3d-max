@@ -9,7 +9,7 @@ import { getLibraryStatus, isMaxHost } from './integrations/3dsmax/bridge.js';
 import { BuyLibrary, PluginCard, PluginDetail } from './plugin-components.jsx';
 import OrderDialog from './OrderDialog.jsx';
 import { Queue } from './Queue.jsx';
-import { useJobs } from './queue.js';
+import { loadDownloaded, useDownloaded, useJobs } from './queue.js';
 import { owns } from './v3-catalog.js';
 import { usePluginCatalog } from './usePluginCatalog.js';
 
@@ -52,13 +52,15 @@ export default function PluginApp({ orderPollMs }) {
   const [buying, setBuying] = useState(false);
   const { products, tree, state, error, offline, progress, entitlements } = usePluginCatalog(reloadKey);
   const jobs = useJobs();
+  const downloaded = useDownloaded();
   const max = isMaxHost();
+  useEffect(() => { if (max) loadDownloaded(); }, [max]);
   const ctx = useMemo(() => ({ max, entitlements, offline, onBuy: () => setBuying(true) }), [max, entitlements, offline]);
 
   // Chon model theo id (khong giu doi tuong cu): khi catalog tu lam moi, panel chi tiet cap nhat theo ban moi hoac dong neu model da bi go.
   const active = useMemo(() => products.find((p) => p.id === activeId) || null, [products, activeId]);
   const licensed = owns(entitlements);
-  const mine = useMemo(() => products.filter((p) => jobs.some((j) => j.slug === p.slug && j.status === 'done')), [products, jobs]); // tab "Đã tải": model da import trong phien nay
+  const mine = useMemo(() => products.filter((p) => downloaded.has(p.slug)), [products, downloaded]); // tab "Đã tải": model da luu tren o dia khach (host bao), con sau khi tat mo lai plugin
   const rows = useMemo(() => {
     const needle = text.trim().toLowerCase();
     return (tab === 'online' ? products : mine)
@@ -143,7 +145,7 @@ export default function PluginApp({ orderPollMs }) {
             )}
             {state === 'ready' && rows.length === 0 && (
               <p className="py-16 text-center font-mono text-xs text-mute">
-                {tab === 'done' ? 'Chưa import model nào trong phiên này.'
+                {tab === 'done' ? 'Chưa tải model nào về máy này.'
                   : products.length ? 'Không có model nào khớp bộ lọc.' : 'Catalog hiện đang trống.'}
               </p>
             )}

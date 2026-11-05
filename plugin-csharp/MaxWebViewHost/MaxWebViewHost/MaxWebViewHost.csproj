@@ -82,6 +82,7 @@
     <Compile Include="PreviewCacheService.cs" />
     <Compile Include="CatalogUpdateWatcher.cs" />
     <Compile Include="BackendModelDownloader.cs" />
+    <Compile Include="ModelCacheService.cs" />
     <Compile Include="V3Routes.cs" />
     <Compile Include="OrdersClient.cs" />
     <Compile Include="V3Library.cs" />
