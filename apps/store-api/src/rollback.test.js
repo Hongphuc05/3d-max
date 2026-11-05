@@ -23,7 +23,23 @@ after(async () => { if (dispose) await dispose(pool); });
 // (chi xoa dong ghi nhan; KHONG chay lai migrate() vi 024 khong chay lai duoc tren schema da don).
 const hideIrreversible = () => pool.query("delete from schema_migrations where name in ('023_drop_legacy_tables.sql', '024_library_license.sql')");
 
+test('026 (archive snapshots) rolls back and re-applies; older rollback tests start from 025', { skip }, async () => {
+  const migration = '026_drive_archive_snapshots.sql';
+  assert.equal((await applied())[0], migration);
+  await rollbackMigration(pool, migration);
+  let names = await tables();
+  assert.ok(!names.includes('drive_archive_snapshot_runs') && !names.includes('drive_archive_snapshot_files'));
+  assert.equal((await applied())[0], '025_upload_previews.sql');
+
+  await pool.query(readFileSync(new URL('../migrations/026_drive_archive_snapshots.sql', import.meta.url), 'utf8'));
+  await pool.query('insert into schema_migrations(name) values ($1)', [migration]);
+  names = await tables();
+  assert.ok(names.includes('drive_archive_snapshot_runs') && names.includes('drive_archive_snapshot_files'));
+  assert.equal((await applied())[0], migration);
+});
+
 test('025 (uploaded previews) rolls back cleanly when no upload exists, and refuses when one does', { skip }, async () => {
+  if ((await applied())[0] === '026_drive_archive_snapshots.sql') await rollbackMigration(pool, '026_drive_archive_snapshots.sql');
   assert.equal((await applied())[0], '025_upload_previews.sql');
   const cat = (await pool.query("insert into categories(name,slug,full_path) values('A','a','A') returning id")).rows[0].id;
   const m = (await pool.query("insert into models(category_id,name,status,stem) values($1,'x','PUBLISHED','x') returning id", [cat])).rows[0].id;
