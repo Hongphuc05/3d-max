@@ -3,7 +3,7 @@
 ## Build tren Windows
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File installer\build-mzp.ps1 -ApiBaseUrl https://3dsmood.io.vn -Version 1.3.1
+powershell -ExecutionPolicy Bypass -File installer\build-mzp.ps1 -ApiBaseUrl https://3dsmood.io.vn -Version 1.3.3
 ```
 
 Script build web + plugin trong thu muc output rieng, tao staging duoi `installer\release\out\mzp-stage-<id>\stage`, chay test giai nen ZIP/RAR/7z, sau do tao **`installer\release\out\3dsmood-library.mzp`**. Khong build EXE, khong kem folder cai thu cong hay file huong dan roi. Catalog/preview khong dong goi san; model duoc tai rieng trong plugin.
@@ -11,7 +11,7 @@ Script build web + plugin trong thu muc output rieng, tao staging duoi `installe
 Neu stage vua duoc build va kiem tra, chi dong goi lai bang:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File installer\release\make-release-mzp.ps1 -Version 1.3.1 -StageDirectory installer\release\out\mzp-stage-<id>\stage
+powershell -ExecutionPolicy Bypass -File installer\release\make-release-mzp.ps1 -Version 1.3.3 -StageDirectory installer\release\out\mzp-stage-<id>\stage
 powershell -ExecutionPolicy Bypass -File installer\tests\verify-mzp.ps1 -PackagePath installer\release\out\3dsmood-library.mzp
 ```
 

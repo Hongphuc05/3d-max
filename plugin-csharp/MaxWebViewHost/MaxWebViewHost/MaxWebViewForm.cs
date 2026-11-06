@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -30,6 +31,86 @@ namespace MaxWebViewHost
             object v;
             if (Params == null || !Params.TryGetValue(name, out v) || v == null) return null;
             return Convert.ToString(v, CultureInfo.InvariantCulture);
+        }
+    }
+
+    // Native owner-drawn selector keeps the connection strip dark, including its popup.
+    internal sealed class SceneTargetPicker : ComboBox
+    {
+        private static readonly Color Surface = Color.FromArgb(16, 16, 20);
+        private static readonly Color Accent = Color.FromArgb(106, 190, 164);
+
+        public SceneTargetPicker()
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList;
+            DrawMode = DrawMode.OwnerDrawFixed;
+            FlatStyle = FlatStyle.Flat;
+            BackColor = Surface;
+            ForeColor = Color.FromArgb(235, 235, 229);
+            Font = new Font("Consolas", 12);
+            ItemHeight = 38;
+            IntegralHeight = false;
+            MaxDropDownItems = 8;
+            DropDownHeight = 304;
+            AccessibleName = "Cửa sổ 3ds Max đích";
+            Cursor = Cursors.Hand;
+        }
+
+        protected override void OnSizeChanged(EventArgs e)
+        {
+            base.OnSizeChanged(e);
+            DropDownWidth = Math.Max(1, Width);
+        }
+
+        protected override void OnDrawItem(DrawItemEventArgs e)
+        {
+            if (e.Index < 0 || e.Index >= Items.Count) return;
+            var collapsed = (e.State & DrawItemState.ComboBoxEdit) != 0;
+            var selected = !collapsed && (e.State & DrawItemState.Selected) != 0;
+            var target = Items[e.Index] as ImportTarget;
+            var text = target == null ? Items[e.Index].ToString() : target.DisplayName
+                + (collapsed ? "" : " | PID " + target.ProcessId)
+                + (target.IsReady ? "" : " · chưa sẵn sàng");
+            using (var background = new SolidBrush(selected ? Color.FromArgb(28, 43, 41) : Surface))
+                e.Graphics.FillRectangle(background, e.Bounds);
+            var bounds = new Rectangle(e.Bounds.X + 15, e.Bounds.Y, Math.Max(0, e.Bounds.Width - (collapsed ? 45 : 25)), e.Bounds.Height);
+            TextRenderer.DrawText(e.Graphics, text, Font, bounds,
+                target != null && !target.IsReady ? Color.FromArgb(135, 135, 135) : selected ? Accent : ForeColor,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            base.WndProc(ref m);
+            var printing = m.Msg == 0x0317 || m.Msg == 0x0318; // WM_PRINT / WM_PRINTCLIENT
+            if ((m.Msg != 0x000F && !printing) || !IsHandleCreated) return;
+            using (var graphics = printing && m.WParam != IntPtr.Zero ? Graphics.FromHdc(m.WParam) : Graphics.FromHwnd(Handle))
+            using (var surface = new SolidBrush(Surface))
+            using (var border = new Pen(Accent))
+            using (var divider = new Pen(Color.FromArgb(44, 44, 48)))
+            using (var arrow = new SolidBrush(ForeColor))
+            {
+                graphics.FillRectangle(surface, ClientRectangle);
+                if (SelectedIndex >= 0)
+                    OnDrawItem(new DrawItemEventArgs(graphics, Font, ClientRectangle, SelectedIndex, DrawItemState.ComboBoxEdit));
+                var arrowWidth = Math.Max(28, (int)(32 * graphics.DpiX / 96));
+                var x = Width - arrowWidth;
+                graphics.FillRectangle(surface, x, 1, arrowWidth - 1, Height - 2);
+                graphics.DrawLine(divider, x, 1, x, Height - 2);
+                var cx = x + arrowWidth / 2;
+                var cy = Height / 2;
+                graphics.FillPolygon(arrow, new[] { new Point(cx - 5, cy - 2), new Point(cx + 5, cy - 2), new Point(cx, cy + 3) });
+                graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                using (var outline = new System.Drawing.Drawing2D.GraphicsPath())
+                {
+                    outline.AddArc(0, 0, 8, 8, 180, 90);
+                    outline.AddArc(Width - 9, 0, 8, 8, 270, 90);
+                    outline.AddArc(Width - 9, Height - 9, 8, 8, 0, 90);
+                    outline.AddArc(0, Height - 9, 8, 8, 90, 90);
+                    outline.CloseFigure();
+                    graphics.DrawPath(border, outline);
+                }
+            }
         }
     }
 
@@ -72,14 +153,22 @@ namespace MaxWebViewHost
 
         private readonly ImportTargetSelection _targetSelection = new ImportTargetSelection();
         private readonly ImportTarget _ownerProcess;
-        private readonly Label _ownerDisplay = new Label { Dock = DockStyle.Fill, AutoEllipsis = true, TextAlign = System.Drawing.ContentAlignment.MiddleLeft };
+        private readonly ComboBox _targetPicker = new SceneTargetPicker { Dock = DockStyle.Fill };
+        private readonly Button _focusMaxButton = new Button
+        {
+            Text = "Focus 3ds Max", Dock = DockStyle.Fill, FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(21, 21, 23), ForeColor = Color.FromArgb(225, 225, 222),
+            Font = new Font("Consolas", 12), Cursor = Cursors.Hand, Enabled = false
+        };
         private Task _targetRefreshTask = Task.CompletedTask;
         private readonly Func<ImportTarget[]> _discoverTargets;
         private readonly Func<ImportTarget, Task<ImportTarget>> _readTarget;
         private readonly Timer _focusTimer = new Timer { Interval = 1000 };
         private readonly Label _target = new Label
         {
-            Dock = DockStyle.Left, Width = 95, Text = "3ds Max:", TextAlign = System.Drawing.ContentAlignment.MiddleLeft, Padding = new Padding(6, 0, 0, 0)
+            Dock = DockStyle.Fill, Text = "Not connected", AutoEllipsis = true,
+            ForeColor = Color.FromArgb(221, 221, 215), Font = new Font("Consolas", 12),
+            TextAlign = ContentAlignment.MiddleLeft
         };
 
         private Uri[] _trustedOrigins;
@@ -105,12 +194,11 @@ namespace MaxWebViewHost
             Padding = new Padding(6, 0, 0, 0), BackColor = System.Drawing.Color.Firebrick,
             ForeColor = System.Drawing.Color.White, Visible = false
         };
-        private readonly Button _retryButton = new Button { Text = "Thử lại", Dock = DockStyle.Right, Width = 70 };
 
         /// <summary>Mọi method không phải "host.*" được đẩy ra đây cho MAXScript xử lý.</summary>
         public event EventHandler<SceneRequestEventArgs> SceneRequestReceived;
 
-        public MaxWebViewForm() : this(DiscoverOwnerProcess, PlatformAgent.ReadSceneTargetAsync) { }
+        public MaxWebViewForm() : this(ImportTargetDiscovery.Discover, PlatformAgent.ReadSceneTargetAsync) { }
 
         internal MaxWebViewForm(Func<ImportTarget[]> discoverTargets, Func<ImportTarget, Task<ImportTarget>> readTarget, ImportTarget ownerProcess = null)
         {
@@ -122,11 +210,44 @@ namespace MaxWebViewHost
             Width = 1100;
             Height = 800;
 
-            var toolbar = new Panel { Dock = DockStyle.Top, Height = 28 };
-            _retryButton.Click += async (s, e) => { if (UsePackagedApp) await LoadPackagedAppAsync(); else Navigate(StartUrl); };
-            toolbar.Controls.Add(_ownerDisplay);
-            toolbar.Controls.Add(_target);
-            toolbar.Controls.Add(_retryButton);
+            var toolbar = new TableLayoutPanel
+            {
+                Name = "ConnectionToolbar", Dock = DockStyle.Top, Height = 64, ColumnCount = 3, RowCount = 1,
+                BackColor = Color.FromArgb(22, 22, 24), Padding = new Padding(12, 9, 12, 9)
+            };
+            toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 37));
+            toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 63));
+            toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 172));
+            toolbar.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            _target.Margin = new Padding(0, 0, 12, 0);
+            _targetPicker.Margin = new Padding(0, 0, 12, 0);
+            _focusMaxButton.Margin = Padding.Empty;
+            _focusMaxButton.FlatAppearance.BorderColor = Color.FromArgb(55, 55, 59);
+            _focusMaxButton.FlatAppearance.MouseOverBackColor = Color.FromArgb(35, 41, 39);
+            _focusMaxButton.Click += (s, e) =>
+            {
+                if (!ImportTargetDiscovery.Focus(_targetSelection.Current))
+                {
+                    _status.Text = "Không thể focus Max đã chọn. Kiểm tra cửa sổ Max còn mở và cùng mức quyền Windows.";
+                    _status.Visible = true;
+                }
+                else _status.Visible = false;
+            };
+            toolbar.Controls.Add(_target, 0, 0);
+            toolbar.Controls.Add(_targetPicker, 1, 0);
+            toolbar.Controls.Add(_focusMaxButton, 2, 0);
+            toolbar.SizeChanged += (s, e) => LayoutConnectionToolbar(toolbar);
+            LayoutConnectionToolbar(toolbar);
+            _targetPicker.DropDown += (s, e) =>
+            {
+                _targetPicker.DropDownWidth = Math.Max(1, _targetPicker.Width);
+                RefreshTargets();
+            };
+            _targetPicker.SelectionChangeCommitted += (s, e) =>
+            {
+                _targetSelection.Select(_targetPicker.SelectedItem as ImportTarget);
+                UpdateOwnerDisplay(_targetSelection.Current);
+            };
             _focusTimer.Tick += (s, e) => RefreshTargets();
             _focusTimer.Start();
             FormClosed += (s, e) => _focusTimer.Dispose();
@@ -151,16 +272,54 @@ namespace MaxWebViewHost
                 return new ImportTarget(process.Id, process.StartTime.ToUniversalTime().Ticks, process.MainWindowTitle);
         }
 
-        private static ImportTarget[] DiscoverOwnerProcess() { return new[] { CurrentOwnerProcess() }; }
+        private void LayoutConnectionToolbar(TableLayoutPanel toolbar)
+        {
+            var compact = toolbar.ClientSize.Width < 800;
+            if (toolbar.Tag is bool && (bool)toolbar.Tag == compact) return;
+            toolbar.Tag = compact;
+            toolbar.SuspendLayout();
+            try
+            {
+                toolbar.SetColumnSpan(_target, 1);
+                toolbar.SetColumnSpan(_targetPicker, 1);
+                toolbar.RowCount = compact ? 2 : 1;
+                toolbar.RowStyles.Clear();
+                if (compact) toolbar.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+                toolbar.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+                toolbar.ColumnStyles[0].Width = compact ? 0 : 37;
+                toolbar.ColumnStyles[1].Width = compact ? 100 : 63;
+                toolbar.ColumnStyles[2].Width = compact ? 150 : 172;
+                toolbar.SetCellPosition(_target, new TableLayoutPanelCellPosition(0, 0));
+                toolbar.SetCellPosition(_targetPicker, new TableLayoutPanelCellPosition(compact ? 0 : 1, compact ? 1 : 0));
+                toolbar.SetCellPosition(_focusMaxButton, new TableLayoutPanelCellPosition(2, compact ? 1 : 0));
+                toolbar.SetColumnSpan(_target, compact ? 3 : 1);
+                toolbar.SetColumnSpan(_targetPicker, compact ? 2 : 1);
+                toolbar.Height = compact ? 96 : 64;
+            }
+            finally { toolbar.ResumeLayout(true); }
+        }
 
         private void UpdateOwnerDisplay(ImportTarget current)
         {
-            var ready = current != null && current.IsReady;
-            var scene = ready ? (string.IsNullOrEmpty(current.ScenePath) ? "Untitled" : Path.GetFileName(current.ScenePath)) : "3ds Max";
-            Text = "3dsmood | " + scene + " | Max PID " + _ownerProcess.ProcessId;
-            _ownerDisplay.Text = ready
-                ? (string.IsNullOrEmpty(current.ScenePath) ? "Untitled" : current.ScenePath) + " | PID " + _ownerProcess.ProcessId
-                : "Đang chờ scene của Max PID " + _ownerProcess.ProcessId;
+            Text = current == null ? "3dsmood | Chọn cửa sổ 3ds Max" : "3dsmood | "
+                + (string.IsNullOrEmpty(current.ScenePath) ? "Untitled" : Path.GetFileName(current.ScenePath))
+                + " | Max PID " + current.ProcessId;
+            _target.Text = current == null ? "Not connected · Chọn 3ds Max" : "Connected: " + current.DisplayName;
+            _focusMaxButton.Enabled = current != null;
+            // Polling must not move items underneath an open dropdown.
+            if (_targetPicker.DroppedDown) return;
+            _targetPicker.BeginUpdate();
+            try
+            {
+                _targetPicker.Items.Clear();
+                _targetPicker.Items.Add(_targetSelection.SelectedUnavailable
+                    ? "Scene đã chọn không còn sẵn sàng — chọn lại cửa sổ Max"
+                    : "Chọn cửa sổ 3ds Max để import…");
+                var targets = _targetSelection.Targets;
+                foreach (var target in targets) _targetPicker.Items.Add(target);
+                _targetPicker.SelectedIndex = current == null ? 0 : Array.FindIndex(targets, t => t.IsSameScene(current)) + 1;
+            }
+            finally { _targetPicker.EndUpdate(); }
         }
 
         private async void RefreshTargets()
@@ -180,22 +339,23 @@ namespace MaxWebViewHost
 
         private ImportTarget[] ObserveTargetProcessPresence()
         {
-            var discovered = _discoverTargets().Where(target => _ownerProcess.IsSameProcess(target)).ToArray();
+            var discovered = _discoverTargets();
             var known = _targetSelection.Targets;
-            // Only the owning process participates, including while a metadata refresh is pending.
-            // Reuse its last known document only until fresh owner metadata is available.
+            // Remove closed processes immediately, even while metadata work is pending.
             _targetSelection.Refresh(discovered.Select(process => known.FirstOrDefault(t => t.IsSameProcess(process)) ?? process));
             return discovered;
         }
 
         internal async Task<ImportTarget> CaptureImportTargetAsync()
         {
+            // Capture at the click, before yielding to metadata work or another dropdown choice.
+            var snapshot = _targetSelection.Current;
             try
             {
                 await RefreshTargetsAsync();
                 if (IsDisposed || Disposing) return null;
                 ObserveTargetProcessPresence();
-                return _targetSelection.Current;
+                return _targetSelection.Targets.FirstOrDefault(target => target.IsSameScene(snapshot));
             }
             catch (Exception ex)
             {
@@ -211,12 +371,11 @@ namespace MaxWebViewHost
             {
                 var resolved = await Task.WhenAll(discovered.Select(ReadAvailableTargetAsync));
                 if (IsDisposed || Disposing) return;
-                _targetSelection.Refresh(resolved);
-                // The owner process is immutable; follow its current document between separate imports.
-                _targetSelection.Select(resolved.FirstOrDefault(target => _ownerProcess.IsSameProcess(target) && target.IsReady));
+                var present = _discoverTargets();
+                _targetSelection.Refresh(resolved.Where(target => present.Any(process => process.IsSameProcess(target))));
                 UpdateOwnerDisplay(_targetSelection.Current);
             }
-            catch (Exception ex) { Debug.WriteLine("[targets] owner refresh: " + ex.GetType().Name); }
+            catch (Exception ex) { Debug.WriteLine("[targets] refresh: " + ex.GetType().Name); }
         }
 
         private async Task<ImportTarget> ReadAvailableTargetAsync(ImportTarget target)
@@ -224,9 +383,9 @@ namespace MaxWebViewHost
             try
             {
                 var resolved = await _readTarget(target).ConfigureAwait(false);
-                if (_ownerProcess.IsSameProcess(resolved)) return resolved;
+                if (target.IsSameProcess(resolved)) return resolved;
             }
-            catch (Exception ex) { Debug.WriteLine("[targets] owner unavailable: " + ex.GetType().Name); }
+            catch (Exception ex) { Debug.WriteLine("[targets] agent unavailable: " + ex.GetType().Name); }
             return new ImportTarget(target.ProcessId, target.StartedTicks, target.SceneTitle);
         }
 
@@ -473,7 +632,7 @@ namespace MaxWebViewHost
                 if (IsDisposed || Disposing || !_requestDocuments.ContainsKey(id)) return;
                 if (target == null)
                 {
-                    PostError(id, "TARGET_UNAVAILABLE", "Scene của cửa sổ 3ds Max này chưa sẵn sàng. Thử lại sau.");
+                    PostError(id, "TARGET_UNAVAILABLE", "Hãy chọn cửa sổ 3ds Max sẵn sàng trong danh sách phía trên để import.");
                     return;
                 }
                 var p = paramsObj as Dictionary<string, object> ?? new Dictionary<string, object>();
@@ -606,18 +765,15 @@ namespace MaxWebViewHost
             try
             {
                 if (_v3 == null) { PostError(id, "LIBRARY_NOT_CONFIGURED", "Thư viện chưa sẵn sàng."); return; }
-                if (selectedTarget == null || !_ownerProcess.IsSameProcess(selectedTarget) || selectedTarget.ProcessId != Process.GetCurrentProcess().Id)
+                if (selectedTarget == null)
                 {
-                    PostError(id, "TARGET_OWNER_MISMATCH", "Plugin chỉ import vào cửa sổ 3ds Max đã mở plugin này.");
+                    PostError(id, "TARGET_UNAVAILABLE", "Hãy chọn cửa sổ 3ds Max để import.");
                     return;
                 }
                 var assetId = (string)p["modelId"];
                 var entry = _v3.LocalEntry(assetId, p.ContainsKey("optionId") ? (string)p["optionId"] : null);
                 if (!await ValidateSelectedTargetAsync(id, selectedTarget).ConfigureAwait(false)) return;
-                var args = new Dictionary<string, object> { { "path", entry }, { "assetId", assetId },
-                    { "expectedScenePath", selectedTarget.ScenePath }, { "expectedDocumentToken", selectedTarget.DocumentToken } };
-                // Dispatch to this form's MAXScript adapter only. Never route an import over another Max's pipe.
-                BeginInvoke(new Action(() => Dispatch(id, "asset.importFile", args)));
+                await DispatchImportToTargetAsync(id, entry, assetId, selectedTarget).ConfigureAwait(false);
             }
             catch (ApiException e) { PostError(id, e.Code, e.Message); }
             catch (Exception ex)
@@ -625,6 +781,40 @@ namespace MaxWebViewHost
                 Debug.WriteLine("[asset.import] " + ex.GetType().Name);
                 PostError(id, "ASSET_IMPORT_FAILED", ex is InvalidDataException ? ex.Message : "Import thất bại. Kiểm tra file model và scene đã chọn.");
             }
+        }
+
+        internal async Task DispatchImportToTargetAsync(string id, string entry, string assetId, ImportTarget target)
+        {
+            if (_ownerProcess.IsSameProcess(target))
+            {
+                var args = new Dictionary<string, object> { { "path", entry }, { "assetId", assetId },
+                    { "expectedScenePath", target.ScenePath }, { "expectedDocumentToken", target.DocumentToken } };
+                BeginInvoke(new Action(() => Dispatch(id, "asset.importFile", args)));
+                return;
+            }
+            // Keep this snapshot even if the dropdown changes while the import runs.
+            string envelope;
+            try
+            {
+                envelope = await PlatformAgent.SendImportAsync(target.ProcessId, Guid.NewGuid().ToString("N"), entry,
+                    target.StartedTicks, target.ScenePath, target.DocumentToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is IOException || ex is TimeoutException)
+            {
+                PostError(id, "TARGET_UNAVAILABLE", "Max đã chọn không phản hồi. Kiểm tra cửa sổ Max đích trước khi thử import lại.");
+                return;
+            }
+            var json = new JavaScriptSerializer();
+            var reply = json.Deserialize<Dictionary<string, object>>(envelope);
+            object ok, result, error;
+            if (reply != null && reply.TryGetValue("ok", out ok) && Equals(ok, true) && reply.TryGetValue("result", out result))
+                PostResultJson(id, json.Serialize(result));
+            else if (reply != null && reply.TryGetValue("error", out error) && error is Dictionary<string, object>)
+            {
+                var details = (Dictionary<string, object>)error;
+                PostError(id, details["code"] as string, details["message"] as string);
+            }
+            else PostError(id, "ASSET_IMPORT_FAILED", "Max đích trả về phản hồi không hợp lệ.");
         }
 
         internal static bool IsArchiveDependencyFailure(Exception error)
@@ -639,15 +829,15 @@ namespace MaxWebViewHost
 
         private async Task<bool> ValidateSelectedTargetAsync(string id, ImportTarget selected)
         {
-            if (selected == null || !_ownerProcess.IsSameProcess(selected))
+            if (selected == null || !selected.IsReady)
             {
-                PostError(id, "TARGET_OWNER_MISMATCH", "Plugin chỉ import vào cửa sổ 3ds Max đã mở plugin này.");
+                PostError(id, "TARGET_UNAVAILABLE", "Hãy chọn cửa sổ 3ds Max để import.");
                 return false;
             }
             try
             {
                 var current = await _readTarget(selected).ConfigureAwait(false);
-                if (_ownerProcess.IsSameProcess(current) && selected.IsSameScene(current)) return true;
+                if (selected.IsSameScene(current)) return true;
                 PostError(id, "TARGET_SCENE_CHANGED", "Scene đã chọn đã đóng hoặc đổi file. Chọn scene và thử lại.");
             }
             catch (Exception ex)
@@ -702,7 +892,7 @@ namespace MaxWebViewHost
                     {
                         { "host", "3dsmax" },
                         { "processId", _ownerProcess.ProcessId },
-                        { "importTarget", "owner" },
+                        { "importTarget", "selected" },
                         { "hostVersion", HostVersion },
                         { "plugin", "MaxWebViewHost" },
                         { "pluginVersion", GetType().Assembly.GetName().Version.ToString() },

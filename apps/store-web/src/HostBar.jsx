@@ -40,15 +40,15 @@ export function HostBar({ reloadKey, onRefresh, apiStatus }) {
   );
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line bg-panel px-3">
+    <header className="flex h-16 shrink-0 items-center gap-4 border-b border-line bg-panel px-4">
       <div className="flex shrink-0 items-center gap-2">
-        <span className="grid size-7 place-items-center rounded-md bg-accent text-accent-ink"><Icon name="cube" /></span>
+        <span className="grid size-9 place-items-center rounded-lg bg-accent text-accent-ink"><Icon name="cube" /></span>
         <div className="leading-tight">
-          <div className="text-sm font-bold">3dsmood</div>
-          <div className="font-mono text-[10px] tracking-widest text-accent">MODEL LIBRARY</div>
+          <div className="text-xl font-bold">3dsmood</div>
+          <div className="font-mono text-[11px] tracking-widest text-accent">ONLINE MODEL LIBRARY</div>
         </div>
       </div>
-      <div className="min-w-0 flex-1 truncate font-mono text-xs">{status}</div>
+      <div className="min-w-0 flex-1 truncate font-mono text-xs">{host?.info?.importTarget === 'selected' ? null : status}</div>
       {api && <Badge ok={api === 'ok'}>{api === 'ok' ? 'ONLINE' : api === 'db' ? 'DB LỖI' : 'OFFLINE'}</Badge>}
       <button onClick={onRefresh} title="Làm mới" className="rounded-md border border-line p-1.5 text-mute hover:bg-raised hover:text-fg">
         <Icon name="refresh" />

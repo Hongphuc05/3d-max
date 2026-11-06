@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipes;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
@@ -90,7 +91,7 @@ internal static class WebViewTransportTests
                     await web.CoreWebView2.ExecuteScriptAsync("window.__responses={};chrome.webview.addEventListener('message',e=>window.__responses[e.data.id]=e.data);");
                     var ownerReply = await Request(web, "owner-info", "host.getInfo", new { });
                     var ownerInfo = (Dictionary<string, object>)ownerReply["result"];
-                    Assert(Convert.ToInt32(ownerInfo["processId"]) == System.Diagnostics.Process.GetCurrentProcess().Id && (string)ownerInfo["importTarget"] == "owner", "actual bridge reports this process as the immutable import owner");
+                    Assert(Convert.ToInt32(ownerInfo["processId"]) == System.Diagnostics.Process.GetCurrentProcess().Id && (string)ownerInfo["importTarget"] == "selected", "actual bridge reports selectable import targets and the hosting process");
                     var info = await Request(web, "identity", "device.getIdentity", new { });
                     Assert((bool)info["ok"], "device.getIdentity crosses actual WebView2 message channel");
                     var result = (Dictionary<string, object>)info["result"];
@@ -165,7 +166,13 @@ internal static class WebViewTransportTests
         {
             if (args.Method == "scene.targetInfo")
                 agent.PostResultJson(args.Id, Json.Serialize(new { scenePath = @"D:\First\Same.max", documentToken, objectCount = 3, selectedCount = 1 }));
-            else dispatches++;
+            else
+            {
+                dispatches++;
+                Assert(args.Method == "asset.importFile" && args.Param("expectedDocumentToken") == documentToken
+                    && args.Param("expectedScenePath") == @"D:\First\Same.max", "remote import reaches the agent with captured scene identity");
+                agent.PostResultJson(args.Id, "{\"imported\":true}");
+            }
         };
         var pid = System.Diagnostics.Process.GetCurrentProcess().Id;
         var started = System.Diagnostics.Process.GetCurrentProcess().StartTime.ToUniversalTime().Ticks;
@@ -189,59 +196,84 @@ internal static class WebViewTransportTests
         var info = infoTask.GetAwaiter().GetResult();
         Assert(info.ScenePath == @"D:\First\Same.max" && info.DocumentToken == documentToken,
             "actual private agent metadata returns full file path and document generation from the UI adapter");
+        Directory.CreateDirectory(PlatformAgent.CacheRoot);
+        var fixture = Path.Combine(PlatformAgent.CacheRoot, "target-test-" + Guid.NewGuid().ToString("N") + ".obj");
+        File.WriteAllText(fixture, "v 0 0 0");
+        try
+        {
+            using (var hub = new MaxWebViewForm(() => new[] { info }, t => Task.FromResult(t), new ImportTarget(999, 999, "Hub")))
+            {
+                var localDispatches = 0;
+                hub.SceneRequestReceived += (s, e) => localDispatches++;
+                Pump(hub.DispatchImportToTargetAsync("remote-import", fixture, "model", info).ContinueWith(t => { t.GetAwaiter().GetResult(); return true; }));
+                Assert(dispatches == 1 && localDispatches == 0, "selecting another Max routes import through its pipe without dispatching to the hub scene");
+            }
+        }
+        finally { File.Delete(fixture); }
     }
 
     private static void ImportWaitsForPendingTargetRefresh()
     {
-        var first = new ImportTarget(101, 1001, "Same.max", @"D:\First\Same.max", new string('a', 32));
-        var second = new ImportTarget(202, 2002, "Same.max", @"D:\Second\Same.max", new string('b', 32));
-        var visible = new[] { first, second };
+        var first = new ImportTarget(101, 1001, "max_a.max", @"D:\First\max_a.max", new string('a', 32));
+        var second = new ImportTarget(202, 2002, "max_b.max", @"D:\Second\max_b.max", new string('b', 32));
+        var third = new ImportTarget(303, 3003, "max_c.max", @"D:\Third\max_c.max", new string('c', 32));
+        var visible = new[] { first, second, third };
         var pending = new TaskCompletionSource<ImportTarget>();
         var block = false;
         var resolutions = 0;
-        var currentFirst = first;
-        var invalidMetadata = false;
+        var wrongMetadata = false;
         using (var form = new MaxWebViewForm(() => visible, target =>
         {
-            Assert(target.IsSameProcess(first), "first plugin never reads another Max process");
             resolutions++;
-            return block ? pending.Task : Task.FromResult(invalidMetadata ? second : currentFirst);
+            return block && target.IsSameProcess(third) ? pending.Task
+                : Task.FromResult(wrongMetadata ? first : Array.Find(visible, item => item.IsSameProcess(target)));
         }, first))
-        using (var other = new MaxWebViewForm(() => visible, target =>
         {
-            Assert(target.IsSameProcess(second), "second plugin never reads the first Max process");
-            return Task.FromResult(second);
-        }, second))
-        {
-            Assert(Pump(form.CaptureImportTargetAsync()).ProcessId == 101, "first panel is bound to the Max that opened it even with two Max windows");
-            Assert(Pump(other.CaptureImportTargetAsync()).ProcessId == 202, "second panel independently follows its own Max");
-            Assert(form.Text.Contains("101") && other.Text.Contains("202") && form.Text != other.Text, "same-named scenes have distinguishable plugin titles using owner PID");
-            Assert(form.Text.Contains("Same.max"), "panel title includes the current scene filename");
-            foreach (Control control in form.Controls)
-                if (control is Panel) foreach (Control child in control.Controls)
-                    Assert(!(child is ComboBox), "owner-bound panel exposes no selector for another Max");
+            Assert(Pump(form.CaptureImportTargetAsync()) == null, "three Max windows require an explicit target choice");
+            var picker = (ComboBox)typeof(MaxWebViewForm).GetField("_targetPicker", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(form);
+            Assert(picker.Items.Count == 4, "dropdown lists all three Max windows and a placeholder");
+            picker.SelectedItem = third;
+            typeof(ComboBox).GetMethod("OnSelectionChangeCommitted", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(picker, new object[] { EventArgs.Empty });
+            Assert(Pump(form.CaptureImportTargetAsync()).IsSameScene(third) && form.Text.Contains("303"), "choosing max_c updates import destination and plugin title");
             block = true;
+            var before = resolutions;
             var timerRefresh = form.RefreshTargetsAsync();
-            visible = new[] { second, first, new ImportTarget(303, 3003, "Foreign.max") };
+            visible = new[] { third, second, first };
             var importing = form.CaptureImportTargetAsync();
-            Assert(!importing.IsCompleted, "import awaits an in-flight owner metadata refresh");
-            pending.SetResult(first);
-            Assert(Pump(importing).ProcessId == 101, "opening or focusing another Max never changes the import owner");
-            Assert(resolutions == 2 && timerRefresh.IsCompleted, "concurrent owner refresh callers share pending metadata work");
+            Assert(!importing.IsCompleted, "import awaits pending metadata refresh");
+            picker.SelectedItem = Array.Find(picker.Items.Cast<object>().OfType<ImportTarget>().ToArray(), target => target.IsSameScene(second));
+            typeof(ComboBox).GetMethod("OnSelectionChangeCommitted", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(picker, new object[] { EventArgs.Empty });
+            pending.SetResult(third);
+            Assert(Pump(importing).IsSameScene(third), "dropdown changes during metadata refresh cannot reroute an import captured for max_c");
+            Assert(resolutions == before + 3 && timerRefresh.IsCompleted, "concurrent refresh callers share one metadata query per process");
             block = false;
-            currentFirst = new ImportTarget(101, 1001, "Bedroom.max", @"D:\First\Bedroom.max", new string('c', 32));
-            var nextScene = Pump(form.CaptureImportTargetAsync());
-            Assert(nextScene.IsSameScene(currentFirst) && form.Text.Contains("Bedroom.max"), "opening a new scene in the owning Max updates the panel automatically");
+            Assert(Pump(form.CaptureImportTargetAsync()).IsSameScene(second), "next import uses the new explicit selection");
+            picker.SelectedItem = Array.Find(picker.Items.Cast<object>().OfType<ImportTarget>().ToArray(), target => target.IsSameScene(third));
+            typeof(ComboBox).GetMethod("OnSelectionChangeCommitted", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(picker, new object[] { EventArgs.Empty });
+            Assert(Pump(form.CaptureImportTargetAsync()).IsSameScene(third), "reordering or focusing another Max preserves selected max_c");
             var validate = typeof(MaxWebViewForm).GetMethod("ValidateSelectedTargetAsync", BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert(!Pump((Task<bool>)validate.Invoke(form, new object[] { "old-scene", first })), "an in-flight import captured before a document change is rejected");
-            var beforeForeign = resolutions;
-            Assert(!Pump((Task<bool>)validate.Invoke(form, new object[] { "foreign", second })) && resolutions == beforeForeign, "foreign-process import validation fails before reading or dispatching to that process");
-            visible = new[] { second };
-            Assert(Pump(form.CaptureImportTargetAsync()) == null, "missing owner never falls back to the remaining Max");
-            visible = new[] { new ImportTarget(101, 9999, first.SceneTitle, first.ScenePath, first.DocumentToken), second };
-            Assert(Pump(form.CaptureImportTargetAsync()) == null, "reused owner PID with a different process start cannot inherit the panel");
-            visible = new[] { first, second }; invalidMetadata = true;
-            Assert(Pump(form.CaptureImportTargetAsync()) == null, "metadata for another process cannot redirect the owner-bound panel");
+            Assert(Pump((Task<bool>)validate.Invoke(form, new object[] { "remote-scene", third })), "selected non-owner scene passes validation");
+            visible = new[] { first, second, new ImportTarget(303, 3003, "new.max", @"D:\Third\new.max", new string('d', 32)) };
+            Assert(Pump(form.CaptureImportTargetAsync()) == null, "changing the selected document requires a fresh explicit choice");
+            Assert(!Pump((Task<bool>)validate.Invoke(form, new object[] { "old-scene", third })), "an in-flight import is rejected after scene changes");
+            visible = new[] { first, second };
+            Assert(Pump(form.CaptureImportTargetAsync()) == null, "closed target never falls back to hub or another Max");
+            visible = new[] { first, second, new ImportTarget(303, 9999, third.SceneTitle, third.ScenePath, third.DocumentToken) };
+            Assert(Pump(form.CaptureImportTargetAsync()) == null, "reused PID cannot inherit the selected process");
+            visible = new[] { first, second, third }; wrongMetadata = true;
+            Assert(Pump(form.CaptureImportTargetAsync()) == null, "metadata for another process cannot redirect the selected target");
+            var toolbar = (TableLayoutPanel)form.Controls.Find("ConnectionToolbar", false)[0];
+            foreach (var width in new[] { 1100, 600, 420, 1100 })
+            {
+                form.ClientSize = new System.Drawing.Size(width, 700);
+                form.PerformLayout();
+                toolbar.PerformLayout();
+                Assert(picker.DropDownWidth == picker.Width && picker.Right <= toolbar.ClientSize.Width
+                    && toolbar.Controls.Cast<Control>().All(control => control.Right <= toolbar.ClientSize.Width
+                        && control.Bottom <= toolbar.ClientSize.Height),
+                    "connection controls and popup stay within resized window width " + width);
+            }
+            Assert(toolbar.Height == 64 && toolbar.RowCount == 1, "widening restores the single-row connection toolbar");
         }
     }
 

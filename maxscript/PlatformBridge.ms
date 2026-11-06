@@ -128,6 +128,93 @@ fn pbSceneScriptsProtected = (
     ) catch (false)
 )
 
+fn pbCollectTextureFile file result = (appendIfUnique result file)
+
+fn pbTextureOwners value result = (
+    if value == undefined or (findItem result value) != 0 do return result
+    if result.count >= 20000 do throw "Material graph exceeds texture inspection limit."
+    append result value
+    local count = try (getNumSubMtls value) catch (0)
+    for i = 1 to count do pbTextureOwners (getSubMtl value i) result
+    count = try (getNumSubTexmaps value) catch (0)
+    for i = 1 to count do pbTextureOwners (getSubTexmap value i) result
+    -- Some renderer maps and modifiers expose texture slots only as properties.
+    for prop in (getPropNames value) do (
+        local child = try (getProperty value prop) catch (undefined)
+        if (isKindOf child TextureMap) or (isKindOf child Material) do pbTextureOwners child result
+        if isKindOf child Array do for item in child where (isKindOf item TextureMap) or (isKindOf item Material) do pbTextureOwners item result
+    )
+    result
+)
+
+-- Work on copied incoming materials only. Asset enumeration covers renderer maps registered
+-- with Max; filename properties also cover maps that do not register their assets correctly.
+fn pbRelinkImportedTextures nodes resolver = (
+    local originals = #(), copies = #(), owners = #(), warnings = #(), resolved = #()
+    for node in nodes do (
+        if node.material != undefined do (
+            local mat = node.material
+            local index = findItem originals mat
+            if index == 0 do (
+                append originals mat
+                append copies (copy mat)
+                index = originals.count
+            )
+            node.material = copies[index]
+            pbTextureOwners node.material owners
+        )
+        pbTextureOwners node.baseObject owners
+        for modifier in node.modifiers do pbTextureOwners modifier owners
+    )
+    -- Process leaf maps first so material-level asset enumeration sees their final paths.
+    for index = owners.count to 1 by -1 do (
+        local owner = owners[index]
+        local assets = #(), filenameProps = #()
+        try (enumerateFiles owner pbCollectTextureFile assets #localOnly) catch ()
+        for prop in (getPropNames owner) do (
+            local key = toLower (prop as string)
+            if (findString key "filename") != undefined or key == "file" or key == "hdrimapname" do (
+                local value = try (getProperty owner prop) catch (undefined)
+                if ((isKindOf value String) and value != "") or (isKindOf value Array) do (
+                    if isKindOf value String then appendIfUnique assets value
+                    else for item in value where (isKindOf item String) and item != "" do appendIfUnique assets item
+                    append filenameProps #(prop, value)
+                )
+            )
+        )
+        for oldPath in assets where oldPath != "" do (
+            local fullPath = resolver.Resolve oldPath
+            if fullPath == "" then (
+                appendIfUnique warnings (resolver.LastStatus + ": " + oldPath)
+            ) else (
+                local changed = false
+                for pair in filenameProps do (
+                    try (
+                        if pair[2] == oldPath do (
+                            setProperty owner pair[1] fullPath
+                            if (getProperty owner pair[1]) == fullPath do changed = true
+                        )
+                        if (isKindOf pair[2] Array) and (findItem pair[2] oldPath) > 0 do (
+                            local replacement = copy (getProperty owner pair[1])
+                            for i = 1 to replacement.count where replacement[i] == oldPath do replacement[i] = fullPath
+                            setProperty owner pair[1] replacement
+                            if (findItem (getProperty owner pair[1]) fullPath) > 0 do changed = true
+                        )
+                    ) catch ()
+                )
+                -- Covers asset-backed renderer parameters without conventional filename properties.
+                try (if ATSOps.RetargetAssets &owner oldPath fullPath do changed = true) catch ()
+                if oldPath == fullPath do changed = true
+                if changed then (
+                    appendIfUnique resolved fullPath
+                    try (owner.reload()) catch ()
+                ) else appendIfUnique warnings ("cannot_retarget: " + oldPath)
+            )
+        )
+    )
+    #(resolved.count, warnings)
+)
+
 fn pbHandleImportFile id args sink = (
     -- Runs on Max's UI thread immediately before merge; no document switch can slip between
     -- this guard and mergeMAXFile/importFile through another queued UI request.
@@ -143,6 +230,9 @@ fn pbHandleImportFile id args sink = (
         return undefined
     )
 
+    -- Resolve against the protected downloaded-model index, never a path supplied by web UI.
+    local resolver = dotNetObject "MaxWebViewHost.TexturePathResolver" p
+
     local startX = pbNextX()
     local before = for o in objects collect o
     local ext = toLower (getFilenameType p)
@@ -153,7 +243,7 @@ fn pbHandleImportFile id args sink = (
 
     -- #noPrompt: không hiện dialog options (dùng setting FBX/OBJ gần nhất)
     local ok = case ext of (
-        ".max": mergeMAXFile p #select #mergeDups #useMergedMtlDups
+        ".max": mergeMAXFile p #select #mergeDups #renameMtlDups
         default: importFile p #noPrompt
     )
 
@@ -161,6 +251,17 @@ fn pbHandleImportFile id args sink = (
     if added.count == 0 do (
         sink.PostError id "MAX_OPERATION_FAILED" "Import xong nhưng scene không có object mới"
         return undefined
+    )
+
+    local textureReport = pbRelinkImportedTextures added resolver
+    if textureReport[2].count > 0 do (
+        local notice = "Da import model, nhung mot so texture chua noi duoc duong dan:\n"
+        for i = 1 to textureReport[2].count do (
+            format "[3dsmood texture] %\n" textureReport[2][i]
+            if i <= 12 do notice += "\n" + textureReport[2][i]
+        )
+        if textureReport[2].count > 12 do notice += "\n... Xem MAXScript Listener de biet day du."
+        messageBox notice title:"3dsmood - Texture"
     )
 
     -- dời cụm object mới sang mép phải scene cũ để không chồng lên nhau
@@ -172,7 +273,8 @@ fn pbHandleImportFile id args sink = (
     forceCompleteRedraw()
 
     sink.PostResultJson id \
-        ("{\"imported\":" + (added.count as string) + ",\"file\":" + (pbJsonStr (filenameFromPath p)) + "}")
+        ("{\"imported\":" + (added.count as string) + ",\"file\":" + (pbJsonStr (filenameFromPath p)) +
+        ",\"texturesResolved\":" + (textureReport[1] as string) + ",\"textureWarnings\":" + (textureReport[2].count as string) + "}")
 )
 
 -- ---------- router ----------

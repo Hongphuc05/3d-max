@@ -353,3 +353,6 @@ Triển khai theo ba phần tách biệt: native/kho model, web/Settings–Đã 
 ## D33 — Tên hiển thị plugin là 3dsmood (2026-11-05)
 
 Tên hiển thị thống nhất là 3dsmood: cửa sổ native (vẫn kèm scene/PID), header giao diện, toolbar/tooltip, Category trong Customize User Interface, thông báo cài/loader và metadata sản phẩm. Giữ macroScript OpenPlatformPanel và internalCategory Platform để bảo toàn định danh action trong CUI/menu cũ; các đường dẫn runtime, model và dữ liệu thiết bị không đổi. Installer cập nhật các bản macro tự sinh cũ đã biết nếu có. Bản MZP đổi tên là v1.3.1; cần kiểm tra hiển thị thực tế sau khi khởi động lại Max.
+## D34 — Một panel chọn nhiều cửa sổ Max (2026-11-06)
+
+Theo yêu cầu mới, thay hành vi owner-bound của D32: dropdown native liệt kê các Max đang mở, tên scene/đường dẫn/PID và trạng thái agent. Lựa chọn rõ ràng giữ nguyên qua polling/focus; không tự chuyển sang cửa sổ khác khi đích đóng hoặc đổi document. Import chụp PID + thời điểm khởi chạy + đường dẫn + document token; Max sở hữu panel dùng adapter local, Max khác nhận qua named pipe giới hạn cùng Windows user. Agent phía đích kiểm process identity và MAXScript kiểm document ngay trước merge. Mỗi Max cần agent Startup cùng phiên bản, không cần panel riêng. Đóng Max chứa panel vẫn đóng panel. Không thay luồng tải/chọn mẫu/license.

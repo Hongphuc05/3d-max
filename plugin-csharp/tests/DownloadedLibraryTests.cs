@@ -194,8 +194,13 @@ class DownloadedLibraryTests
             server.Offline = true;
             var entry = library.LocalEntry(Model);
             Check(File.Exists(entry) && server.Calls == calls, "local import resolves directly without any network calls");
+            Check(store.RootForEntry(entry) == Path.GetFullPath(model.directory), "texture lookup uses the indexed model root rather than the FBX parent folder");
+            Check(new TexturePathResolver(store.RootForEntry(entry), entry).Resolve("map.jpg") == Path.Combine(model.directory, "textures", "map.jpg"), "downloaded texture becomes an absolute local path without network access");
+            try { store.RootForEntry(Path.Combine(model.directory, "textures", "map.jpg")); throw new Exception("Expected unindexed entry rejection"); }
+            catch (InvalidDataException) { Check(true, "a texture path cannot masquerade as an indexed import entry"); }
             store.SetDownloadDirectory(second);
             Check(store.DownloadDirectory == Path.GetFullPath(second) && library.LocalEntry(Model) == entry, "changing root preserves old indexed model and texture paths");
+            Check(store.RootForEntry(entry) == Path.GetFullPath(model.directory), "changing the default download folder preserves old texture lookup roots");
         }
         var restored = new DownloadedLibrary(state, first);
         Check(restored.List().Length == 1 && restored.DownloadDirectory == Path.GetFullPath(second), "download list and chosen root survive process restart");

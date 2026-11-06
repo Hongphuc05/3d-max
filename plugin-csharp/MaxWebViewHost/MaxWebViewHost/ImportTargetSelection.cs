@@ -15,6 +15,15 @@ namespace MaxWebViewHost
         public string ScenePath { get; private set; }
         public string DocumentToken { get; private set; }
         public bool IsReady { get { return !string.IsNullOrEmpty(DocumentToken); } }
+        public string DisplayName
+        {
+            get
+            {
+                var scene = !string.IsNullOrEmpty(ScenePath) ? System.IO.Path.GetFileNameWithoutExtension(ScenePath)
+                    : IsReady ? "Untitled" : SceneTitle.Replace(" - Autodesk ", " | ");
+                return scene + (scene.IndexOf("3ds Max", StringComparison.OrdinalIgnoreCase) >= 0 ? "" : " | 3ds Max 2022");
+            }
+        }
         public ImportTarget(int processId, long startedTicks, string sceneTitle)
             : this(processId, startedTicks, sceneTitle, null, null) { }
         public ImportTarget(int processId, long startedTicks, string sceneTitle, string scenePath, string documentToken)
@@ -68,6 +77,37 @@ namespace MaxWebViewHost
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowText(IntPtr window, StringBuilder text, int maximum);
         [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
         [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr window, uint command);
+        [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr window);
+        [DllImport("user32.dll")] private static extern bool ShowWindowAsync(IntPtr window, int command);
+        [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr window);
+
+        public static bool Focus(ImportTarget target)
+        {
+            if (target == null || !target.IsReady) return false;
+            try
+            {
+                using (var process = Process.GetProcessById(target.ProcessId))
+                    if (process.HasExited || process.StartTime.ToUniversalTime().Ticks != target.StartedTicks
+                        || !string.Equals(process.ProcessName, "3dsmax", StringComparison.OrdinalIgnoreCase)) return false;
+                var frame = IntPtr.Zero;
+                EnumWindows((window, unused) =>
+                {
+                    uint pid; GetWindowThreadProcessId(window, out pid);
+                    if (pid != target.ProcessId || !IsWindowVisible(window) || GetWindow(window, 4) != IntPtr.Zero) return true;
+                    var title = new StringBuilder(1024);
+                    GetWindowText(window, title, title.Capacity);
+                    if (title.ToString().IndexOf("Autodesk 3ds Max", StringComparison.OrdinalIgnoreCase) < 0) return true;
+                    frame = window;
+                    return false;
+                }, IntPtr.Zero);
+                if (frame == IntPtr.Zero) return false;
+                if (IsIconic(frame)) ShowWindowAsync(frame, 9); // SW_RESTORE, preserve maximized windows otherwise.
+                return SetForegroundWindow(frame);
+            }
+            catch (ArgumentException) { return false; }
+            catch (InvalidOperationException) { return false; }
+            catch (System.ComponentModel.Win32Exception) { return false; }
+        }
 
         public static ImportTarget[] Discover()
         {

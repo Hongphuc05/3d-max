@@ -275,5 +275,113 @@ namespace MaxWebViewHost
                 return m.importOptions.Any(o => ValidOption(m, o, out entry) && string.Equals(entry, full, StringComparison.OrdinalIgnoreCase));
             }));
         }
+
+        internal string RootForEntry(string path)
+        {
+            var full = Path.GetFullPath(path);
+            return Locked(s => {
+                foreach (var model in s.models)
+                {
+                    string entry;
+                    if (model.importOptions == null
+                        ? ValidEntry(model, out entry) && string.Equals(entry, full, StringComparison.OrdinalIgnoreCase)
+                        : model.importOptions.Any(option => ValidOption(model, option, out entry) && string.Equals(entry, full, StringComparison.OrdinalIgnoreCase)))
+                        return Path.GetFullPath(model.directory);
+                }
+                throw new InvalidDataException("File import không thuộc model đã tải.");
+            });
+        }
+    }
+
+    /// <summary>Per-import, bounded lookup in the selected model package; usable from MAXScript in any target Max.</summary>
+    public sealed class TexturePathResolver
+    {
+        private readonly string root;
+        private readonly string entryDirectory;
+        private readonly Dictionary<string, List<string>> names = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, string> files = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        public string LastStatus { get; private set; }
+
+        public TexturePathResolver(string entryPath) : this(new DownloadedLibrary().RootForEntry(entryPath), entryPath) { }
+
+        internal TexturePathResolver(string directory, string entryPath, int maximumEntries = 20000)
+        {
+            root = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+            var entry = Path.GetFullPath(entryPath);
+            if (!entry.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("Import entry escapes package.");
+            entryDirectory = Path.GetDirectoryName(entry);
+            var pending = new Stack<string>(); pending.Push(directory);
+            var count = 0;
+            while (pending.Count > 0)
+            {
+                var current = pending.Pop();
+                DownloadedLibrary.RejectReparse(current);
+                foreach (var item in Directory.EnumerateFileSystemEntries(current))
+                {
+                    if (++count > maximumEntries) throw new InvalidDataException("Gói model vượt giới hạn kiểm tra texture.");
+                    DownloadedLibrary.RejectReparse(item);
+                    if (Directory.Exists(item)) { pending.Push(item); continue; }
+                    var full = Path.GetFullPath(item);
+                    files.Add(full.Substring(root.Length), full);
+                    var name = Path.GetFileName(full);
+                    List<string> candidates;
+                    if (!names.TryGetValue(name, out candidates)) names.Add(name, candidates = new List<string>());
+                    candidates.Add(full);
+                }
+            }
+        }
+
+        public string Resolve(string reference)
+        {
+            LastStatus = "missing";
+            if (string.IsNullOrWhiteSpace(reference)) return "";
+            var value = reference.Trim().Trim('"').Replace('/', '\\');
+            try
+            {
+                if (!Path.IsPathRooted(value))
+                {
+                    foreach (var baseDirectory in new[] { entryDirectory, root })
+                    {
+                        var candidate = Path.GetFullPath(Path.Combine(baseDirectory, value));
+                        string found;
+                        if (candidate.StartsWith(root, StringComparison.OrdinalIgnoreCase)
+                            && files.TryGetValue(candidate.Substring(root.Length), out found)) return Found(found);
+                    }
+                }
+                else if (value.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                {
+                    string found;
+                    if (files.TryGetValue(value.Substring(root.Length), out found)) return Found(found);
+                }
+                List<string> candidates;
+                if (names.TryGetValue(Path.GetFileName(value), out candidates))
+                {
+                    // Preserve the longest useful directory suffix from author-machine paths.
+                    var parts = value.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
+                    for (var length = parts.Length; length >= 2; length--)
+                    {
+                        var suffix = "\\" + string.Join("\\", parts.Skip(parts.Length - length));
+                        var matches = candidates.Where(path => path.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)).ToArray();
+                        if (matches.Length == 1) return Found(matches[0]);
+                        if (matches.Length > 1) { LastStatus = "ambiguous"; return ""; }
+                    }
+                    if (candidates.Count == 1) return Found(candidates[0]);
+                    LastStatus = "ambiguous"; return "";
+                }
+                // Keep a valid, explicitly referenced local external asset; never probe UNC shares.
+                if (Path.IsPathRooted(value) && !value.StartsWith("\\\\", StringComparison.Ordinal)
+                    && value.Length > 2 && value[1] == ':' && File.Exists(value)) return Found(value);
+            }
+            catch (Exception e) when (e is ArgumentException || e is NotSupportedException || e is IOException || e is UnauthorizedAccessException) { }
+            return "";
+        }
+
+        private string Found(string path)
+        {
+            DownloadedLibrary.RejectReparse(path);
+            if (!File.Exists(path)) { LastStatus = "missing"; return ""; }
+            LastStatus = "resolved";
+            return Path.GetFullPath(path);
+        }
     }
 }

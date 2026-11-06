@@ -13,6 +13,9 @@ internal static class ImportTargetSelectionTests
     {
         var first = new ImportTarget(101, 1001, "Living.max - Autodesk 3ds Max 2022", @"D:\Scenes\Living.max", new string('a', 32));
         var second = new ImportTarget(202, 2002, "Kitchen.max - Autodesk 3ds Max 2022", @"D:\Scenes\Kitchen.max", new string('b', 32));
+        Assert(!ImportTargetDiscovery.Focus(null), "focus without a selected scene does not activate any window");
+        Assert(!ImportTargetDiscovery.Focus(new ImportTarget(System.Diagnostics.Process.GetCurrentProcess().Id, 1,
+            "stale", "", new string('a', 32))), "focus rejects a reused or stale process identity before touching windows");
         var selection = new ImportTargetSelection();
         selection.Refresh(new[] { first, second });
         Assert(selection.Current == null, "multiple scenes require an explicit client choice");
