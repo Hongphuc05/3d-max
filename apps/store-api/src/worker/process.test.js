@@ -142,6 +142,67 @@ test('D29: running again changes nothing — new=0, updated=0, version unchanged
   assert.equal(media(), 0);
 });
 
+test('moving categories under 3DMODELS preserves source/model/file/category IDs and excludes scenes', { skip }, async () => {
+  const furniture = folder('Furniture', ROOT);
+  await addPair(furniture.id, 'chair');
+  await work((await enqueue()).id);
+  const query = `select m.id, m.category_id, m.primary_file_id, f.id as file_id, f.drive_file_id, f.source_id
+    from models m join model_files f on f.model_id=m.id order by m.id`;
+  const before = (await pool.query(query)).rows;
+  const models = folder('3DMODELS', ROOT), scenes = folder('3DSCENES', ROOT);
+  furniture.parents = [models.id];
+  await addPair(scenes.id, 'room');
+  await pool.query("update drive_sources set root_folder_name='3DSMOOD' where id=$1", [sourceId]);
+  const { latestArchiveSnapshot } = await import('./archive-snapshot.js');
+  assert.equal(await latestArchiveSnapshot(pool, sourceId), null, 'old wider snapshot cannot be reused for incremental reconciliation');
+  const j = await work((await enqueue()).id);
+  assert.equal(j.status, 'COMPLETED');
+  assert.equal(j.new_count, 0);
+  assert.deepEqual((await pool.query(query)).rows, before);
+  assert.equal((await pool.query("select count(*)::int n from categories where full_path like '3DMODELS%' or full_path like '3DSCENES%'")).rows[0].n, 0);
+  assert.equal((await latestArchiveSnapshot(pool, sourceId)).id, j.id);
+  const { queueModelScopeRefresh } = await import('./model-scope.js');
+  assert.equal(await queueModelScopeRefresh(pool), 0, 'a scoped successful full scan does not schedule another refresh');
+  assert.equal(media(), 0, 'reorganization downloads no archives or images');
+  const calls = fake.state.requests.length;
+  const incremental = await q.enqueueJob(pool, { sourceId, mode: 'INCREMENTAL' });
+  assert.equal((await work(incremental.id)).status, 'COMPLETED');
+  assert.equal(fake.state.requests.length, calls, 'incremental uses the scoped snapshot without calling Drive again');
+  assert.deepEqual((await pool.query(query)).rows, before);
+});
+
+test('scope refresh queues one FULL attempt, defers to active jobs and never recreates sources', { skip }, async () => {
+  const { queueModelScopeRefresh } = await import('./model-scope.js');
+  await pool.query("update drive_sources set root_folder_name='3DSMOOD' where id=$1", [sourceId]);
+  const active = await enqueue();
+  assert.equal(await queueModelScopeRefresh(pool), 0);
+  await pool.query("update drive_sync_jobs set status='CANCELLED',finished_at=now() where id=$1", [active.id]);
+  assert.equal((await Promise.all([queueModelScopeRefresh(pool), queueModelScopeRefresh(pool)])).reduce((sum, value) => sum + value, 0), 1);
+  assert.equal(await queueModelScopeRefresh(pool), 0);
+  const scheduled = (await pool.query("select * from drive_sync_jobs where status='QUEUED'")).rows[0];
+  assert.equal(scheduled.source_id, sourceId);
+  assert.equal(scheduled.mode, 'FULL');
+  assert.equal(scheduled.checkpoint.scopeRefresh, 'models-v1');
+  folder('3DMODELS', ROOT);
+  assert.equal((await work(scheduled.id)).status, 'COMPLETED');
+  assert.equal((await job(scheduled.id)).checkpoint.scopeRefresh, 'models-v1');
+  assert.equal(await queueModelScopeRefresh(pool), 0);
+  assert.equal((await pool.query('select count(*)::int n from drive_sources')).rows[0].n, 1);
+});
+
+test('missing model wrapper fails safely and does not mark existing files missing or publish scenes', { skip }, async () => {
+  const furniture = folder('Furniture', ROOT);
+  await addPair(furniture.id, 'chair');
+  await work((await enqueue()).id);
+  const before = (await pool.query('select id, primary_file_id, category_id, missing_scans from models')).rows;
+  await pool.query("update drive_sources set root_folder_name='3DSMOOD' where id=$1", [sourceId]);
+  const scenes = folder('3DSCENES', ROOT);
+  await addPair(scenes.id, 'room');
+  const j = await work((await enqueue()).id);
+  assert.deepEqual([j.status, j.error_code], ['FAILED', 'DRIVE_MODELS_FOLDER_NOT_FOUND']);
+  assert.deepEqual((await pool.query('select id, primary_file_id, category_id, missing_scans from models')).rows, before);
+});
+
 test('D29: an uploaded preview pairs with the scanned archive of the same stem (dirty names, other folder) and the model goes public once', { skip }, async () => {
   const d = folder('Desk', ROOT), other = folder('Lamp', ROOT);
   const cat = (await pool.query("insert into categories(name,slug,full_path) values('Lamp','lamp','Lamp') returning id")).rows[0].id;

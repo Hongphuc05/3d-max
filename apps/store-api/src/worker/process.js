@@ -7,6 +7,7 @@ import { captureArchiveSnapshot, latestArchiveSnapshot } from './archive-snapsho
 import { computeDiff } from './diff.js';
 import { publishPlan } from './publish.js';
 import { scanSource } from './scan.js';
+import { isModelLibrarySource } from './model-scope.js';
 
 const CODE = /^[A-Z][A-Z0-9_]{1,60}$/;
 
@@ -48,7 +49,7 @@ export function createSyncHandler({ pool, apiKey, credentialStore, createClient 
     if (full) {
       if (source.access_mode !== 'API_KEY') return failed('DRIVE_NOT_CONNECTED');
       const client = makeClient(source);
-      if (!cur.checkpoint?.scan?.done) {
+      if (!cur.checkpoint?.scan?.done || isModelLibrarySource(source)) {
         const s = stopped(await scanSource({ pool, client, job: cur, source, ctx }));
         if (s) return s;
         cur = await reload(job.id);

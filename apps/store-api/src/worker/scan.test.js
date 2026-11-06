@@ -64,6 +64,27 @@ test('scans a tree: folders and files are recorded with relative paths, parents,
   assert.deepEqual(saved.rows[0], { scanned_folders: 3, scanned_files: 2, skipped_count: 1, error_count: 0 });
 });
 
+test('3DSMOOD scopes inventory to 3DMODELS without wrapper category or scene requests, including resume', { skip }, async () => {
+  const models = folder('3DMODELS', ROOT), scenes = folder('3DSCENES', ROOT);
+  const furniture = folder('Furniture', models.id);
+  file('chair.zip', furniture.id, { mimeType: 'application/zip' });
+  file('room.zip', scenes.id, { mimeType: 'application/zip' });
+  const job = await newJob();
+  const scoped = { ...source(), root_folder_name: '3DSMOOD' };
+  let saves = 0;
+  const ctx = ctxFor(job);
+  Object.defineProperty(ctx, 'shuttingDown', { get: () => saves >= 1 });
+  ctx.saveProgress = async progress => { saves++; return q.saveProgress(pool, job.id, 'scan-worker', progress); };
+  assert.equal((await scanSource({ pool, client: client(), job, source: scoped, ctx })).interrupted, true);
+  const resumed = (await pool.query('select * from drive_sync_jobs where id=$1', [job.id])).rows[0];
+  assert.equal(resumed.checkpoint.scan.scopePolicy, 'models-v1');
+  assert.equal((await scanSource({ pool, client: client(), job: resumed, source: scoped, ctx: ctxFor(resumed) })).done, true);
+  assert.deepEqual((await inv()).map(row => row.path), ['Furniture', 'Furniture/chair.zip']);
+  assert.ok(!fake.state.requests.some(request => request.query.q?.includes(scenes.id)), 'scene branch was never listed');
+  const old = { ...resumed, checkpoint: { scan: { done: true } } };
+  await assert.rejects(scanSource({ pool, client: client(), job: old, source: scoped, ctx: ctxFor(old) }), { code: 'FULL_SCAN_REQUIRED' });
+});
+
 test('pagination and size: 7 files in one folder across 4 pages, and 450 files across batches of 200, are all recorded', { skip }, async () => {
   const d = folder('Big', ROOT);
   for (let i = 0; i < 450; i++) file(`m${String(i).padStart(3, '0')}.jpg`, d.id);

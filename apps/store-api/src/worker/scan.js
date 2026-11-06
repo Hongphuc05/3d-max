@@ -3,6 +3,8 @@
 // Checkpoint {queue, pageToken, visited, counters} duoc luu sau MOI trang; so dem luu tuyet doi trong checkpoint
 // nen chay lai mot trang sau khi crash khong dem doi.
 import { FOLDER, SHORTCUT, validId } from '../drive/client.js';
+import { apiError } from '../drive/errors.js';
+import { isModelLibrarySource, MODEL_SCOPE_POLICY, resolveModelScope } from './model-scope.js';
 
 const GOOGLE_APPS = 'application/vnd.google-apps.';
 const MD5 = /^[0-9a-fA-F]{32}$/;
@@ -57,16 +59,30 @@ async function upsertRows(pool, sourceId, jobId, rows, batchSize) {
  * (thu muc goc loi, loi tam het luot retry, vuot tran) de job thanh FAILED thay vi bo qua am tham.
  */
 export async function scanSource({ pool, client, job, source, ctx, pageSize = 1000, batchSize = 200, maxFiles = 100_000, maxFolders = 10_000 }) {
+  if (ctx.cancelled) return { status: 'CANCELLED' };
+  if (ctx.shuttingDown) return { interrupted: true };
+  if (job.checkpoint?.scan && isModelLibrarySource(source) && job.checkpoint.scan.scopePolicy !== MODEL_SCOPE_POLICY)
+    throw apiError('FULL_SCAN_REQUIRED'); // Never resume a partially scanned old, wider tree.
+  let scope;
+  if (!job.checkpoint?.scan) {
+    try { scope = await resolveModelScope(client, source, { signal: ctx.signal }); }
+    catch (error) {
+      if (ctx.cancelled) return { status: 'CANCELLED' };
+      if (ctx.shuttingDown) return { interrupted: true };
+      throw error;
+    }
+  }
   const state = job.checkpoint?.scan ?? {
-    queue: [{ id: source.root_folder_id, path: '', rk: source.root_resource_key ?? null, root: true }],
-    pageToken: null, visited: [source.root_folder_id],
+    scopePolicy: isModelLibrarySource(source) ? MODEL_SCOPE_POLICY : 'legacy-v1',
+    queue: [{ id: scope.id, path: '', rk: scope.resourceKey, root: true }],
+    pageToken: null, visited: [scope.id],
     counters: { scannedFolders: 0, scannedFiles: 0, skippedCount: 0, errorCount: 0 }, done: false,
   };
   if (state.done) return { done: true, counters: state.counters };
   const visited = new Set(state.visited);
   const persist = (extra = {}) => ctx.saveProgress({
     stage: 'SCANNING', counters: state.counters,
-    checkpoint: { stage: 'SCANNING', scan: { ...state, visited: [...visited] } }, ...extra,
+    checkpoint: { ...job.checkpoint, stage: 'SCANNING', scan: { ...state, visited: [...visited] } }, ...extra,
   });
   const enqueue = (id, path, rk) => {
     if (visited.has(id)) return;
@@ -125,6 +141,6 @@ export async function scanSource({ pool, client, job, source, ctx, pageSize = 10
   }
 
   state.done = true; visited.clear();
-  const ok = await ctx.saveProgress({ stage: 'COMPARING', counters: state.counters, checkpoint: { stage: 'COMPARING', scan: { ...state, visited: [] } } });
+  const ok = await ctx.saveProgress({ stage: 'COMPARING', counters: state.counters, checkpoint: { ...job.checkpoint, stage: 'COMPARING', scan: { ...state, visited: [] } } });
   return ok ? { done: true, counters: state.counters } : { leaseLost: true };
 }

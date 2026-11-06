@@ -1,5 +1,6 @@
 // Immutable archive metadata from a clean FULL scan. Incremental reconciliation must not read
 // drive_inventory directly because an interrupted later scan may already have updated some rows.
+import { MODEL_SCOPE_POLICY } from './model-scope.js';
 const ARCHIVE_SQL = `(right(lower(filename), 4) in ('.zip', '.rar') or right(lower(filename), 3) = '.7z')`;
 
 export async function latestArchiveSnapshot(pool, sourceId) {
@@ -7,9 +8,12 @@ export async function latestArchiveSnapshot(pool, sourceId) {
     `select r.job_id as id, r.source_id, r.archive_count, j.finished_at
        from drive_archive_snapshot_runs r
        join drive_sync_jobs j on j.id = r.job_id
+       join drive_sources s on s.id = r.source_id
       where r.source_id = $1 and j.mode = 'FULL' and j.status = 'COMPLETED' and j.error_count = 0
         and j.checkpoint #>> '{scan,done}' = 'true'
-      order by j.finished_at desc, j.id desc limit 1`, [sourceId])).rows[0] ?? null;
+        and (upper(trim(s.root_folder_name)) not in ('3DSMOOD','3DMODELS')
+          or j.checkpoint #>> '{scan,scopePolicy}' = $2)
+      order by j.finished_at desc, j.id desc limit 1`, [sourceId, MODEL_SCOPE_POLICY])).rows[0] ?? null;
 }
 
 /** Copy one completed scan's archive metadata into a stable per-job snapshot. Safe to call again on resume. */

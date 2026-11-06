@@ -8,6 +8,7 @@ import { startDriveKeyHealthMonitor } from './drive/health.js';
 import { createSyncHandler } from './worker/process.js';
 import { cleanStaleParts } from './worker/previews.js';
 import { runWorker } from './worker/runner.js';
+import { queueModelScopeRefresh } from './worker/model-scope.js';
 
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
 const config = loadWorkerConfig(process.env);
@@ -38,10 +39,21 @@ const stop = new AbortController();
 for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => { console.log(`${signal}: finishing the current step safely`); stop.abort(); });
 
 console.log('store-worker started');
+await queueModelScopeRefresh(pool);
+let checkingScope = false;
+const scopeTimer = setInterval(async () => {
+  if (checkingScope || stop.signal.aborted) return;
+  checkingScope = true;
+  try { await queueModelScopeRefresh(pool); }
+  catch (error) { console.error('[scope-refresh]', error?.code ?? error?.name); }
+  finally { checkingScope = false; }
+}, 60_000);
+scopeTimer.unref();
 await runWorker({
   pool, signal: stop.signal, pollMs: Number(process.env.WORKER_POLL_MS) || 5000,
   handler: createSyncHandler({ pool, ...config, credentialStore }),
 });
+clearInterval(scopeTimer);
 stopDriveKeyHealth();
 await pool.end();
 console.log('store-worker stopped');

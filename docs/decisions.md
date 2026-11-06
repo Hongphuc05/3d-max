@@ -356,3 +356,9 @@ Tên hiển thị thống nhất là 3dsmood: cửa sổ native (vẫn kèm scen
 ## D34 — Một panel chọn nhiều cửa sổ Max (2026-11-06)
 
 Theo yêu cầu mới, thay hành vi owner-bound của D32: dropdown native liệt kê các Max đang mở, tên scene/đường dẫn/PID và trạng thái agent. Lựa chọn rõ ràng giữ nguyên qua polling/focus; không tự chuyển sang cửa sổ khác khi đích đóng hoặc đổi document. Import chụp PID + thời điểm khởi chạy + đường dẫn + document token; Max sở hữu panel dùng adapter local, Max khác nhận qua named pipe giới hạn cùng Windows user. Agent phía đích kiểm process identity và MAXScript kiểm document ngay trước merge. Mỗi Max cần agent Startup cùng phiên bản, không cần panel riêng. Đóng Max chứa panel vẫn đóng panel. Không thay luồng tải/chọn mẫu/license.
+
+## D35 — Đồng bộ riêng nhánh 3DMODELS, giữ định danh (2026-11-07)
+
+Nguồn tên 3DSMOOD giữ nguyên root/source ID nhưng worker chọn duy nhất thư mục con 3DMODELS (hỗ trợ shortcut/resource key/phân trang). Không duyệt 3DSCENES; đường dẫn danh mục bắt đầu ngay từ Furniture, Lighting… Nguồn trỏ thẳng 3DMODELS tiếp tục dùng root đó; nguồn danh mục cũ khác tên giữ hành vi cũ. Thiếu hoặc trùng nhánh 3DMODELS thì fail trước publish, không tự quét cả gốc. File ID không đổi nên không tạo lại model/file/category; preview category đã duyệt tiếp tục được ưu tiên.
+
+Snapshot/scan cũ của hai loại nguồn này không đủ điều kiện dùng tiếp cho INCREMENTAL hoặc resume; phải FULL theo policy models-v1. Worker tự xếp một FULL mỗi source/policy sau deploy, giữ checkpoint scopeRefresh để không lặp; đang có job thì chờ lần kiểm tra tiếp theo (60 giây). Hủy hoặc fail thì admin quyết định chạy lại, không tự lặp vô hạn. FULL chỉ duyệt metadata, không tải lại archive/preview. Không thay API/plugin/device/license hoặc dữ liệu Đã tải trên SSD khách.
