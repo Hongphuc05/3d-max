@@ -13,6 +13,7 @@ const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const json = (v, status = 200) => new Response(JSON.stringify(v), { status, headers: { 'content-type': 'application/json' } });
 const flush = () => new Promise((r) => setTimeout(r, 20));
 let zipStatus = 200;
+let manifestPreviews = [];
 const packageBytes = new Uint8Array([0x50, 0x4b, 3, 4, 0x11, 0x22]);
 const wrongHeaderResponse = () => new Response(packageBytes, { headers: { 'content-type': 'application/zip', 'content-disposition': 'attachment; filename="3dsmood-library.zip"' } });
 let downloadResponse = wrongHeaderResponse, downloadGets = 0, blobSequence = 0;
@@ -39,7 +40,7 @@ globalThis.fetch = async (url, opts) => {
     { id: id(103), name: 'Bed One', categoryId: id(2), status: 'PUBLISHED' },
     { id: id(109), name: 'Apartment Scene', categoryId: id(9), contentDomain: '3dscenes', status: 'PUBLISHED' }] });
   if (path === '/api/v1/categories') return json([{ id: id(1), parentId: null, name: 'Living', fullPath: 'Living', modelCount: 2 }, { id: id(2), parentId: null, name: 'Bedroom', fullPath: 'Bedroom', modelCount: 1 }, { id: id(9), name: 'Scene Interior', fullPath: 'Scene Interior', contentDomain: '3dscenes', modelCount: 1 }]);
-  if (path === '/api/v1/previews/manifest') return json({ previews: [] });
+  if (path === '/api/v1/previews/manifest') return json({ previews: manifestPreviews });
   throw new Error('unexpected ' + path);
 };
 after(() => { globalThis.fetch = original; dom.window.close(); URL.createObjectURL = originalCreate; URL.revokeObjectURL = originalRevoke; dom.window.HTMLAnchorElement.prototype.click = originalClick; });
@@ -153,4 +154,34 @@ test("public gallery keeps Models scope when the capability response contains Sc
   assert.equal(cards().length, 3);
   assert.doesNotMatch(document.body.textContent, /Apartment Scene|Scene Interior/);
   await act(() => root.unmount());
+});
+
+test('Models and Scenes switch: each shows only its own cards, categories and counts, and the search resets', async () => {
+  const root = await mount();
+  const tab = (label) => [...document.querySelectorAll('[aria-label="Content domain"] button')].find((b) => b.textContent === label);
+  assert.equal(tab('Models').getAttribute('aria-pressed'), 'true');
+  assert.deepEqual(cards().map((c) => c.includes('Apartment Scene')), [false, false, false]);
+  await act(async () => { tab('Scenes').click(); });
+  assert.equal(tab('Scenes').getAttribute('aria-pressed'), 'true');
+  assert.deepEqual(cards().map((c) => c.includes('Apartment Scene')), [true]);
+  assert.match(document.body.textContent, /1 scene/); assert.match(document.body.textContent, /Scene Interior/); assert.doesNotMatch(document.body.textContent, /Bedroom/);
+  assert.ok(document.querySelector('input[aria-label="Tìm scene"]'));
+  await act(async () => { tab('Models').click(); });
+  assert.equal(cards().length, 3); assert.doesNotMatch(document.body.textContent, /Scene Interior/);
+  await act(() => root.unmount());
+});
+
+test('a preview that is already loaded (cached) is visible without a load event,', async () => {
+  const sha = 'a'.repeat(64);
+  manifestPreviews = [{ modelId: id(101), variant: 'sm', sha256: sha, url: '/previews/' + sha + '.webp' }];
+  const proto = dom.window.HTMLImageElement.prototype;
+  Object.defineProperty(proto, 'complete', { configurable: true, get() { return true; } });
+  Object.defineProperty(proto, 'naturalWidth', { configurable: true, get() { return 480; } });
+  try {
+    const root = await mount();
+    const image = document.querySelector('img');
+    assert.ok(image, 'the model with a manifest preview renders an image');
+    assert.match(image.className, /opacity-100/, 'cached image is shown without waiting for a load event');
+    await act(() => root.unmount());
+  } finally { delete proto.complete; delete proto.naturalWidth; manifestPreviews = []; }
 });

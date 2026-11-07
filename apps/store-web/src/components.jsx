@@ -85,13 +85,18 @@ export function Filters({ categories, subs, setSubs, renderers, setRenderers, re
 // Nut Download trong 3ds Max: Download = tai goi ve may roi import vao scene (1 lan bam).
 // Tren trinh duyet khong co Download (O7) -> component nay khong render.
 export function Preview({ source, name, lazy = false }) {
-  const [loaded, setLoaded] = useState(false);
-  const [failed, setFailed] = useState(false);
-  useEffect(() => { setLoaded(false); setFailed(false); }, [source]);
+  // State is keyed by the source it describes, so a change of source needs no reset effect. A reset effect ran
+  // after an already cached image fired its load event and left the preview invisible (blank cards after F5).
+  const [loadedSource, setLoadedSource] = useState(null);
+  const [failedSource, setFailedSource] = useState(null);
+  const loaded = loadedSource === source;
+  const failed = failedSource === source;
   // Anh chua co trong cache may (dang tai nen lan dau): hien placeholder, thu lai khi host bao them anh.
-  useEffect(() => (failed ? onHostEvent('library.previewProgress', () => setFailed(false)) : undefined), [failed]);
+  useEffect(() => (failed ? onHostEvent('library.previewProgress', () => setFailedSource(null)) : undefined), [failed]);
+  // An image already complete before React attached onLoad never reports it again.
+  const mark = (img) => { if (img && img.complete && img.naturalWidth > 0) setLoadedSource(source); };
   if (!source || failed) return <div className="grid aspect-square w-full place-items-center bg-raised font-mono text-xs text-mute">Chưa có ảnh preview</div>;
-  return <img src={source} alt={name} loading={lazy ? 'lazy' : undefined}
-    onLoad={() => setLoaded(true)} onError={() => setFailed(true)}
+  return <img ref={mark} src={source} alt={name} loading={lazy ? 'lazy' : undefined}
+    onLoad={() => setLoadedSource(source)} onError={() => setFailedSource(source)}
     className={`aspect-square size-full object-contain transition duration-300 group-hover:scale-105 ${loaded ? 'opacity-100' : 'opacity-0'}`} />;
 }

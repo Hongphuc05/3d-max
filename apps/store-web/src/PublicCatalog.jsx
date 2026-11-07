@@ -4,6 +4,7 @@ import { Filters, Preview } from './components.jsx';
 import { Icon } from './icons.jsx';
 import { matchesCategory } from './catalog-view.js';
 import { usePluginCatalog } from './usePluginCatalog.js';
+import ContentDomainTabs from './ContentDomainTabs.jsx';
 
 const MZP = '/download/3dsmood-library.mzp';
 const STEP = 48;
@@ -81,8 +82,10 @@ function Lightbox({ p, onClose }) {
 export default function PublicCatalog() {
   const [reloadKey, setReloadKey] = useState(0);
   const { products: allProducts, tree: allTree, state, error } = usePluginCatalog(reloadKey);
-  const products = useMemo(() => allProducts.filter(p => (p.contentDomain || "3dmodels") === "3dmodels"), [allProducts]);
-  const tree = useMemo(() => allTree.filter(c => (c.contentDomain || "3dmodels") === "3dmodels"), [allTree]);
+  const [domain, setDomain] = useState("3dmodels");
+  const products = useMemo(() => allProducts.filter(p => (p.contentDomain || "3dmodels") === domain), [allProducts, domain]);
+  const tree = useMemo(() => allTree.filter(c => (c.contentDomain || "3dmodels") === domain), [allTree, domain]);
+  const noun = domain === "3dscenes" ? "scene" : "model";
   const [subs, setSubs] = useState(() => new Set());
   const [text, setText] = useState('');
   const [limit, setLimit] = useState(STEP);
@@ -92,14 +95,15 @@ export default function PublicCatalog() {
     const needle = text.trim().toLowerCase();
     return products.filter((p) => matchesCategory(p, subs) && (!needle || p.name.toLowerCase().includes(needle)));
   }, [products, subs, text]);
-  useEffect(() => setLimit(STEP), [subs, text]);
+  useEffect(() => setLimit(STEP), [subs, text, domain]);
+  function selectDomain(next) { setDomain(next); setSubs(new Set()); setText(''); setActive(null); }
 
   return (
     <div className="flex min-h-screen flex-col bg-base text-fg">
       <header className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-line bg-panel px-4 py-4">
         <div className="min-w-0 flex-1 basis-64">
           <div className="font-mono text-lg font-bold tracking-widest text-accent">3DS MOOD</div>
-          <p className="text-sm text-mute">Thư viện 3D model cho 3ds Max. Xem toàn bộ model, cài plugin để dùng trực tiếp trong Max.</p>
+          <p className="text-sm text-mute">Thư viện 3D model và scene cho 3ds Max. Xem toàn bộ model và scene, cài plugin để dùng trực tiếp trong Max.</p>
         </div>
         <div className="flex flex-col items-start gap-1 sm:items-end">
           <DownloadButton className="w-full sm:w-auto sm:px-8 sm:py-3 sm:text-base" />
@@ -115,15 +119,16 @@ export default function PublicCatalog() {
         </div>
 
         <main className="min-w-0 flex-1 p-3">
+          <div className="mb-3"><ContentDomainTabs value={domain} onChange={selectDomain} /></div>
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => setDrawer(true)} className="flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs text-mute hover:text-fg lg:hidden">
               <Icon name="filter" className="size-3.5" />Danh mục{subs.size ? ` (${subs.size})` : ''}
             </button>
             <label className="flex min-w-48 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-accent">
               <Icon name="search" className="size-3.5 text-mute" />
-              <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Tìm model…" aria-label="Tìm model" className="w-full bg-transparent py-1.5 text-sm outline-none placeholder:text-mute" />
+              <input value={text} onChange={(e) => setText(e.target.value)} placeholder={`Tìm ${noun}…`} aria-label={`Tìm ${noun}`} className="w-full bg-transparent py-1.5 text-sm outline-none placeholder:text-mute" />
             </label>
-            <span className="font-mono text-xs text-mute">{state === 'ready' ? `${rows.length} model` : ''}</span>
+            <span className="font-mono text-xs text-mute">{state === 'ready' ? `${rows.length} ${noun}` : ''}</span>
           </div>
 
           {state === 'loading' && <p role="status" className="py-16 text-center font-mono text-xs text-mute">Đang tải danh mục…</p>}
@@ -133,7 +138,7 @@ export default function PublicCatalog() {
               <div><button type="button" onClick={() => setReloadKey((k) => k + 1)} className="mt-3 rounded-md border border-danger/40 px-3 py-1">Thử lại</button></div>
             </div>
           )}
-          {state === 'ready' && rows.length === 0 && <p className="py-16 text-center text-sm text-mute">Không có model nào khớp.</p>}
+          {state === 'ready' && rows.length === 0 && <p className="py-16 text-center text-sm text-mute">Không có {noun} nào khớp.</p>}
           <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2.5">
             {rows.slice(0, limit).map((p) => (
               <button type="button" key={p.id} onClick={() => setActive(p)} className="group flex flex-col overflow-hidden rounded-lg border border-line bg-panel text-left transition hover:border-mute/60">
