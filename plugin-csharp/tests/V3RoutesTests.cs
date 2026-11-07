@@ -17,6 +17,10 @@ class V3RoutesTests
         Check(Route("/api/v1/me/entitlements") == V3Route.Entitlements, "entitlements");
         string sha;
         Check(V3Routes.Classify(Origin + "/previews/" + Sha + ".webp", "GET", Origin, out sha) == V3Route.Preview && sha == Sha, "preview by content hash");
+        foreach (var domain in new[] { "3dmodels", "3dscenes" })
+            Check(V3Routes.Classify(Origin + "/previews/" + domain + "/" + Sha + ".webp", "GET", Origin, out sha) == V3Route.Preview && sha == Sha, domain + " scoped preview by content hash");
+        foreach (var path in new[] { "/previews/other/", "/previews/3dscenes/extra/", "/previews/3dscenes%2f", "/previews/3dscenes//" })
+            Check(Route(path + Sha + ".webp") == V3Route.Blocked, "invalid preview scope blocked: " + path);
         Check(Route("/previews/../api/v1/catalog") == V3Route.Catalog, "dot segments are normalised by Uri before classification (same answer as the direct path)");
         Check(Route("/") == V3Route.None && Route("/assets/app.js") == V3Route.None && Route("/license") == V3Route.None, "the application's own files are not API routes");
         foreach (var blocked in new[] {

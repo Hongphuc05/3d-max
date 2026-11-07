@@ -1,10 +1,23 @@
 // API catalog CONG KHAI cho plugin (contract v3 §2.3): xem catalog khi chua mua, khong can token thiet bi.
 // Du lieu chi den tu buildManifest (cot cong khai). ETag gom ca version: A -> B -> A cho cung checksum nhung khac version.
 import express from 'express';
+import path from 'node:path';
+import { createHash } from 'node:crypto';
+import { CONTENT_DOMAINS } from '../content-domain.js';
 import { apiError, requestId, v3ErrorHandler } from '../drive/errors.js';
 import { buildManifest, CATALOG_CHANNEL, readCatalogState, withSnapshot } from './manifest.js';
 
 const PREVIEW_NAME = /^[0-9a-f]{64}\.webp$/;
+const DOMAIN_CAPABILITY = 'X-3dsmood-Content-Domains';
+
+// Older plugin validators reject unfamiliar URLs and fields. Keep their Models contract intact.
+function legacyManifest(manifest) {
+  const models = manifest.models.filter(m => (m.contentDomain ?? '3dmodels') === '3dmodels').map(({ contentDomain, categoryIds, ...model }) => model);
+  const ids = new Set(models.map(m => m.id));
+  const categories = manifest.categories.filter(c => (c.contentDomain ?? '3dmodels') === '3dmodels').map(({ contentDomain, ...category }) => category);
+  const previews = manifest.previews.filter(p => ids.has(p.modelId)).map(({ contentDomain, ...preview }) => ({ ...preview, url: `/previews/${preview.sha256}.webp` }));
+  return { categories, models, previews, checksum: createHash('sha256').update(JSON.stringify({ categories, models, previews })).digest('hex') };
+}
 
 /** Cache manifest theo version; dung trong snapshot nen version va du lieu khop nhau, nhieu request cung luc chi dung 1 lan. */
 function createManifestCache(pool, build = buildManifest) {
@@ -13,7 +26,7 @@ function createManifestCache(pool, build = buildManifest) {
     const { version } = await readCatalogState(pool);
     if (cached && cached.version === version) return cached;
     inflight ??= withSnapshot(pool, async (c) => ({ state: await readCatalogState(c), manifest: await build(c) }))
-      .then(({ state, manifest }) => (cached = { version: state.version, publishedAt: state.publishedAt, manifest }))
+      .then(({ state, manifest }) => (cached = { version: state.version, publishedAt: state.publishedAt, manifest, legacy: legacyManifest(manifest) }))
       .finally(() => { inflight = null; });
     return inflight;
   };
@@ -28,8 +41,10 @@ export function createCatalogV1Router({ pool, events, rateLimit = (_q, _s, next)
 
   const serve = (route, pick) => router.get(route, async (req, res, next) => {
     try {
-      const c = await current();
-      const etag = `"${c.version}-${c.manifest.checksum}"`;
+      const currentView = await current();
+      const c = req.get(DOMAIN_CAPABILITY) === '1' ? currentView : { ...currentView, manifest: currentView.legacy };
+      const etag = `"${c.version}-${c.manifest.checksum}${req.get(DOMAIN_CAPABILITY) === '1' ? '-domains1' : ''}"`;
+      res.vary(DOMAIN_CAPABILITY);
       res.set({ ETag: etag, 'Cache-Control': 'no-cache' }); // ghi de no-store toan cuc cua /api: plugin can revalidate bang ETag
       if (matches(req.headers['if-none-match'], etag)) return res.status(304).end();
       res.json(pick(c));
@@ -53,12 +68,27 @@ export function createCatalogV1Router({ pool, events, rateLimit = (_q, _s, next)
 /** /previews/<sha256>.webp: chi dung ten bam noi dung; moi ten khac roi xuong route cu (khong lo tmp/*.part). */
 export function createPreviewRouter({ dir }) {
   const router = express.Router();
+  router.get('/:domain/:file', (req, res, next) => {
+    if (!CONTENT_DOMAINS.includes(req.params.domain) || !PREVIEW_NAME.test(req.params.file)) return next();
+    const options = { root: dir, dotfiles: 'deny', immutable: true, maxAge: '365d', headers: { 'Content-Type': 'image/webp', 'X-Content-Type-Options': 'nosniff' } };
+    res.sendFile(path.join(req.params.domain, req.params.file), options, err => {
+      if (!err || res.headersSent) return;
+      if (req.params.domain !== '3dmodels' || ![404,403].includes(err.status)) return next();
+      res.sendFile(req.params.file, options, fallback => { if (fallback && !res.headersSent) next(); });
+    });
+  });
   router.get('/:file', (req, res, next) => {
     if (!PREVIEW_NAME.test(req.params.file)) return next();
     res.sendFile(req.params.file, {
       root: dir, dotfiles: 'deny', immutable: true, maxAge: '365d',
       headers: { 'Content-Type': 'image/webp', 'X-Content-Type-Options': 'nosniff' },
-    }, (err) => { if (err && !res.headersSent) next(); });
+    }, (err) => {
+      if (!err || res.headersSent) return;
+      res.sendFile(path.join('3dmodels', req.params.file), {
+        root: dir, dotfiles: 'deny', immutable: true, maxAge: '365d',
+        headers: { 'Content-Type': 'image/webp', 'X-Content-Type-Options': 'nosniff' },
+      }, fallback => { if (fallback && !res.headersSent) next(); });
+    });
   });
   return router;
 }

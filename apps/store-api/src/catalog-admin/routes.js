@@ -2,6 +2,7 @@
 // roi xuong adminRouter cu nguyen ven (guard va dinh dang loi cua no khong doi).
 // Gia thu vien (D28.1): chua co dong app_settings thi tra gia mac dinh (envDefaultPrice).
 import express from 'express';
+import { contentDomain, previewUrl } from '../content-domain.js';
 import { apiError, requestId, v3ErrorHandler } from '../drive/errors.js';
 import { refreshCatalogState } from '../catalog-v1/manifest.js';
 import { addPreviewRoutes } from './previews.js';
@@ -56,14 +57,14 @@ const settingsView = (r) => ({
 });
 // D29: trang thai ghep cap suy ra tu du lieu (khong luu): FULL = anh + file nen = cong khai; con lai chi hien o admin.
 const STATE_WHERE = { FULL: 'has_archive and has_preview', PREVIEW_ONLY: 'has_preview and not has_archive', ARCHIVE_ONLY: 'has_archive and not has_preview', MISMATCH: 'mismatch' };
-const BASE = `select m.id, m.name, m.category_id, c.full_path, m.status, m.name_overridden, m.updated_at, p.local_path as thumb_path,
+const BASE = `select m.id, m.name, m.category_id, m.content_domain, array(select mc.category_id from model_categories mc where mc.model_id=m.id order by mc.category_id) as category_ids, c.full_path, m.status, m.name_overridden, m.updated_at, p.local_path as thumb_path,
     (m.primary_file_id is not null) as has_archive, (p.local_path is not null) as has_preview,
     (m.drive_category_id is not null and m.drive_category_id <> m.category_id) as mismatch
   from models m join categories c on c.id = m.category_id
   left join model_previews p on p.model_id = m.id and p.variant = 'sm' and p.is_primary`;
-const modelView = (r) => ({ id: r.id, name: r.name, categoryPath: r.full_path, status: r.status,
+const modelView = (r) => ({ id: r.id, name: r.name, contentDomain: r.content_domain, categoryId: r.category_id, categoryIds: r.category_ids, categoryPath: r.full_path, status: r.status,
   state: r.has_preview ? (r.has_archive ? 'FULL' : 'PREVIEW_ONLY') : 'ARCHIVE_ONLY', categoryMismatch: r.mismatch,
-  nameOverridden: r.name_overridden, updatedAt: r.updated_at, thumbUrl: r.thumb_path ? `/previews/${r.thumb_path}` : null });
+  nameOverridden: r.name_overridden, updatedAt: r.updated_at, thumbUrl: r.thumb_path ? previewUrl(r.thumb_path, r.content_domain) : null });
 
 export function createCatalogAdminRouter({ pool, guards = [], rateLimit, envDefaultPrice = 500000, previewDir }) {
   const router = express.Router();
@@ -107,6 +108,7 @@ export function createCatalogAdminRouter({ pool, guards = [], rateLimit, envDefa
 
   router.get('/models', ...pre, async (req, res, next) => {
     try {
+      const domain = contentDomain(req.query.contentDomain);
       const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
       if (q.length > 100) throw bad();
       const status = req.query.status === undefined || req.query.status === '' ? null : String(req.query.status);
@@ -121,39 +123,47 @@ export function createCatalogAdminRouter({ pool, guards = [], rateLimit, envDefa
       let categoryIds = null;
       if (categoryId !== null) {
         const scope = await pool.query(`with recursive descendants(id) as (
-          select id from categories where id = $1::uuid
+          select id from categories where id = $1::uuid and content_domain = $2
           union
           select c.id from categories c join descendants d on c.parent_id = d.id
-        ) select id from descendants`, [categoryId]);
+        ) select id from descendants`, [categoryId, domain]);
         if (!scope.rowCount) throw bad();
         categoryIds = scope.rows.map((row) => row.id);
       }
       const where = `($1::text is null or name ilike '%' || $1 || '%' escape '\\') and ($2::text is null or status = $2)
-        and ($3::uuid[] is null or category_id = any($3::uuid[]))${state ? ` and ${STATE_WHERE[state]}` : ''}`;
-      const total = Number((await pool.query(`with b as (${BASE}) select count(*) from b where ${where}`, [like, status, categoryIds])).rows[0].count);
+        and content_domain = $4 and ($3::uuid[] is null or category_ids && $3::uuid[])${state ? ` and ${STATE_WHERE[state]}` : ''}`;
+      const total = Number((await pool.query(`with b as (${BASE}) select count(*) from b where ${where}`, [like, status, categoryIds, domain])).rows[0].count);
       const rows = (await pool.query(
-        `with b as (${BASE}) select * from b where ${where} order by lower(name), id limit $4 offset $5`, [like, status, categoryIds, limit, (page - 1) * limit])).rows;
+        `with b as (${BASE}) select * from b where ${where} order by lower(name), id limit $5::int offset $6::int`, [like, status, categoryIds, domain, limit, (page - 1) * limit])).rows;
       const c = (await pool.query(`with b as (${BASE}) select
           count(*) filter (where ${STATE_WHERE.FULL}) as full, count(*) filter (where ${STATE_WHERE.PREVIEW_ONLY}) as preview_only,
-          count(*) filter (where ${STATE_WHERE.ARCHIVE_ONLY}) as archive_only, count(*) filter (where mismatch) as mismatch from b`)).rows[0];
+          count(*) filter (where ${STATE_WHERE.ARCHIVE_ONLY}) as archive_only, count(*) filter (where mismatch) as mismatch from b where content_domain=$1`, [domain])).rows[0];
       const counts = { FULL: Number(c.full), PREVIEW_ONLY: Number(c.preview_only), ARCHIVE_ONLY: Number(c.archive_only), MISMATCH: Number(c.mismatch) };
       res.json({ items: rows.map(modelView), total, page, limit, counts });
     } catch (e) { next(e); }
   });
 
   // Cay danh muc cho man tai anh: phang, client tu dung cay theo parentId. modelCount = model truc tiep trong danh muc.
-  router.get('/categories', ...pre, async (_req, res, next) => {
+  router.get('/categories', ...pre, async (req, res, next) => {
     try {
+      const domain = contentDomain(req.query.contentDomain);
       const rows = (await pool.query(
-        `select c.id, c.parent_id, c.name, c.full_path, (select count(*) from models m where m.category_id = c.id) as n from categories c order by c.full_path`)).rows;
-      res.json({ items: rows.map((r) => ({ id: r.id, parentId: r.parent_id, name: r.name, fullPath: r.full_path, modelCount: Number(r.n) })) });
+        `select c.id, c.parent_id, c.name, c.full_path,
+           array(select mc.model_id from model_categories mc where mc.category_id=c.id order by mc.model_id) as model_ids
+           from categories c where c.content_domain=$1 order by c.full_path`, [domain])).rows;
+      const children = new Map();
+      for (const row of rows) (children.get(row.parent_id) ?? children.set(row.parent_id, []).get(row.parent_id)).push(row.id);
+      const byId = new Map(rows.map(row => [row.id, row]));
+      const members = id => new Set([...byId.get(id).model_ids, ...(children.get(id) ?? []).flatMap(child => [...members(child)])]);
+      res.json({ contentDomain: domain, items: rows.map(r => ({ id: r.id, contentDomain: domain, parentId: r.parent_id, name: r.name, fullPath: r.full_path, modelCount: r.model_ids.length, modelIds: r.model_ids, subtreeModelCount: members(r.id).size })) });
     } catch (e) { next(e); }
   });
 
   router.patch('/models/:id', ...pre, json, async (req, res, next) => {
     try {
       if (!UUID.test(req.params.id)) throw apiError('MODEL_NOT_FOUND');
-      const patch = someKeys(req.body, ['name', 'status']);
+      const domain = contentDomain(req.body?.contentDomain ?? req.query.contentDomain);
+      const patch = someKeys(req.body, ['name', 'status', 'contentDomain']);
       if ('name' in patch) {
         if (typeof patch.name !== 'string') throw bad();
         patch.name = patch.name.trim();
@@ -163,7 +173,7 @@ export function createCatalogAdminRouter({ pool, guards = [], rateLimit, envDefa
 
       const view = await inTransaction(pool, async (c) => {
         const cur = (await c.query(
-          `select m.*, ca.full_path from models m join categories ca on ca.id = m.category_id where m.id = $1 for update of m`, [req.params.id])).rows[0];
+          `select m.*, ca.full_path from models m join categories ca on ca.id = m.category_id where m.id = $1 and m.content_domain = $2 for update of m`, [req.params.id, domain])).rows[0];
         if (!cur) throw apiError('MODEL_NOT_FOUND');
         const next_ = { name: patch.name ?? cur.name, status: patch.status ?? cur.status };
         const before = { name: cur.name, status: cur.status };

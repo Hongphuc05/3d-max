@@ -2,6 +2,7 @@
 // Quyet dinh cua chu du an: ACCEPT SUGGESTED_PAIR = danh dau xong + duyet model dang NEEDS_REVIEW; DISMISS khong dong den model;
 // ACCEPT REMAP_CANDIDATE = GOP file moi vao model cu (giu ID, gia, ten, legacy_id) roi xoa model moi trung; cac loai khac chi duoc DISMISS.
 // `choice` (chon anh chinh / ghep tay) chua ho tro: bi tu choi. Khong tra Drive ID, fingerprint, ID model hay ID nguon.
+import { contentDomain } from '../content-domain.js';
 import { apiError } from '../drive/errors.js';
 import { refreshCatalogState } from '../catalog-v1/manifest.js';
 import { audit, bad, inTransaction, UUID } from './shared.js';
@@ -27,9 +28,9 @@ const notApplicable = () => apiError('REVIEW_NOT_APPLICABLE');
 async function mergeRemap(c, item) {
   const newId = item.model_id, oldId = item.payload?.previousModelId;
   if (!newId || !UUID.test(String(oldId ?? '')) || newId === oldId) throw notApplicable();
-  const rows = (await c.query('select id, missing_scans, primary_file_id from models where id = any($1::uuid[]) order by id for update', [[newId, oldId]])).rows;
+  const rows = (await c.query('select id, content_domain, missing_scans, primary_file_id from models where id = any($1::uuid[]) order by id for update', [[newId, oldId]])).rows;
   const fresh = rows.find((r) => r.id === newId), old = rows.find((r) => r.id === oldId);
-  if (!fresh || !old || old.missing_scans <= 0) throw notApplicable(); // model cu da quay lai hoac khong con: khong gop
+  if (!fresh || !old || fresh.content_domain !== old.content_domain || old.missing_scans <= 0) throw notApplicable(); // model cu da quay lai hoac khong con: khong gop
   await c.query('delete from model_previews where model_id = $1', [oldId]);
   await c.query('delete from model_files where model_id = $1', [oldId]);               // file cu khong con tren Drive
   await c.query('update model_files set model_id = $1 where model_id = $2', [oldId, newId]);
@@ -40,9 +41,10 @@ async function mergeRemap(c, item) {
 }
 
 export function addReviewRoutes(router, { pool, pre, json }) {
-  router.get('/catalog/review', ...pre, async (_req, res, next) => {
+  router.get('/catalog/review', ...pre, async (req, res, next) => {
     try {
-      const rows = (await pool.query("select id, kind, payload from review_items where status = 'OPEN' order by created_at, id limit 500")).rows;
+      const domain = contentDomain(req.query.contentDomain);
+      const rows = (await pool.query("select id, kind, payload from review_items where status = 'OPEN' and content_domain=$1 order by created_at, id limit 500", [domain])).rows;
       res.json(rows.map(itemView));
     } catch (e) { next(e); }
   });
@@ -51,11 +53,12 @@ export function addReviewRoutes(router, { pool, pre, json }) {
     try {
       if (!UUID.test(req.params.id)) throw apiError('REVIEW_NOT_FOUND');
       const body = req.body;
-      if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length !== 1 || !['ACCEPT', 'DISMISS'].includes(body.action)) throw bad();
+      if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(key => !['action','contentDomain'].includes(key)) || !['ACCEPT', 'DISMISS'].includes(body.action)) throw bad();
       const { action } = body;
+      const domain = contentDomain(body.contentDomain ?? req.query.contentDomain);
 
       await inTransaction(pool, async (c) => {
-        const item = (await c.query('select * from review_items where id = $1 for update', [req.params.id])).rows[0];
+        const item = (await c.query('select * from review_items where id = $1 and content_domain=$2 for update', [req.params.id, domain])).rows[0];
         if (!item) throw apiError('REVIEW_NOT_FOUND');
         if (item.status !== 'OPEN') throw apiError('REVIEW_ALREADY_RESOLVED');
 

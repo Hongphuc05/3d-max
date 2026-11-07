@@ -160,7 +160,7 @@ test('retry: a finished job can be retried (202 {jobId}, same source+mode); an a
 test('Job shape is exactly plan 2.2 (counters new/updated/.../errors, heartbeatAt), nothing extra', { skip }, async () => {
   const { jobId } = await (await j('/sync-jobs', { method: 'POST', body: { sourceId, mode: 'FULL' } })).json();
   const job = await (await j(`/sync-jobs/${jobId}`)).json();
-  assert.deepEqual(Object.keys(job).sort(), ['bytesDownloaded', 'counters', 'errorCode', 'errorMessage', 'finishedAt', 'heartbeatAt', 'id', 'mode', 'sourceId', 'stage', 'startedAt', 'status']);
+  assert.deepEqual(Object.keys(job).sort(), ['bytesDownloaded', 'contentDomain', 'counters', 'errorCode', 'errorMessage', 'finishedAt', 'heartbeatAt', 'id', 'mode', 'sourceId', 'stage', 'startedAt', 'status']);
   assert.deepEqual(Object.keys(job.counters).sort(), ['errors', 'missing', 'new', 'review', 'scannedFiles', 'scannedFolders', 'skipped', 'unchanged', 'updated']);
   const list = await (await j('/sync-jobs')).json();
   assert.deepEqual(Object.keys(list.items[0]).sort(), Object.keys(job).sort(), 'JobSummary has the same shape');

@@ -23,9 +23,9 @@ function stopped(r) {
 // So "Can duyet" cua luot = so muc DANG CHO duyet (OPEN) sau luot nay: muc dang mo + muc moi trong ke hoach. Muc da xu ly van bi quet thay nhung
 // khong bi mo lai (trung van tay) nen khong tinh; nhu vay so nay giam khi admin duyet, thay vi luon bang so muc 'phat hien'.
 async function openReviewCount(pool, sourceId, plan) {
-  const open = Number((await pool.query("select count(*) from review_items where source_id = $1 and status = 'OPEN'", [sourceId])).rows[0].count);
+  const open = Number((await pool.query("select count(*) from review_items where source_id = $1 and status = 'OPEN' and content_domain = $2", [sourceId, plan.contentDomain ?? '3dmodels'])).rows[0].count);
   const fingerprints = [...new Set(plan.reviews.map((r) => r.payload.fingerprint))];
-  const known = new Set((await pool.query("select payload->>'fingerprint' as fp from review_items where source_id = $1 and payload->>'fingerprint' = any($2::text[])", [sourceId, fingerprints])).rows.map((r) => r.fp));
+  const known = new Set((await pool.query("select payload->>'fingerprint' as fp from review_items where source_id = $1 and payload->>'fingerprint' = any($2::text[]) and content_domain = $3", [sourceId, fingerprints, plan.contentDomain ?? '3dmodels'])).rows.map((r) => r.fp));
   return open + fingerprints.filter((fp) => !known.has(fp)).length;
 }
 const planCounters = (plan, scanSkipped) => ({
@@ -42,6 +42,7 @@ export function createSyncHandler({ pool, apiKey, credentialStore, createClient 
   async function run(job, ctx) {
     const source = (await pool.query('select * from drive_sources where id = $1', [job.source_id])).rows[0];
     if (!source?.enabled) return failed('DRIVE_NOT_CONNECTED');
+    const contentDomain = job.content_domain ?? '3dmodels';
     let cur = job;
     let snapshotJobId = job.id;
     const full = cur.mode === 'FULL';
@@ -54,16 +55,16 @@ export function createSyncHandler({ pool, apiKey, credentialStore, createClient 
         if (s) return s;
         cur = await reload(job.id);
       }
-      await captureArchiveSnapshot(pool, { sourceId: source.id, jobId: job.id });
+      await captureArchiveSnapshot(pool, { sourceId: source.id, jobId: job.id, contentDomain });
     } else {
-      const snapshot = await latestArchiveSnapshot(pool, source.id);
+      const snapshot = await latestArchiveSnapshot(pool, source.id, contentDomain);
       if (!snapshot) return failed('FULL_SCAN_REQUIRED');
       snapshotJobId = snapshot.id;
       if (!(await ctx.saveProgress({ stage: 'COMPARING', checkpoint: { ...cur.checkpoint, archiveSnapshotJobId: snapshot.id } }))) return { interrupted: true };
       cur = await reload(job.id);
     }
 
-    const plan = await computeDiff(pool, { sourceId: source.id, jobId: snapshotJobId, includeDriveTree: full, detectMissing: full });
+    const plan = await computeDiff(pool, { sourceId: source.id, jobId: snapshotJobId, includeDriveTree: full, detectMissing: full, contentDomain });
     const scanSkipped = cur.checkpoint?.scan?.counters?.skippedCount ?? 0;
     if (!(await ctx.saveProgress({ stage: 'COMPARING', counters: { ...planCounters(plan, scanSkipped), reviewCount: await openReviewCount(pool, source.id, plan) } }))) return { interrupted: true };
 
@@ -71,7 +72,7 @@ export function createSyncHandler({ pool, apiKey, credentialStore, createClient 
     if (ctx.cancelled) return { status: 'CANCELLED' };
     if (ctx.shuttingDown) return { interrupted: true };
     if (!(await ctx.saveProgress({ stage: 'PUBLISHING' }))) return { interrupted: true };
-    const fresh = await computeDiff(pool, { sourceId: source.id, jobId: snapshotJobId, includeDriveTree: full, detectMissing: full }); // tinh lai truoc publish; preview co the vua duoc admin tai len
+    const fresh = await computeDiff(pool, { sourceId: source.id, jobId: snapshotJobId, includeDriveTree: full, detectMissing: full, contentDomain }); // tinh lai truoc publish; preview co the vua duoc admin tai len
     await publishPlan(pool, { sourceId: source.id, jobId: job.id, plan: fresh });
     await ctx.saveProgress({ counters: { ...planCounters(fresh, scanSkipped), reviewCount: await openReviewCount(pool, source.id, fresh) } });
     if (full) await pool.query('update drive_sources set last_successful_sync_at = now() where id = $1', [source.id]);

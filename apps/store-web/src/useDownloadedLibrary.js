@@ -25,13 +25,14 @@ export function downloadedProducts(models, products) {
   return models.map(model => {
     const modelId = model.modelId;
     const current = catalog.get(modelId);
-    return current || model.product || {
+    return current || (model.product ? { ...model.product, contentDomain: model.product.contentDomain || model.contentDomain || "3dmodels" } : {
+      contentDomain: model.contentDomain || "3dmodels",
       id: modelId, slug: modelId, name: model.name || modelId,
       category: model.category || 'Đã tải', subcategory: model.category || '',
       folderPath: model.folderPath || '', folderIds: [],
       thumb: model.thumb || (model.thumbSha256 ? `/previews/${model.thumbSha256}.webp` : null),
       image: model.thumb || (model.thumbSha256 ? `/previews/${model.thumbSha256}.webp` : null),
       info: { sizeMB: model.sizeBytes ? model.sizeBytes / 1048576 : null, renderers: [], formats: model.fileType ? [model.fileType] : [] },
-    };
+    });
   });
 }

@@ -19,11 +19,11 @@ const m = (id, over = {}) => ({ id, name: `Model ${id}`, categoryPath: 'Living /
 const categories = [{ id: 'living', parentId: null, name: 'Living', fullPath: 'Living', modelCount: 0 },
   { id: 'sofa', parentId: 'living', name: 'Sofa', fullPath: 'Living / Sofa', modelCount: 2 }];
 
-async function mount({ items = [m('a'), m('b')], total = items.length } = {}) {
+async function mount({ items = [m('a'), m('b')], total = items.length, contentDomain = "3dmodels" } = {}) {
   fixture = { items, total, requests: [], patchError: null, listError: null };
   globalThis.fetch = async (url, init = {}) => {
     const u = new URL(String(url), 'http://x'), path = u.pathname, method = init.method ?? 'GET', body = init.body ? JSON.parse(init.body) : null;
-    fixture.requests.push({ path, method, body, q: u.searchParams.get('q'), status: u.searchParams.get('status'), state: u.searchParams.get('state'), categoryId: u.searchParams.get('categoryId'), page: u.searchParams.get('page'), limit: u.searchParams.get('limit') });
+    fixture.requests.push({ path, method, body, contentDomain: u.searchParams.get("contentDomain"), q: u.searchParams.get('q'), status: u.searchParams.get('status'), state: u.searchParams.get('state'), categoryId: u.searchParams.get('categoryId'), page: u.searchParams.get('page'), limit: u.searchParams.get('limit') });
     if (path === '/api/admin/categories') return response({ items: categories });
     if (path === '/api/admin/models' && method === 'GET') {
       if (fixture.listError) return fixture.listError;
@@ -43,7 +43,7 @@ async function mount({ items = [m('a'), m('b')], total = items.length } = {}) {
     throw new Error(`Unhandled models fixture ${method} ${path}`);
   };
   root = createRoot(container);
-  await act(async () => root.render(<AdminModels />));
+  await act(async () => root.render(<AdminModels contentDomain={contentDomain} />));
 }
 const button = (label, scope = container) => [...scope.querySelectorAll('button')].find((b) => b.textContent === label) ?? null;
 const mustButton = (label, scope) => { const b = button(label, scope); assert.ok(b, `Missing button ${label}`); return b; };
@@ -115,7 +115,7 @@ test('edit name only: PATCH carries just name, the row updates in place (no list
   await type('editName', 'Sofa Z', row('a'));
   const before = lists().length;
   await click(mustButton('Lưu', row('a')));
-  assert.deepEqual(patches()[0].body, { name: 'Sofa Z' });
+  assert.deepEqual(patches()[0].body, { name: 'Sofa Z', contentDomain: '3dmodels' });
   assert.equal(patches()[0].path, '/api/admin/models/a');
   assert.match(row('a').textContent, /Sofa Z/); assert.match(row('a').textContent, /Tên đã sửa/);
   assert.equal(lists().length, before, 'updated in place without reloading the list');
@@ -127,7 +127,7 @@ test('edit name (trimmed) and status together send both; hide sets the label to 
   await click(mustButton('Sửa', row('a')));
   await type('editName', '  Ghế mới  ', row('a')); await type('editStatus', 'HIDDEN', row('a'));
   await click(mustButton('Lưu', row('a')));
-  assert.deepEqual(patches()[0].body, { name: 'Ghế mới', status: 'HIDDEN' });
+  assert.deepEqual(patches()[0].body, { name: 'Ghế mới', status: 'HIDDEN', contentDomain: '3dmodels' });
   assert.match(row('a').textContent, /Ghế mới/); assert.match(row('a').textContent, /Đã ẩn/);
 });
 
@@ -253,6 +253,17 @@ test('D29: pairing state column + filter (with counts) go to the server; mismatc
   assert.equal(calls.length, 0, 'first click only asks to confirm');
   const before = lists().length;
   await click(mustButton('Xóa ảnh', row('a')));
-  assert.deepEqual(calls, ['/api/admin/models/a/preview']);
+  assert.deepEqual(calls, ['/api/admin/models/a/preview?contentDomain=3dmodels']);
   assert.equal(lists().length, before + 1, 'list reloaded');
+});
+
+
+test("Scenes scopes admin categories, search and edits to the selected domain", async () => {
+  await mount({ contentDomain: "3dscenes" });
+  assert.equal(fixture.requests.find(r => r.path === "/api/admin/categories").contentDomain, "3dscenes");
+  assert.equal(lists()[0].contentDomain, "3dscenes");
+  await click(row("a").querySelector("button"));
+  await type("editName", "Updated Scene", row("a"));
+  await click(row("a").querySelector("button"));
+  assert.deepEqual(patches()[0].body, { name: "Updated Scene", contentDomain: "3dscenes" });
 });

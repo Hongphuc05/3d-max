@@ -83,6 +83,15 @@ namespace MaxWebViewHost
                 if (new FileInfo(path).Length > 40 * 1024 * 1024) throw new InvalidDataException("Download index is too large.");
                 var state = json.Deserialize<DownloadedLibraryState>(Encoding.UTF8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(path), entropy, DataProtectionScope.CurrentUser)));
                 if (state == null || state.models == null || state.rights == null || string.IsNullOrEmpty(state.downloadDirectory)) throw new InvalidDataException("Download index is invalid.");
+                // Older indexes predate the mixed Models/Scenes catalog.
+                foreach (var model in state.models)
+                    if (model != null)
+                    {
+                        if (model.product == null) model.product = new Dictionary<string, object>();
+                        object domain;
+                        if (!model.product.TryGetValue("contentDomain", out domain) || domain == null)
+                            model.product["contentDomain"] = "3dmodels";
+                    }
                 return state;
             }
             catch (Exception e) when (e is CryptographicException || e is ArgumentException || e is InvalidOperationException)

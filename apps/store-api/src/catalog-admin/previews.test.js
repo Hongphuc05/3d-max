@@ -3,11 +3,13 @@ import test, { after, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import { randomUUID } from 'node:crypto';
-import { access, mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
+import { createCategoryResolver } from '../worker/categories.js';
 import { isolatedTestDatabase } from '../test-database.js';
+import { relocateLegacyPreviews } from '../../scripts/relocate-previews.js';
 
 const configured = Boolean(process.env.TEST_DATABASE_URL);
 const skip = !configured;
@@ -15,9 +17,9 @@ let dispose, pool, server, base, adminId, userId, sourceId, dir, manifest;
 let seq = 0;
 
 const jpeg = (seed = ++seq, ext = 'jpeg') => sharp({ create: { width: 700 + seed, height: 500, channels: 3, background: { r: seed * 11 % 255, g: 90, b: 40 } } })[ext]().toBuffer();
-const up = async (category, filename, body, { replace, user = 'admin', type = 'image/jpeg' } = {}) => {
+const up = async (category, filename, body, { replace, user = 'admin', type = 'image/jpeg', contentDomain = '3dmodels' } = {}) => {
   body ??= await jpeg();
-  return fetch(`${base}/api/admin/previews?category=${encodeURIComponent(category)}&filename=${encodeURIComponent(filename)}${replace ? '&replace=1' : ''}`,
+  return fetch(`${base}/api/admin/previews?contentDomain=${contentDomain}&category=${encodeURIComponent(category)}&filename=${encodeURIComponent(filename)}${replace ? '&replace=1' : ''}`,
     { method: 'POST', headers: { 'content-type': type, ...(user ? { 'x-test-user': user } : {}) }, body });
 };
 const get = (p, user = 'admin') => fetch(base + '/api/admin' + p, { headers: user ? { 'x-test-user': user } : {} });
@@ -25,13 +27,9 @@ const version = async () => Number((await pool.query('select active_version from
 const pub = async () => (await manifest.buildManifest(pool)).models.map((m) => m.name).sort();
 const errCode = async (r) => (await r.json()).error.code;
 // Model da co file nen (nhu sau khi quet Drive): archive-only.
-async function archive(stem, categoryPath = 'Drive / Cat') {
-  let parent = null, p = '';
-  for (const name of categoryPath.split(' / ')) {
-    p = p ? `${p} / ${name}` : name;
-    parent = (await pool.query('insert into categories(parent_id,name,slug,full_path) values($1,$2,$2,$3) on conflict (full_path) do update set name=excluded.name returning id', [parent, name, p])).rows[0].id;
-  }
-  const id = (await pool.query("insert into models(category_id,drive_category_id,name,status,stem) values($1,$1,$2,'PUBLISHED',$2) returning id", [parent, stem])).rows[0].id;
+async function archive(stem, categoryPath = 'Drive / Cat', domain = '3dmodels') {
+  const parent = await createCategoryResolver(pool, domain).resolve(categoryPath.split(' / '));
+  const id = (await pool.query("insert into models(category_id,drive_category_id,name,status,stem,content_domain) values($1,$1,$2,'PUBLISHED',$2,$3) returning id", [parent, stem, domain])).rows[0].id;
   const f = (await pool.query("insert into model_files(model_id,source_id,drive_file_id,filename,file_type,size_bytes) values($1,$2,$3,$4,'rar',100) returning id", [id, sourceId, `f${++seq}`, `${stem}.rar`])).rows[0].id;
   await pool.query('update models set primary_file_id=$1 where id=$2', [f, id]);
   return id;
@@ -162,4 +160,65 @@ test('delete preview: a model with an archive falls back to ARCHIVE_ONLY (and le
   assert.equal((await pool.query('select count(*)::int n from models')).rows[0].n, 1);
   assert.equal((await fetch(`${base}/api/admin/models/${solo}/preview`, { method: 'DELETE', headers: { 'x-test-user': 'admin' } })).status, 422);
   assert.equal((await fetch(`${base}/api/admin/models/${id}/preview`, { method: 'DELETE', headers: { 'x-test-user': 'user' } })).status, 403);
+});
+
+test('Scenes aliases share one archive and preview, remain isolated from Models, and deduplicate subtree counts', { skip }, async () => {
+  const id = await archive('1116753112', 'Exterior', '3dscenes');
+  const driveAlias = await createCategoryResolver(pool, '3dscenes').resolve(['Interior','Other']);
+  await pool.query('insert into model_categories(model_id,category_id,from_drive) values($1,$2,true)', [id, driveAlias]);
+  const modelId = await archive('1116753112', 'Exterior');
+  const image = await jpeg();
+  const first = await up('Exterior', '1116753112.jpg', image, { contentDomain: '3dscenes' });
+  assert.equal(first.status, 201);
+  assert.equal((await first.json()).id, id);
+  const alias = await up('Interior/Other', '1116753112.jpg', image, { contentDomain: '3dscenes' });
+  assert.equal(alias.status, 201);
+  assert.equal((await alias.json()).id, id);
+  const repeated = await up('Interior/Other', '1116753112.jpg', image, { contentDomain: '3dscenes' });
+  assert.equal(repeated.status, 201);
+  assert.equal((await repeated.json()).reused, true);
+  const conflicting = await up('Interior/Bedroom', '1116753112.jpg', await jpeg(), { contentDomain: '3dscenes' });
+  assert.equal(conflicting.status, 409);
+  assert.equal((await pool.query('select count(*)::int n from model_categories where model_id=$1', [id])).rows[0].n, 2);
+  assert.equal((await pool.query('select count(*)::int n from model_files where model_id=$1', [id])).rows[0].n, 1);
+  assert.equal((await pool.query('select count(*)::int n from model_previews where model_id=$1', [id])).rows[0].n, 2);
+  const cats = await (await get('/categories?contentDomain=3dscenes')).json();
+  assert.equal(cats.contentDomain, '3dscenes');
+  assert.equal(cats.items.find(c => c.fullPath === 'Interior').subtreeModelCount, 1);
+  const other = cats.items.find(c => c.fullPath === 'Interior / Other');
+  assert.deepEqual(other.modelIds, [id]);
+  const scoped = await (await get(`/models?contentDomain=3dscenes&categoryId=${other.id}`)).json();
+  assert.equal(scoped.total, 1);
+  assert.equal(scoped.items[0].id, id);
+  assert.equal(scoped.items[0].categoryIds.length, 2);
+  assert.ok(scoped.items[0].thumbUrl.startsWith('/previews/3dscenes/'));
+  const legacy = await (await get('/models')).json();
+  assert.deepEqual(legacy.items.map(m => m.id), [modelId]);
+  const manifestData = await manifest.buildManifest(pool);
+  assert.deepEqual(manifestData.models.map(m => m.id), [id]);
+  assert.equal(manifestData.models[0].categoryIds.length, 2);
+  assert.ok(manifestData.previews.every(p => p.url.startsWith('/previews/3dscenes/')));
+  assert.equal((await get('/categories?contentDomain=invalid')).status, 400);
+  const wrongDomain = await fetch(`${base}/api/admin/models/${id}?contentDomain=3dmodels`, {
+    method: 'PATCH', headers: { 'x-test-user': 'admin', 'content-type': 'application/json' }, body: JSON.stringify({ status: 'HIDDEN' }),
+  });
+  assert.equal(wrongDomain.status, 422);
+});
+
+test('legacy preview relocation copies and verifies blobs, preserves old files and model IDs, and is idempotent', { skip }, async () => {
+  const id = await archive('legacy preview');
+  await up('A', 'legacy preview.jpg');
+  const original = (await pool.query('select id,local_path,sha256 from model_previews where model_id=$1', [id])).rows;
+  for (const row of original) {
+    await writeFile(path.join(dir, `${row.sha256}.webp`), await readFile(path.join(dir, row.local_path)));
+    await pool.query('update model_previews set local_path=$2 where id=$1', [row.id, `${row.sha256}.webp`]);
+  }
+  assert.equal((await relocateLegacyPreviews({ pool, previewDir: dir })).references, 2);
+  assert.equal((await relocateLegacyPreviews({ pool, previewDir: dir, apply: true })).references, 2);
+  assert.equal((await relocateLegacyPreviews({ pool, previewDir: dir, apply: true })).references, 0);
+  assert.equal((await pool.query('select id from models where stem=$1', ['legacy preview'])).rows[0].id, id);
+  for (const row of original) {
+    await access(path.join(dir, `${row.sha256}.webp`));
+    assert.deepEqual(await readFile(path.join(dir, row.local_path)), await readFile(path.join(dir, `${row.sha256}.webp`)));
+  }
 });

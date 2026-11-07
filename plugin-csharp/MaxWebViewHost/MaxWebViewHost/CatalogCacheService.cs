@@ -18,7 +18,15 @@ namespace MaxWebViewHost
         public string Variant { get; set; }
         public string Sha256 { get; set; }
         public long FileSize { get; set; }
-        public string Url { get { return "/previews/" + Sha256 + ".webp"; } }
+        private string url;
+        public string Url { get { return url ?? "/previews/" + Sha256 + ".webp"; } set { url = value; } }
+        // Only exact content-addressed paths are accepted, never arbitrary manifest URLs.
+        internal static bool IsAllowedUrl(string value, string sha)
+        {
+            return value == "/previews/" + sha + ".webp"
+                || value == "/previews/3dmodels/" + sha + ".webp"
+                || value == "/previews/3dscenes/" + sha + ".webp";
+        }
     }
 
     internal sealed class CachedCatalog
@@ -192,9 +200,9 @@ namespace MaxWebViewHost
             foreach (var p in manifest.previews)
             {
                 if (p == null || !ids.Contains(p.modelId ?? "") || (p.variant != "sm" && p.variant != "lg") || !Hex64.IsMatch(p.sha256 ?? "")
-                    || p.url != "/previews/" + p.sha256 + ".webp" || !p.fileSize.HasValue || p.fileSize < 1 || p.fileSize > MaxPreviewBytes
+                    || !PreviewEntry.IsAllowedUrl(p.url, p.sha256) || !p.fileSize.HasValue || p.fileSize < 1 || p.fileSize > MaxPreviewBytes
                     || !seen.Add(p.modelId + "|" + p.variant)) throw new InvalidDataException();
-                previews.Add(new PreviewEntry { ModelId = p.modelId.ToLowerInvariant(), Variant = p.variant, Sha256 = p.sha256, FileSize = p.fileSize.Value });
+                previews.Add(new PreviewEntry { ModelId = p.modelId.ToLowerInvariant(), Variant = p.variant, Sha256 = p.sha256, FileSize = p.fileSize.Value, Url = p.url });
             }
             return new CachedCatalog { CatalogVersion = catalog.catalogVersion.Value, CatalogJson = catalogJson, CategoriesJson = categoriesJson, ManifestJson = manifestJson,
                 ModelIds = ids.Select(i => i.ToLowerInvariant()).ToArray(), Previews = previews.ToArray() };

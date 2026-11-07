@@ -80,7 +80,9 @@ function Lightbox({ p, onClose }) {
 
 export default function PublicCatalog() {
   const [reloadKey, setReloadKey] = useState(0);
-  const { products, tree, state, error } = usePluginCatalog(reloadKey);
+  const { products: allProducts, tree: allTree, state, error } = usePluginCatalog(reloadKey);
+  const products = useMemo(() => allProducts.filter(p => (p.contentDomain || "3dmodels") === "3dmodels"), [allProducts]);
+  const tree = useMemo(() => allTree.filter(c => (c.contentDomain || "3dmodels") === "3dmodels"), [allTree]);
   const [subs, setSubs] = useState(() => new Set());
   const [text, setText] = useState('');
   const [limit, setLimit] = useState(STEP);

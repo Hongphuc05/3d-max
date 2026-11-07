@@ -21,7 +21,7 @@ export function planItems(files, forcedCategory) {
   return { items, skipped };
 }
 
-export default function AdminUpload({ categories = [], categoriesLoading = false, selectedCategory, onChanged }) {
+export default function AdminUpload({ contentDomain = '3dmodels', categories = [], categoriesLoading = false, selectedCategory, onChanged }) {
   const [run, setRun] = useState(null);
   const [validation, setValidation] = useState(null);
   const rows = useRef([]);
@@ -39,7 +39,7 @@ export default function AdminUpload({ categories = [], categoriesLoading = false
         const row = rows.current[next++];
         row.status = 'busy'; flush(true);
         try {
-          const result = await api.adminUploadPreview(row.category, row.file, { replace });
+          const result = await api.adminUploadPreview(row.category, row.file, { replace, contentDomain });
           row.status = 'ok'; row.message = `${RESULT[result.state] || 'Đã tải lên'}${result.mismatch ? ' · lệch danh mục' : ''}`;
         } catch (error) {
           if (error.code === 'PREVIEW_EXISTS') { row.status = 'exists'; row.message = RESULT.EXISTS; }
@@ -69,7 +69,7 @@ export default function AdminUpload({ categories = [], categoriesLoading = false
   const pickFolder = (event) => {
     const files = [...event.target.files]; event.target.value = '';
     if (!files.length) return;
-    const result = validatePreviewFolder(files, categories);
+    const result = validatePreviewFolder(files, categories, { contentDomain });
     if (result.errors.length) {
       setRun(null);
       setValidation(result);

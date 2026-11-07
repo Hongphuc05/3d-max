@@ -102,7 +102,7 @@ test('start: posts {sourceId, mode}, defaults to FULL, can pick INCREMENTAL, loc
   await mount();
   assert.equal(mustButton('Quét đồng bộ').disabled, false);
   await click(mustButton('Quét đồng bộ'));
-  assert.deepEqual(calls('/api/admin/drive/sync-jobs', 'POST')[0].body, { sourceId: 'src-1', mode: 'FULL' });
+  assert.deepEqual(calls('/api/admin/drive/sync-jobs', 'POST')[0].body, { sourceId: 'src-1', mode: 'FULL', contentDomain: '3dmodels' });
   assert.equal(stream().url, '/api/admin/drive/sync-jobs/job-1/events');
   await emit('progress', job('job-1', 'QUEUED'));
   assert.match(container.textContent, /Đang chờ/);
@@ -114,7 +114,7 @@ test('start: posts {sourceId, mode}, defaults to FULL, can pick INCREMENTAL, loc
   assert.equal(mustButton('Quét đồng bộ').disabled, false);
   await pick('mode', 'INCREMENTAL');
   await click(mustButton('Quét đồng bộ'));
-  assert.deepEqual(calls('/api/admin/drive/sync-jobs', 'POST')[1].body, { sourceId: 'src-1', mode: 'INCREMENTAL' });
+  assert.deepEqual(calls('/api/admin/drive/sync-jobs', 'POST')[1].body, { sourceId: 'src-1', mode: 'INCREMENTAL', contentDomain: '3dmodels' });
 });
 
 test('the scan button cannot be double-clicked while the request is pending', async () => {
@@ -324,4 +324,16 @@ test('P3.3: the history panel sits on the same screen and is reloaded when the c
   await emit('done', job('job-1', 'COMPLETED', { finishedAt: '2026-11-01T08:01:00Z' }));
   assert.equal(historyCalls().length, 2, 'reloaded once when the job ended');
   assert.ok(container.querySelector('tr[data-job="job-1"]'), 'the finished job shows up in the history');
+});
+
+test('Scenes switches summary, latest jobs, history and scan requests to its domain', async () => {
+  await mount();
+  await click(mustButton('Scenes'));
+  const domainOf = request => new URLSearchParams(request.search).get('contentDomain');
+  assert.equal(domainOf(calls('/api/admin/drive/summary').at(-1)), '3dscenes');
+  assert.ok(calls('/api/admin/drive/sync-jobs').slice(-2).every(request => domainOf(request) === '3dscenes'));
+  await click(mustButton('Qu\u00e9t \u0111\u1ed3ng b\u1ed9'));
+  assert.deepEqual(calls('/api/admin/drive/sync-jobs', 'POST').at(-1).body, { sourceId: 'src-1', mode: 'FULL', contentDomain: '3dscenes' });
+  await click(mustButton('Models'));
+  assert.equal(domainOf(calls('/api/admin/drive/summary').at(-1)), '3dmodels');
 });

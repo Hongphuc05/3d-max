@@ -44,6 +44,7 @@ function Device({ max }) {
 }
 
 export default function PluginApp({ orderPollMs }) {
+  const [contentDomain, setContentDomain] = useState("3dmodels");
   const [subs, setSubs] = useState(() => new Set());
   const [text, setText] = useState('');
   const [sort, setSort] = useState('name');
@@ -54,7 +55,9 @@ export default function PluginApp({ orderPollMs }) {
   const [reloadKey, setReloadKey] = useState(0);
   const [buying, setBuying] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const { products, tree, state, error, offline, progress, entitlements } = usePluginCatalog(reloadKey);
+  const { products: allProducts, tree: allTree, state, error, offline, progress, entitlements } = usePluginCatalog(reloadKey);
+  const products = useMemo(() => allProducts.filter(p => (p.contentDomain || "3dmodels") === contentDomain), [allProducts, contentDomain]);
+  const tree = useMemo(() => allTree.filter(c => (c.contentDomain || "3dmodels") === contentDomain), [allTree, contentDomain]);
   const jobs = useJobs();
   const max = isMaxHost();
   const completed = jobs.filter(j => j.status === 'done').length;
@@ -65,7 +68,7 @@ export default function PluginApp({ orderPollMs }) {
 
   // Chon model theo id (khong giu doi tuong cu): khi catalog tu lam moi, panel chi tiet cap nhat theo ban moi hoac dong neu model da bi go.
   const licensed = owns(entitlements);
-  const mine = useMemo(() => downloadedProducts(downloads.models, products), [downloads.models, products]);
+  const mine = useMemo(() => downloadedProducts(downloads.models, allProducts).filter(p => (p.contentDomain || "3dmodels") === contentDomain), [downloads.models, allProducts, contentDomain]);
   const active = useMemo(() => (tab === 'done' ? mine : products).find(p => p.id === activeId) || null, [products, mine, tab, activeId]);
   const listReady = tab === 'done' || state === 'ready';
   const rows = useMemo(() => {
@@ -75,7 +78,8 @@ export default function PluginApp({ orderPollMs }) {
       .sort(SORTS[sort][1]);
   }, [products, mine, tab, subs, text, sort]);
 
-  useEffect(() => setPage(1), [tab, subs, text, sort]);
+  useEffect(() => setPage(1), [tab, subs, text, sort, contentDomain]);
+  function selectDomain(domain) { setContentDomain(domain); setSubs(new Set()); setActiveId(null); setText(""); setPage(1); }
   const pages = Math.max(1, Math.ceil(rows.length / PAGE));
   useEffect(() => setPage((previous) => Math.min(previous, pages)), [pages]);
   const view = rows.slice((page - 1) * PAGE, page * PAGE);
@@ -106,7 +110,7 @@ export default function PluginApp({ orderPollMs }) {
 
       <div className="flex min-h-0 flex-1">
         <nav className="flex w-14 shrink-0 flex-col items-center gap-2 border-r border-line bg-panel py-3">
-          <div className="flex flex-col items-center gap-1 rounded-md bg-raised p-2 text-[10px] text-accent" title="Models"><Icon name="cube" className="size-5" />Models</div>
+          {[["3dmodels", "Models"], ["3dscenes", "Scenes"]].map(([domain, label]) => <button key={domain} onClick={() => selectDomain(domain)} aria-pressed={contentDomain === domain} title={label} className={"flex flex-col items-center gap-1 rounded-md p-2 text-[10px] " + (contentDomain === domain ? "bg-raised text-accent" : "text-mute hover:bg-raised hover:text-fg")}><Icon name="cube" className="size-5" />{label}</button>)}
           {max && <button onClick={() => setSettingsOpen(true)} title="Cài đặt" className="flex flex-col items-center gap-1 rounded-md p-2 text-[10px] text-mute hover:bg-raised hover:text-fg"><Icon name="settings" className="size-5" />Cài đặt</button>}
           <div className="mt-auto"><Device max={max} /></div>
         </nav>
@@ -132,7 +136,7 @@ export default function PluginApp({ orderPollMs }) {
 
           <div className="flex flex-wrap items-center gap-2 px-3 py-2">
             <div className="mr-2 leading-tight">
-              <div className="font-mono text-[10px] tracking-widest text-accent">3DS MOOD MODELS</div>
+              <div className="font-mono text-[10px] tracking-widest text-accent">3DS MOOD {contentDomain === "3dscenes" ? "SCENES" : "MODELS"}</div>
               <div className="font-mono text-xs text-mute">{listReady ? `${rows.length} model` : '…'}</div>
             </div>
             <label className="flex min-w-48 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-accent">

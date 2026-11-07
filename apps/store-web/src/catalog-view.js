@@ -9,6 +9,6 @@ export function matchesCategory(product, selected) {
   if (!selected.size) return true;
   const path = product.categoryPath || product.folderPath;
   const ancestors = path ? path.split('/').map((_, index, parts) => parts.slice(0, index + 1).join('/')) : [];
-  const keys = [...(product.folderIds || [product.folderId, product.category, subKey(product.category, product.subcategory)]), ...ancestors];
+  const keys = [...(product.categoryIds || []), ...(product.folderIds || [product.folderId, product.category, subKey(product.category, product.subcategory)]), ...ancestors];
   return keys.some(key => selected.has(key));
 }

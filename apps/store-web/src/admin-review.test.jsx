@@ -80,12 +80,12 @@ test('actions depend on the kind: pairs can be accepted, remap can be merged, ev
 test('Chấp nhận / Bỏ qua / Đã xem send the right action and remove the item', async () => {
   await mount([item('s1', 'SUGGESTED_PAIR'), item('s2', 'SUGGESTED_PAIR'), item('o1', 'ORPHAN_IMAGE')]);
   await click(mustButton('Chấp nhận', row('s1')));
-  assert.deepEqual(posts()[0], { path: '/api/admin/catalog/review/s1', method: 'POST', body: { action: 'ACCEPT' } });
+  assert.deepEqual(posts()[0], { path: '/api/admin/catalog/review/s1', method: 'POST', body: { action: 'ACCEPT', contentDomain: '3dmodels' } });
   assert.equal(row('s1'), null); assert.match(container.textContent, /Đã chấp nhận/);
   await click(mustButton('Bỏ qua', row('s2')));
-  assert.deepEqual(posts()[1].body, { action: 'DISMISS' }); assert.equal(row('s2'), null);
+  assert.deepEqual(posts()[1].body, { action: 'DISMISS', contentDomain: '3dmodels' }); assert.equal(row('s2'), null);
   await click(mustButton('Đã xem', row('o1')));
-  assert.deepEqual(posts()[2], { path: '/api/admin/catalog/review/o1', method: 'POST', body: { action: 'DISMISS' } });
+  assert.deepEqual(posts()[2], { path: '/api/admin/catalog/review/o1', method: 'POST', body: { action: 'DISMISS', contentDomain: '3dmodels' } });
   assert.match(container.textContent, /Không có mục nào cần duyệt/);
   assert.equal(lists().length, 1, 'removed in place, no reload');
 });
@@ -100,7 +100,7 @@ test('merging a remap needs an explicit confirmation that spells out what is del
   assert.ok(button('Xác nhận gộp', row('r1')), 'back to the normal buttons');
   await click(mustButton('Xác nhận gộp', row('r1')));
   await click(mustButton('Gộp', row('r1')));
-  assert.deepEqual(posts()[0].body, { action: 'ACCEPT' });
+  assert.deepEqual(posts()[0].body, { action: 'ACCEPT', contentDomain: '3dmodels' });
   assert.equal(row('r1'), null);
 });
 
@@ -177,4 +177,11 @@ test('a slow OLD list answer cannot overwrite a newer one (two reloads overlap)'
   assert.ok(row('new'));
   await act(async () => { release(); await new Promise((r) => setImmediate(r)); });
   assert.ok(row('new') && !row('old'), 'the late old answer is ignored');
+});
+
+test('Scenes review actions send the selected domain', async () => {
+  await mount([item('scene-review', 'ORPHAN_IMAGE')]);
+  await click(mustButton('Scenes'));
+  await click(row('scene-review').querySelector('button'));
+  assert.deepEqual(posts()[0].body, { action: 'DISMISS', contentDomain: '3dscenes' });
 });

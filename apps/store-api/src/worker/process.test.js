@@ -162,7 +162,8 @@ test('moving categories under 3DMODELS preserves source/model/file/category IDs 
   assert.equal((await pool.query("select count(*)::int n from categories where full_path like '3DMODELS%' or full_path like '3DSCENES%'")).rows[0].n, 0);
   assert.equal((await latestArchiveSnapshot(pool, sourceId)).id, j.id);
   const { queueModelScopeRefresh } = await import('./model-scope.js');
-  assert.equal(await queueModelScopeRefresh(pool), 0, 'a scoped successful full scan does not schedule another refresh');
+  assert.equal(await queueModelScopeRefresh(pool), 1, 'only the independent Scenes refresh is scheduled');
+  await pool.query("delete from drive_sync_jobs where content_domain='3dscenes'");
   assert.equal(media(), 0, 'reorganization downloads no archives or images');
   const calls = fake.state.requests.length;
   const incremental = await q.enqueueJob(pool, { sourceId, mode: 'INCREMENTAL' });
@@ -171,21 +172,21 @@ test('moving categories under 3DMODELS preserves source/model/file/category IDs 
   assert.deepEqual((await pool.query(query)).rows, before);
 });
 
-test('scope refresh queues one FULL attempt, defers to active jobs and never recreates sources', { skip }, async () => {
+test('scope refresh queues one FULL attempt per domain, defers active same-domain jobs and never recreates sources', { skip }, async () => {
   const { queueModelScopeRefresh } = await import('./model-scope.js');
   await pool.query("update drive_sources set root_folder_name='3DSMOOD' where id=$1", [sourceId]);
   const active = await enqueue();
-  assert.equal(await queueModelScopeRefresh(pool), 0);
+  assert.equal(await queueModelScopeRefresh(pool), 1, 'Scenes can queue while Models is active');
   await pool.query("update drive_sync_jobs set status='CANCELLED',finished_at=now() where id=$1", [active.id]);
   assert.equal((await Promise.all([queueModelScopeRefresh(pool), queueModelScopeRefresh(pool)])).reduce((sum, value) => sum + value, 0), 1);
   assert.equal(await queueModelScopeRefresh(pool), 0);
-  const scheduled = (await pool.query("select * from drive_sync_jobs where status='QUEUED'")).rows[0];
+  const scheduled = (await pool.query("select * from drive_sync_jobs where status='QUEUED' and content_domain='3dmodels'")).rows[0];
   assert.equal(scheduled.source_id, sourceId);
   assert.equal(scheduled.mode, 'FULL');
-  assert.equal(scheduled.checkpoint.scopeRefresh, 'models-v1');
+  assert.equal(scheduled.checkpoint.scopeRefresh, 'catalog-v2');
   folder('3DMODELS', ROOT);
   assert.equal((await work(scheduled.id)).status, 'COMPLETED');
-  assert.equal((await job(scheduled.id)).checkpoint.scopeRefresh, 'models-v1');
+  assert.equal((await job(scheduled.id)).checkpoint.scopeRefresh, 'catalog-v2');
   assert.equal(await queueModelScopeRefresh(pool), 0);
   assert.equal((await pool.query('select count(*)::int n from drive_sources')).rows[0].n, 1);
 });
@@ -230,6 +231,53 @@ test('D29: two archives with the same stem are a review item, never paired or cr
   assert.equal(id1.review_count, 1);
   await work((await enqueue()).id);
   assert.equal((await pool.query('select count(*)::int n from review_items')).rows[0].n, 1, 'not reopened every scan');
+});
+
+test('Scenes scans both domain branches independently, shares identical duplicate archives and preserves their category memberships', { skip }, async () => {
+  await pool.query("update drive_sources set root_folder_name='3DSMOOD' where id=$1", [sourceId]);
+  const models = folder('3DMODELS', ROOT), scenes = folder('3DSCENES', ROOT);
+  const outside = folder('Exterior', scenes.id), inside = folder('Interior', scenes.id), other = folder('Other', inside.id);
+  await addPair(models.id, '1116753112');
+  const first = (await addPair(outside.id, '1116753112')).arc;
+  fake.state.files.push({ ...first, id: nid(), parents: [other.id] });
+  const sceneJob = await q.enqueueJob(pool, { sourceId, mode: 'FULL', contentDomain: '3dscenes' });
+  assert.equal((await work(sceneJob.id)).status, 'COMPLETED');
+  const sceneModel = (await pool.query("select * from models where content_domain='3dscenes'")).rows[0];
+  assert.equal((await pool.query('select count(*)::int n from model_files where model_id=$1', [sceneModel.id])).rows[0].n, 1);
+  assert.deepEqual((await pool.query('select c.full_path from model_categories mc join categories c on c.id=mc.category_id where mc.model_id=$1 order by c.full_path', [sceneModel.id])).rows.map(r => r.full_path), ['Exterior', 'Interior / Other']);
+  const { latestArchiveSnapshot } = await import('./archive-snapshot.js');
+  assert.equal(await latestArchiveSnapshot(pool, sourceId), null);
+  assert.equal((await latestArchiveSnapshot(pool, sourceId, '3dscenes')).archive_count, 2);
+  const modelJob = await enqueue();
+  assert.equal((await work(modelJob.id)).status, 'COMPLETED');
+  assert.equal((await latestArchiveSnapshot(pool, sourceId, '3dscenes')).id, sceneJob.id, 'Models completion keeps the independent Scenes snapshot');
+  assert.equal((await pool.query('select count(*)::int n from models')).rows[0].n, 2);
+  assert.ok((await pool.query('select missing_scans from models where id=$1', [sceneModel.id])).rows.every(r => r.missing_scans === 0));
+  const calls = fake.state.requests.length;
+  const reconcile = await q.enqueueJob(pool, { sourceId, mode: 'INCREMENTAL', contentDomain: '3dscenes' });
+  assert.equal((await work(reconcile.id)).status, 'COMPLETED');
+  assert.equal(fake.state.requests.length, calls);
+  assert.equal((await pool.query("select count(*)::int n from review_items where content_domain='3dscenes'")).rows[0].n, 0);
+  const selected = (await pool.query('select drive_file_id from model_files where model_id=$1', [sceneModel.id])).rows[0].drive_file_id;
+  const exteriorCategory = (await pool.query("select id from categories where content_domain='3dscenes' and full_path='Exterior'")).rows[0].id;
+  await pool.query('update model_categories set from_upload=true where model_id=$1 and category_id=$2', [sceneModel.id, exteriorCategory]);
+  fake.state.files.splice(fake.state.files.findIndex(f => f.id === selected), 1);
+  const remaining = fake.state.files.find(f => f.name === '1116753112.rar' && f.parents[0] !== models.id);
+  remaining.parents = [folder('Bedroom', inside.id).id];
+  const moved = await q.enqueueJob(pool, { sourceId, mode: 'FULL', contentDomain: '3dscenes' });
+  assert.equal((await work(moved.id)).status, 'COMPLETED');
+  assert.equal((await pool.query('select missing_scans from models where id=$1', [sceneModel.id])).rows[0].missing_scans, 0, 'identical surviving archive replaces the missing canonical copy');
+  assert.equal((await pool.query('select count(*)::int n from model_files where model_id=$1', [sceneModel.id])).rows[0].n, 1);
+  assert.deepEqual((await pool.query('select c.full_path from model_categories mc join categories c on c.id=mc.category_id where mc.model_id=$1 order by c.full_path', [sceneModel.id])).rows.map(r => r.full_path), ['Exterior', 'Interior / Bedroom'], 'stale Drive aliases are removed while explicit upload aliases remain');
+});
+
+test('Scenes same-stem archives with different or unknown contents require review and never choose an archive', { skip }, async () => {
+  const outside = folder('Exterior', ROOT), inside = folder('Interior', ROOT);
+  await addPair(outside.id, 'scene'); await addPair(inside.id, 'scene');
+  const j = await q.enqueueJob(pool, { sourceId, mode: 'FULL', contentDomain: '3dscenes' });
+  assert.equal((await work(j.id)).status, 'COMPLETED');
+  assert.equal((await pool.query("select count(*)::int n from models where content_domain='3dscenes'")).rows[0].n, 0);
+  assert.equal((await pool.query("select count(*)::int n from review_items where content_domain='3dscenes'")).rows[0].n, 1);
 });
 
 test('D29: renaming an archive on Drive detaches it from the old model (which keeps its preview) and creates an archive-only model', { skip }, async () => {

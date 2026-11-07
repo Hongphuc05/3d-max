@@ -2,6 +2,7 @@
 // roi tu chuyen sang polling moi `pollMs` (3 giay) neu SSE loi. Khong co tong khi dang quet -> thanh khong xac dinh (khong gia phan tram).
 import { useEffect, useState } from 'react';
 import * as api from './api.js';
+import ContentDomainTabs from './ContentDomainTabs.jsx';
 import AdminSyncHistory from './AdminSyncHistory.jsx';
 import { modeLabels, statusLabels } from './syncLabels.js';
 import { adminError, dateTime, inputClass, panel, primary, ResourceState, secondary, useAdminResource } from './AdminShared.jsx';
@@ -74,8 +75,13 @@ function Metric({ label, value, detail }) {
 }
 
 export default function AdminSync({ pollMs = 3000 }) {
+  const [domain, setDomain] = useState("3dmodels");
+  return <div className="space-y-5"><ContentDomainTabs value={domain} onChange={setDomain} /><SyncDomain key={domain} contentDomain={domain} pollMs={pollMs} /></div>;
+}
+
+function SyncDomain({ pollMs, contentDomain }) {
   const status = useAdminResource(api.adminDriveStatus, []);
-  const latest = useAdminResource((signal) => api.adminSyncJobs({ limit: 1 }, signal), []);
+  const latest = useAdminResource((signal) => api.adminSyncJobs({ limit: 1, contentDomain }, signal), []);
   const [jobId, setJobId] = useState(null);
   const [sourceId, setSourceId] = useState(null);
   const [mode, setMode] = useState('FULL');
@@ -86,7 +92,7 @@ export default function AdminSync({ pollMs = 3000 }) {
   const { job, error: streamError } = useJob(jobId, pollMs);
   const sources = (status.data?.sources ?? []).filter((source) => source.enabled);
   const chosen = sourceId ?? sources[0]?.id ?? null;
-  const summary = useAdminResource((signal) => chosen ? api.adminDriveSummary(chosen, signal) : Promise.resolve(null), [chosen, summaryKey]);
+  const summary = useAdminResource((signal) => chosen ? api.adminDriveSummary(chosen, signal, contentDomain) : Promise.resolve(null), [chosen, summaryKey]);
 
   useEffect(() => {
     if (job && TERMINAL.has(job.status)) {
@@ -110,7 +116,7 @@ export default function AdminSync({ pollMs = 3000 }) {
     return undefined;
   }
   const start = async () => {
-    const e = await run(() => api.adminStartSync({ sourceId: chosen, mode }), ({ jobId: id }) => setJobId(id));
+    const e = await run(() => api.adminStartSync({ sourceId: chosen, mode, contentDomain }), ({ jobId: id }) => setJobId(id));
     if (e?.code === 'SYNC_ALREADY_RUNNING') { // da co job dang chay: gan vao no thay vi de man hinh mu
       try { const list = await api.adminSyncJobs({ limit: 1 }); if (list.items[0]) setJobId(list.items[0].id); } catch { /* giu thong bao loi */ }
     }
@@ -186,7 +192,7 @@ export default function AdminSync({ pollMs = 3000 }) {
           <Progress job={job} />
         </>}
       </div>}
-      <AdminSyncHistory refreshKey={historyKey} />
+      <AdminSyncHistory contentDomain={contentDomain} refreshKey={historyKey} />
     </>}
   </section>;
 }

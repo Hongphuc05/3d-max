@@ -15,7 +15,8 @@ export function buildAdminCategoryTree(items = []) {
   const sort = (list) => list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
   const aggregate = (node) => {
     sort(node.children);
-    node.count = (Number(node.modelCount) || 0) + node.children.reduce((sum, child) => sum + aggregate(child), 0);
+    const childCount = node.children.reduce((sum, child) => sum + aggregate(child), 0);
+    node.count = node.subtreeModelCount ?? ((Number(node.modelCount) || 0) + childCount);
     return node.count;
   };
   sort(roots);
@@ -24,15 +25,15 @@ export function buildAdminCategoryTree(items = []) {
 }
 
 /** Validate the whole selected directory before sending any image to the server. */
-export function validatePreviewFolder(files, categories, { maxBytes = 15 * 1024 * 1024 } = {}) {
+export function validatePreviewFolder(files, categories, { maxBytes = 15 * 1024 * 1024, contentDomain = '3dmodels' } = {}) {
   const items = [];
   const errors = [];
   const ignored = [];
   const known = new Map();
   for (const category of categories ?? []) {
     const segments = String(category.fullPath ?? '').split(' / ');
-    // The source folder is root category / subcategory / image.
-    if (segments.length === 2) known.set(pathKey(segments.join('/')), segments.join('/'));
+    // Categories may be any depth below the domain root.
+    if (segments.length >= 1) known.set(pathKey(segments.join('/')), segments.join('/'));
   }
   const stems = new Map();
 
@@ -43,12 +44,12 @@ export function validatePreviewFolder(files, categories, { maxBytes = 15 * 1024 
     const relative = String(file.webkitRelativePath ?? '');
     const parts = relative.split('/');
     if (META_FILE.test(file.name)) { ignored.push(relative || file.name); continue; }
-    if (parts.length !== 4 || parts.some((part) => !part || part === '.' || part === '..' || /[\\\u0000-\u001f\u007f]/.test(part))) {
-      errors.push(`${relative || file.name}: cần cấu trúc 3dsmood/Danh mục/Con/ảnh.jpg`);
+    if (parts.length < 3 || parts.some((part) => !part || part === '.' || part === '..' || /[\\\u0000-\u001f\u007f]/.test(part))) {
+      errors.push(`${relative || file.name}: cần cấu trúc ${contentDomain === "3dscenes" ? "3DSCENES" : "3DMODELS"}/Danh mục/.../ảnh.jpg`);
       continue;
     }
-    if (pathKey(parts[0]) !== '3dsmood') {
-      errors.push(`${relative}: thư mục gốc phải tên là 3dsmood`);
+    if (!(contentDomain === '3dscenes' ? ['3dscenes'] : ['3dsmood', '3dmodels']).includes(pathKey(parts[0]))) {
+      errors.push(`${relative}: ${contentDomain === "3dscenes" ? "thư mục gốc phải tên là 3DSCENES" : "thư mục gốc phải tên là 3dsmood hoặc 3DMODELS"}`);
       continue;
     }
     if (!IMAGE.test(file.name)) {
@@ -59,7 +60,7 @@ export function validatePreviewFolder(files, categories, { maxBytes = 15 * 1024 
       errors.push(`${relative}: ảnh phải lớn hơn 0 và không vượt quá 15 MB`);
       continue;
     }
-    const rawCategory = parts.slice(1, 3).join('/');
+    const rawCategory = parts.slice(1, -1).join('/');
     const category = known.get(pathKey(rawCategory));
     if (!category) {
       errors.push(`${relative}: danh mục “${rawCategory.replace('/', ' / ')}” không có trong cây danh mục hiện tại`);
@@ -71,12 +72,13 @@ export function validatePreviewFolder(files, categories, { maxBytes = 15 * 1024 
       errors.push(`${relative}: tên ảnh không hợp lệ`);
       continue;
     }
-    const previous = stems.get(stem);
+    const stemKey = contentDomain === '3dscenes' ? `${pathKey(category)}|${stem}` : stem;
+    const previous = stems.get(stemKey);
     if (previous) {
       errors.push(`${relative}: trùng tên chuẩn hóa với ${previous}; không thể ghép ảnh duy nhất theo tên`);
       continue;
     }
-    stems.set(stem, relative);
+    stems.set(stemKey, relative);
     items.push({ file, category });
   }
 

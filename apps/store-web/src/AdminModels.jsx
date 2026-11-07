@@ -29,7 +29,7 @@ function CategoryNode({ node, selectedId, onSelect, depth = 0 }) {
   </li>;
 }
 
-function ModelCard({ model, editing, onEdit, onCancel, onSaved, onDeleted }) {
+function ModelCard({ contentDomain, model, editing, onEdit, onCancel, onSaved, onDeleted }) {
   const [name, setName] = useState(model.name);
   const [status, setStatus] = useState(model.status);
   const [busy, setBusy] = useState(false);
@@ -49,14 +49,14 @@ function ModelCard({ model, editing, onEdit, onCancel, onSaved, onDeleted }) {
     if (status !== model.status && EDITABLE.includes(status)) body.status = status;
     if (!Object.keys(body).length) { onCancel(); return; }
     setBusy(true); setError('');
-    try { onSaved(await api.adminPatchModel(model.id, body)); onCancel(); }
+    try { onSaved(await api.adminPatchModel(model.id, { ...body, contentDomain })); onCancel(); }
     catch (e) { setError(adminError(e)); }
     finally { setBusy(false); }
   }
 
   async function deletePreview() {
     setBusy(true); setError('');
-    try { await api.adminDeletePreview(model.id); onDeleted(); }
+    try { await api.adminDeletePreview(model.id, contentDomain); onDeleted(); }
     catch (e) { setError(adminError(e)); setConfirmDelete(false); }
     finally { setBusy(false); }
   }
@@ -93,7 +93,7 @@ function ModelCard({ model, editing, onEdit, onCancel, onSaved, onDeleted }) {
   </article>;
 }
 
-export default function AdminModels() {
+export default function AdminModels({ contentDomain = '3dmodels' }) {
   const [query, setQuery] = useState(''), [status, setStatus] = useState(''), [stateFilter, setStateFilter] = useState('');
   const [draft, setDraft] = useState({ q: '', status: '', state: '' });
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
@@ -105,24 +105,26 @@ export default function AdminModels() {
   useEffect(() => {
     let stale = false;
     setCategoryState((current) => ({ ...current, loading: true, error: '' }));
-    api.adminCategories().then((result) => { if (!stale) setCategoryState({ items: result.items, loading: false, error: '' }); },
+    api.adminCategories(undefined, contentDomain).then((result) => { if (!stale) setCategoryState({ items: result.items, loading: false, error: '' }); },
       (error) => { if (!stale) setCategoryState({ items: null, loading: false, error: adminError(error) }); });
     return () => { stale = true; };
-  }, [version]);
+  }, [version, contentDomain]);
 
   useEffect(() => {
     let stale = false;
     setModelState((current) => ({ ...current, loading: true, error: '' }));
-    api.adminModels({ q: query, status, state: stateFilter, categoryId: selectedCategoryId, page, limit: PAGE }).then(
+    api.adminModels({ contentDomain, q: query, status, state: stateFilter, categoryId: selectedCategoryId, page, limit: PAGE }).then(
       (data) => { if (!stale) setModelState({ data, loading: false, error: '' }); },
       (error) => { if (!stale) setModelState({ data: null, loading: false, error: adminError(error) }); });
     return () => { stale = true; };
-  }, [query, status, stateFilter, selectedCategoryId, page, version]);
+  }, [query, status, stateFilter, selectedCategoryId, page, version, contentDomain]);
 
   const categoryTree = useMemo(() => buildAdminCategoryTree(categoryState.items || []), [categoryState.items]);
   const categoryById = useMemo(() => new Map((categoryState.items || []).map((item) => [item.id, item])), [categoryState.items]);
   const selectedCategory = categoryById.get(selectedCategoryId) || null;
-  const totalCategoryModels = categoryTree.reduce((sum, item) => sum + item.count, 0);
+  const categoryItems = categoryState.items || [];
+  const totalCategoryModels = categoryItems.length && categoryItems.every(item => Array.isArray(item.modelIds))
+    ? new Set(categoryItems.flatMap(item => item.modelIds)).size : categoryTree.reduce((sum, item) => sum + item.count, 0);
   const data = modelState.data;
 
   function search(event) {
@@ -159,7 +161,7 @@ export default function AdminModels() {
           <p className="mt-1 text-xs text-mute">{selectedCategory?.fullPath || 'Chọn một category để lọc model và thêm preview vào đúng danh mục.'}</p>
         </div>
         <div className="w-full xl:w-auto xl:min-w-80">
-          <AdminUpload categories={categoryState.items || []} categoriesLoading={categoryState.loading} selectedCategory={selectedCategory} onChanged={() => setVersion((value) => value + 1)} />
+          <AdminUpload contentDomain={contentDomain} categories={categoryState.items || []} categoriesLoading={categoryState.loading} selectedCategory={selectedCategory} onChanged={() => setVersion((value) => value + 1)} />
         </div>
       </header>
 
@@ -182,7 +184,7 @@ export default function AdminModels() {
       <ResourceState loading={modelState.loading && !data} error={modelState.error} retry={() => setVersion((value) => value + 1)} />
       {data && data.items.length === 0 && <p className="py-16 text-center text-sm text-mute">Không có model nào trong danh mục này.</p>}
       {data && data.items.length > 0 && <div className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-3">
-        {data.items.map((model) => <ModelCard key={model.id} model={model} editing={editingId === model.id}
+        {data.items.map((model) => <ModelCard contentDomain={contentDomain} key={model.id} model={model} editing={editingId === model.id}
           onEdit={() => setEditingId(model.id)} onCancel={() => setEditingId(null)} onSaved={replace} onDeleted={() => setVersion((value) => value + 1)} />)}
       </div>}
       {data && data.total > PAGE && <Pagination page={data.page} total={data.total} limit={data.limit} onPage={setPage} />}

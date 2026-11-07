@@ -12,7 +12,7 @@ import AdminSettings from './AdminSettings.jsx';
 import AdminUsers from './AdminUsers.jsx';
 import { secondary } from './AdminShared.jsx';
 
-const sections = [['overview', 'Tổng quan'], ['drive', 'Kết nối Drive'], ['sync', 'Quét đồng bộ'], ['models', 'Model'], ['review', 'Cần duyệt'], ['orders', 'Đơn hàng'], ['devices', 'Thiết bị & license'], ['settings', 'Cài đặt'], ['account', 'Thông tin đăng nhập']];
+const sections = [['overview', 'Tổng quan'], ['drive', 'Kết nối Drive'], ['sync', 'Quét đồng bộ'], ['models', 'Model'], ['scenes', 'Scenes'], ['review', 'Cần duyệt'], ['orders', 'Đơn hàng'], ['devices', 'Thiết bị & license'], ['settings', 'Cài đặt'], ['account', 'Thông tin đăng nhập']];
 export default function AdminDashboard() {
   const { user, logout } = useAuth();
   const [section, setSection] = useState(user.mustChangeCredentials ? 'account' : 'overview');
@@ -27,13 +27,14 @@ export default function AdminDashboard() {
       <nav aria-label="Quản trị" className="flex shrink-0 flex-wrap gap-1 border-b border-line bg-panel p-3 md:w-56 md:flex-col md:border-r md:border-b-0">
         {sections.map(([key, label]) => <button key={key} disabled={locked && key !== 'account'} aria-current={active === key ? 'page' : undefined} onClick={() => setSection(key)} className={`rounded-md px-3 py-2.5 text-left text-sm disabled:opacity-35 ${active === key ? 'bg-accent/10 font-bold text-accent' : 'text-mute hover:bg-raised hover:text-fg'}`}>{label}</button>)}
       </nav>
-      <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4 md:p-6"><div className={`mx-auto ${active === 'models' ? 'max-w-none' : 'max-w-6xl'}`}>
+      <main className="min-h-0 min-w-0 flex-1 overflow-auto p-4 md:p-6"><div className={`mx-auto ${['models', 'scenes'].includes(active) ? 'max-w-none' : 'max-w-6xl'}`}>
         {active === 'overview' && <AdminOverview onOpenOrders={sections.some(([k]) => k === 'orders') ? () => setSection('orders') : undefined} />}
         {active === 'drive' && <AdminDrive />}
         {active === 'sync' && <AdminSync />}
         {active === 'review' && <AdminReview />}
         {active === 'orders' && <AdminOrders />}
         {active === 'models' && <section className="space-y-5"><h2 className="text-xl font-bold">Model</h2><AdminModels /></section>}
+        {active === 'scenes' && <section className="space-y-5"><h2 className="text-xl font-bold">Scenes</h2><AdminModels key="scenes" contentDomain="3dscenes" /></section>}
         {active === 'devices' && <AdminDevices />}
         {active === 'settings' && <AdminSettings />}
         {active === 'account' && <div className="space-y-6"><AdminAccount />{user.isAdminOwner && !locked && <AdminUsers />}</div>}

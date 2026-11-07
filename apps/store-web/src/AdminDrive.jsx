@@ -159,6 +159,7 @@ export default function AdminDrive() {
   }
 
   return <section className="space-y-5">
+    <p className="text-sm text-mute">Thư mục Drive và API key dùng chung cho Models và Scenes. Trong mục Quét đồng bộ, chọn Models để quét 3DMODELS hoặc Scenes để quét 3DSCENES.</p>
     <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-bold">Kết nối Google Drive</h2><button className={secondary} onClick={refresh}>Làm mới</button></div>
     <ResourceState {...resource} retry={() => setVersion((value) => value + 1)} />
     {status && <>

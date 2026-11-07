@@ -2,7 +2,7 @@
 const slugify = (s) => s.normalize('NFKD').replace(/[^\w\s-]/g, '').trim().toLowerCase().replace(/[\s_]+/g, '-') || 'x';
 
 /** @param c pg client (trong transaction cua nguoi goi). resolve(parts) tra ve id danh muc la; created = so danh muc moi tao. */
-export function createCategoryResolver(c) {
+export function createCategoryResolver(c, contentDomain = '3dmodels') {
   const ids = new Map(); // full_path -> id
   const resolver = {
     created: 0,
@@ -12,9 +12,9 @@ export function createCategoryResolver(c) {
         path = path ? `${path} / ${name}` : name;
         if (!ids.has(path)) {
           const r = await c.query(
-            `insert into categories (parent_id, name, slug, full_path) values ($1, $2, $3, $4)
-             on conflict (full_path) do update set full_path = excluded.full_path returning id, (xmax = 0) as inserted`,
-            [parent, name, slugify(name), path]);
+            `insert into categories (parent_id, name, slug, full_path, content_domain) values ($1, $2, $3, $4, $5)
+             on conflict (content_domain, full_path) do update set full_path = excluded.full_path returning id, (xmax = 0) as inserted`,
+            [parent, name, slugify(name), path, contentDomain]);
           ids.set(path, r.rows[0].id);
           if (r.rows[0].inserted) resolver.created++;
         }

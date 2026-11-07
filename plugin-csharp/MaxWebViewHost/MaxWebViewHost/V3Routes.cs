@@ -6,12 +6,12 @@ namespace MaxWebViewHost
     internal enum V3Route { None, Blocked, Catalog, Categories, PreviewManifest, CatalogVersion, Entitlements, Preview, OrderCreate, OrderGet, OrderClaim, OrderCancel }
 
     /// <summary>Which local answer a request from the web UI gets. The UI has no network access of its own: /api/v1 reads are served from the
-    /// verified local catalog (or the device session), /previews/&lt;sha256&gt;.webp from the preview cache, and order calls (POST /api/v1/orders,
+    /// verified local catalog (or the device session), /previews/[3dmodels/|3dscenes/]&lt;sha256&gt;.webp from the preview cache, and order calls (POST /api/v1/orders,
     /// GET/POST /api/v1/orders/&lt;uuid&gt;[/claim-paid|/cancel]) are forwarded by OrdersClient with the device token. Nothing else under /api or
     /// /previews is reachable — in particular never the device endpoints, whose token only native code may hold.</summary>
     internal static class V3Routes
     {
-        private static readonly Regex Preview = new Regex("^/previews/([0-9a-f]{64})\\.webp$", RegexOptions.CultureInvariant);
+        private static readonly Regex Preview = new Regex("^/previews/(?:(?:3dmodels|3dscenes)/)?([0-9a-f]{64})\\.webp$", RegexOptions.CultureInvariant);
         private static readonly Regex Order = new Regex("^/api/v1/orders/([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})(/claim-paid|/cancel)?$", RegexOptions.CultureInvariant);
 
         /// <summary>arg = the preview sha256 or the order id the route refers to.</summary>

@@ -1,10 +1,13 @@
 // P4.4: bien catalog v3 (GET /api/v1/catalog + categories + previews/manifest) thanh dang ma cac component UI-1 da dung
 // (id, name, info, thumb/image, folderIds...) va cay danh muc {id,name,count,children}. Ham thuan, khong goi mang.
 const MB = 1024 * 1024;
-export const previewUrl = (sha256) => `/previews/${sha256}.webp`;
+export const previewUrl = (sha256, contentDomain) => "/previews/" + (contentDomain ? contentDomain + "/" : "") + sha256 + ".webp";
 
-export function buildCategoryTree(categories) {
-  const byId = new Map((categories || []).map((c) => [c.id, { id: c.id, name: c.name, count: c.modelCount ?? 0, parentId: c.parentId ?? null, children: [] }]));
+const manifestPreviewUrl = (preview) => /^\/previews\/(?:3dmodels\/|3dscenes\/)?[a-f0-9]{64}\.webp$/i.test(preview.url || "")
+  ? preview.url : previewUrl(preview.sha256, preview.contentDomain);
+
+export function buildCategoryTree(categories, products) {
+  const byId = new Map((categories || []).map((c) => [c.id, { id: c.id, name: c.name, contentDomain: c.contentDomain || "3dmodels", count: c.subtreeModelCount ?? c.modelCount ?? 0, parentId: c.parentId ?? null, children: [] }]));
   const roots = [];
   for (const node of byId.values()) {
     const parent = node.parentId && byId.get(node.parentId);
@@ -23,6 +26,7 @@ export function buildCategoryTree(categories) {
     if (parent) parent.children = parent.children.filter((c) => c !== node); // cat vong: node nay tro thanh goc
     roots.push(node); walk(node);
   }
+  if (products) for (const node of byId.values()) node.count = products.filter(p => p.folderIds.includes(node.id)).length;
   return sortTree(roots);
 }
 
@@ -41,15 +45,16 @@ export function buildCatalog({ catalog, categories, manifest }) {
     const sm = previews.get(`${m.id}|sm`), lg = previews.get(`${m.id}|lg`);
     const thumb = sm || lg, image = lg || sm;
     return {
-      id: m.id, slug: m.id, name: m.name,
+      id: m.id, slug: m.id, name: m.name, contentDomain: m.contentDomain || "3dmodels",
+      categoryId: m.categoryId, categoryIds: [...new Set([m.categoryId, ...(m.categoryIds || [])].filter(Boolean))],
       category: cat ? (cat.fullPath || cat.name).split(' / ')[0] : 'Khác', subcategory: cat?.name ?? '',
-      folderPath: cat?.fullPath ?? '', folderIds: ancestorsOf(m.categoryId, cats),
-      thumb: thumb ? previewUrl(thumb.sha256) : null, image: image ? previewUrl(image.sha256) : null,
+      folderPath: cat?.fullPath ?? '', folderIds: [...new Set([m.categoryId, ...(m.categoryIds || [])].flatMap(id => ancestorsOf(id, cats)))],
+      thumb: thumb ? manifestPreviewUrl(thumb) : null, image: image ? manifestPreviewUrl(image) : null,
       info: { sizeMB: Number.isFinite(m.sizeBytes) ? Math.max(0.1, Math.round((m.sizeBytes / MB) * 10) / 10) : null, renderers: [], formats: m.fileType ? [m.fileType] : [], hasTextures: false },
       downloadable: true, status: 'ready',
     };
   });
-  return { products, tree: buildCategoryTree(categories) };
+  return { products, tree: buildCategoryTree(categories, products) };
 }
 
 // Quyen (D28.1): mot license ca thu vien cho thiet bi (allModels). `null`/undefined = chua biet.

@@ -67,6 +67,16 @@ class PreviewCacheTests
         var root = Path.Combine(Path.GetTempPath(), "preview-cache-tests-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
         try
         {
+            {
+                var rig = new Rig(Path.Combine(root, "scoped"), 2);
+                rig.Entries[0].Url = "/previews/3dscenes/" + rig.Entries[0].Sha256 + ".webp";
+                rig.Entries[1].Url = "/previews/3dmodels/" + rig.Entries[1].Sha256 + ".webp";
+                var summary = await rig.Service.SyncAsync(rig.Entries, CancellationToken.None);
+                Check(summary.Done == 2 && rig.Fake.Requests.Contains(rig.Entries[0].Url) && rig.Fake.Requests.Contains(rig.Entries[1].Url), "scoped previews download from manifest URLs and share verified hash cache");
+                rig.Entries[0].Url = "https://evil.test/previews/" + rig.Entries[0].Sha256 + ".webp";
+                summary = await rig.Service.SyncAsync(rig.Entries.Take(1), CancellationToken.None);
+                Check(summary.Failed == 1 && rig.Fake.Requests.Count == 2, "untrusted URL is rejected even when its hash is already cached");
+            }
             // 1. First run: the cache is empty and one sync downloads every preview, each verified.
             {
                 var rig = new Rig(Path.Combine(root, "t1"), 6);

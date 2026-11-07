@@ -1,7 +1,7 @@
 # Build the single public download. No EXE or duplicate manual-install tree.
 param(
     [Parameter(Mandatory = $true)][string]$ApiBaseUrl,
-    [string]$Version = '1.3.3',
+    [string]$Version = '1.4.0',
     [switch]$TestBuild,
     [switch]$SkipDependencyRestore
 )

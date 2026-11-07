@@ -280,3 +280,32 @@ test('first run with the VPS down: clear message + "Thử lại" loads the catal
   assert.equal(document.querySelector('[role="progressbar"]'), null);
   globalThis.fetch = base; await done(root);
 });
+
+test('Scenes isolates the mixed online catalog, category tree and persisted downloads from Models', async () => {
+  server();
+  const baseFetch = globalThis.fetch;
+  cats.push({ id: id(9), name: 'Interior', fullPath: 'Interior', contentDomain: '3dscenes', modelCount: 1 });
+  globalThis.fetch = async (url, ...args) => {
+    const result = await baseFetch(url, ...args);
+    if (String(url) !== '/api/v1/catalog') return result;
+    const catalog = await result.json();
+    catalog.models.push({ id: id(109), name: 'Apartment Scene', contentDomain: '3dscenes', categoryId: id(9), status: 'PUBLISHED' });
+    return json(catalog);
+  };
+  localModels = [{ modelId: id(101) }, { modelId: id(109), product: { id: id(109), slug: id(109), name: 'Apartment Scene', contentDomain: '3dscenes', info: { renderers: [], formats: [] } } }];
+  const root = await mount();
+  assert.equal(cards().length, 3);
+  assert.doesNotMatch(document.querySelector('aside').textContent, /Interior/);
+  await act(async () => { button('Scenes').click(); await flush(); });
+  assert.equal(cards().length, 1);
+  assert.match(cards()[0], /Apartment Scene/);
+  assert.match(document.querySelector('aside').textContent, /Interior/);
+  assert.doesNotMatch(document.querySelector('aside').textContent, /Bedroom/);
+  await act(async () => { document.querySelectorAll('main > div button')[1].click(); await flush(); });
+  assert.equal(cards().length, 1);
+  assert.match(cards()[0], /Apartment Scene/);
+  await act(async () => { button('Models').click(); await flush(); });
+  assert.equal(cards().length, 1);
+  assert.match(cards()[0], /Sofa One/);
+  await done(root);
+});

@@ -5,7 +5,7 @@ import { isMaxHost, onHostEvent } from './integrations/3dsmax/bridge.js';
 import { buildCatalog } from './v3-catalog.js';
 
 async function getJson(path, signal) {
-  const r = await fetch(path, { signal, headers: { accept: 'application/json' } });
+  const r = await fetch(path, { signal, headers: { accept: 'application/json', 'X-3dsmood-Content-Domains': '1' } });
   const data = await r.json().catch(() => null);
   if (!r.ok) throw Object.assign(new Error(data?.error?.code || `HTTP ${r.status}`), { status: r.status, code: data?.error?.code });
   return data;

@@ -22,3 +22,5 @@ installer/release/out/
 
 # Du lieu anh preview cua chu du an (upload qua admin, khong commit)
 data/
+3DSCENES/
+apps/store-web/.scenes-build-check/

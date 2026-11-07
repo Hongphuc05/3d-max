@@ -12,7 +12,8 @@ export async function publishPlan(pool, { sourceId, jobId = null, plan }) {
   try {
     await c.query('begin');
     await c.query('select 1 from catalog_state where id = 1 for update'); // tuan tu hoa cac lan publish
-    const categories = createCategoryResolver(c);
+    const domain = plan.contentDomain ?? '3dmodels';
+    const categories = createCategoryResolver(c, domain);
     const catIds = new Map();
     const cat = async (p) => catIds.get(p) ?? catIds.set(p, await categories.resolve(p.split(' / '))).get(p);
     let created = 0, updated = 0;
@@ -24,8 +25,8 @@ export async function publishPlan(pool, { sourceId, jobId = null, plan }) {
       const f = e.file;
       let fileRow = (await c.query(
         `select f.id, f.model_id, m.stem from model_files f join models m on m.id = f.model_id
-          where f.source_id = $1 and f.drive_file_id = $2 for update of m`, [sourceId, f.id])).rows[0];
-      let model = (await c.query('select * from models where stem = $1 for update', [e.stem])).rows[0];
+          where f.source_id = $1 and f.drive_file_id = $2 and m.content_domain = $3 for update of m`, [sourceId, f.id, domain])).rows[0];
+      let model = (await c.query('select * from models where stem = $1 and content_domain = $2 for update', [e.stem, domain])).rows[0];
 
       if (fileRow && fileRow.stem !== null && fileRow.stem !== e.stem) { // doi ten tren Drive: file roi khoi model cu (model cu mat cap, khong bi xoa)
         await c.query('delete from model_files where id = $1', [fileRow.id]);
@@ -37,8 +38,8 @@ export async function publishPlan(pool, { sourceId, jobId = null, plan }) {
       let fileId = fileRow?.id;
       if (!model) {
         model = (await c.query(
-          `insert into models (category_id, drive_category_id, name, status, stem, published_at) values ($1, $1, $2, 'PUBLISHED', $3, now()) returning *`,
-          [dbCat, e.name, e.stem])).rows[0];
+          `insert into models (category_id, drive_category_id, name, status, stem, published_at, content_domain) values ($1, $1, $2, 'PUBLISHED', $3, now(), $4) returning *`,
+          [dbCat, e.name, e.stem, domain])).rows[0];
         created++;
       } else if (!fileRow && model.primary_file_id) { // model da co file nen khac (file cu da bien mat khoi Drive): thay bang file moi
         await c.query('delete from model_files where id = $1', [model.primary_file_id]);
@@ -61,6 +62,13 @@ export async function publishPlan(pool, { sourceId, jobId = null, plan }) {
          update models m set stem = $2, primary_file_id = $3, drive_category_id = $4, category_id = t.cat, missing_scans = 0, updated_at = now() from t
           where m.id = $1 and (m.stem, m.primary_file_id, m.drive_category_id, m.category_id, m.missing_scans) is distinct from ($2::text, $3::uuid, $4::uuid, t.cat, 0)`,
         [model.id, e.stem, fileId, dbCat]);
+      if (domain === '3dscenes') {
+        await c.query('delete from model_categories where model_id=$1 and not from_upload', [model.id]);
+        await c.query('update model_categories set from_drive=false where model_id=$1', [model.id]);
+        for (const categoryPath of e.categoryPaths ?? [e.categoryPath]) {
+          await c.query('insert into model_categories(model_id,category_id,from_drive) values($1,$2,true) on conflict(model_id,category_id) do update set from_drive=true', [model.id, await cat(categoryPath)]);
+        }
+      }
     }
 
     if (plan.missing?.length) await c.query('update models set missing_scans = missing_scans + 1 where id = any($1::uuid[])', [plan.missing]);
@@ -68,9 +76,9 @@ export async function publishPlan(pool, { sourceId, jobId = null, plan }) {
 
     for (const r of plan.reviews) {
       // Cung fingerprint da co (ke ca da DISMISS/RESOLVED): khong mo lai moi lan quet.
-      const dup = await c.query("select 1 from review_items where source_id = $1 and payload->>'fingerprint' = $2", [sourceId, r.payload.fingerprint]);
+      const dup = await c.query("select 1 from review_items where source_id = $1 and payload->>'fingerprint' = $2 and content_domain = $3", [sourceId, r.payload.fingerprint, domain]);
       if (dup.rowCount) continue;
-      await c.query('insert into review_items (source_id, kind, payload) values ($1, $2, $3::jsonb)', [sourceId, r.kind, JSON.stringify(r.payload)]);
+      await c.query('insert into review_items (source_id, kind, payload, content_domain) values ($1, $2, $3::jsonb, $4)', [sourceId, r.kind, JSON.stringify(r.payload), domain]);
     }
 
     const state = await refreshCatalogState(c, { jobId });

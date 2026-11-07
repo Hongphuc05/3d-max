@@ -43,7 +43,7 @@ function JobErrors({ job }) {
   </div>;
 }
 
-export default function AdminSyncHistory({ refreshKey = 0 }) {
+export default function AdminSyncHistory({ refreshKey = 0, contentDomain = "3dmodels" }) {
   const [state, setState] = useState({ items: [], next: null, loading: true, error: '' });
   const [more, setMore] = useState(false);
   const [open, setOpen] = useState(null);
@@ -54,17 +54,17 @@ export default function AdminSyncHistory({ refreshKey = 0 }) {
   useEffect(() => { // trang dau: khi mo man hinh, khi refreshKey doi (mot luot vua ket thuc), khi bam Thu lai
     let stale = false;
     setState((s) => ({ ...s, loading: true, error: '' }));
-    api.adminSyncJobs({ limit: PAGE }).then(
+    api.adminSyncJobs({ limit: PAGE, contentDomain }).then(
       (page) => { if (!stale) setState({ items: page.items, next: page.nextCursor, loading: false, error: '' }); },
       (error) => { if (!stale) setState((s) => ({ ...s, loading: false, error: adminError(error) })); });
     return () => { stale = true; };
-  }, [refreshKey, retryTick]);
+  }, [refreshKey, retryTick, contentDomain]);
 
   async function loadMore() {
     if (more || !state.next) return;
     setMore(true);
     try {
-      const page = await api.adminSyncJobs({ limit: PAGE, cursor: state.next });
+      const page = await api.adminSyncJobs({ limit: PAGE, contentDomain, cursor: state.next });
       if (mounted.current) setState((s) => ({ ...s, items: [...s.items, ...page.items], next: page.nextCursor, error: '' }));
     } catch (error) { if (mounted.current) setState((s) => ({ ...s, error: adminError(error) })); }
     finally { if (mounted.current) setMore(false); }

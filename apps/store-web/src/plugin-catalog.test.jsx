@@ -15,15 +15,16 @@ const { onHostEvent } = await import('./integrations/3dsmax/bridge.js');
 const id = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
 const flush = () => new Promise((r) => setTimeout(r, 15));
-let snap, state, requests;
+let snap, state, requests, requestHeaders;
 function Probe({ k = 0 }) { snap = usePluginCatalog(k); return null; }
 const originalFetch = globalThis.fetch;
 after(() => { globalThis.fetch = originalFetch; dom.window.close(); });
 
 function server() {
   state = { version: 1, models: 2, entitlements: { allModels: false, modelIds: [id(101)] }, fail: false, entitlementsStatus: 200 };
-  requests = [];
-  globalThis.fetch = async (url) => {
+  requests = []; requestHeaders = [];
+  globalThis.fetch = async (url, options) => {
+    requestHeaders.push(options?.headers);
     requests.push(String(url));
     if (state.fail) throw new TypeError('offline');
     const path = String(url);
@@ -43,6 +44,7 @@ test('loads catalog, categories, previews and the device rights from the local /
   assert.equal(snap.tree[0].name, 'Living');
   assert.deepEqual(snap.entitlements, { allModels: false, modelIds: [id(101)] });
   assert.deepEqual([...new Set(requests)].sort(), ['/api/v1/catalog', '/api/v1/categories', '/api/v1/me/entitlements', '/api/v1/previews/manifest']);
+  assert.ok(requestHeaders.every(headers => headers['X-3dsmood-Content-Domains'] === '1'), 'catalog requests opt into mixed domain responses');
   assert.ok(requests.every((r) => r.startsWith('/api/v1/')), 'never an old /api/products or /api/auth route');
   await act(() => root.unmount());
 });

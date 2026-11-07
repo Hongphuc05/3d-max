@@ -80,7 +80,7 @@ namespace MaxWebViewHost
         public async Task<byte[]> GetAsync(PreviewEntry entry, CancellationToken ct)
         {
             ct.ThrowIfCancellationRequested();
-            if (entry == null || !IsHash(entry.Sha256)) throw ApiException.Unavailable();
+            if (entry == null || !IsHash(entry.Sha256) || !PreviewEntry.IsAllowedUrl(entry.Url, entry.Sha256)) throw ApiException.Unavailable();
             var cached = TryRead(entry.Sha256);
             if (cached != null) return cached;
             var shared = inflight.GetOrAdd(entry.Sha256, _ => Task.Run(async () =>
@@ -99,7 +99,7 @@ namespace MaxWebViewHost
             var unique = new List<PreviewEntry>(); var seen = new HashSet<string>(StringComparer.Ordinal); var invalid = 0;
             foreach (var entry in wanted ?? new PreviewEntry[0])
             {
-                if (entry == null || !IsHash(entry.Sha256)) { invalid++; continue; }
+                if (entry == null || !IsHash(entry.Sha256) || !PreviewEntry.IsAllowedUrl(entry.Url, entry.Sha256)) { invalid++; continue; }
                 if (seen.Add(entry.Sha256)) unique.Add(entry);
             }
             var first = priority;
@@ -144,9 +144,9 @@ namespace MaxWebViewHost
         // One verified attempt: bounded stream -> .part -> size + sha256 -> publish. Anything else throws and leaves nothing behind.
         private async Task DownloadAsync(PreviewEntry entry, CancellationToken ct)
         {
-            if (!IsHash(entry.Sha256) || entry.FileSize < 1 || entry.FileSize > MaxPreviewBytes) throw new InvalidDataException();
+            if (!IsHash(entry.Sha256) || !PreviewEntry.IsAllowedUrl(entry.Url, entry.Sha256) || entry.FileSize < 1 || entry.FileSize > MaxPreviewBytes) throw new InvalidDataException();
             if (IsPresent(entry)) return;
-            using (var response = await api.OpenStreamAsync("/previews/" + entry.Sha256 + ".webp", null, ct).ConfigureAwait(false))
+            using (var response = await api.OpenStreamAsync(entry.Url, null, ct).ConfigureAwait(false))
             {
                 var type = response.Content != null && response.Content.Headers.ContentType != null ? response.Content.Headers.ContentType.MediaType : null;
                 if (type == "text/html" || type == "application/xhtml+xml") throw new InvalidDataException();

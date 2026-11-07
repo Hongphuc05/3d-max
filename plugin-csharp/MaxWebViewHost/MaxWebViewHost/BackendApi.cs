@@ -70,6 +70,8 @@ namespace MaxWebViewHost
         private HttpRequestMessage Build(HttpMethod method, string path, object jsonBody, string deviceToken, string ifNoneMatch)
         {
             var request = new HttpRequestMessage(method, Resolve(path));
+            // Opt in to the mixed Models/Scenes contract; older installed clients keep their Models-only responses.
+            request.Headers.TryAddWithoutValidation("X-3dsmood-Content-Domains", "1");
             if (deviceToken != null)
             {
                 if (!TokenPattern.IsMatch(deviceToken)) throw ApiException.Unavailable();

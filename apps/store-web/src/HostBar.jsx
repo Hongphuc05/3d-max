@@ -40,7 +40,7 @@ export function HostBar({ reloadKey, onRefresh, apiStatus }) {
   );
 
   return (
-    <header className="flex h-16 shrink-0 items-center gap-4 border-b border-line bg-panel px-4">
+    <header className="flex min-h-16 shrink-0 flex-wrap items-center gap-2 py-2 sm:gap-4 border-b border-line bg-panel px-4">
       <div className="flex shrink-0 items-center gap-2">
         <span className="grid size-9 place-items-center rounded-lg bg-accent text-accent-ink"><Icon name="cube" /></span>
         <div className="leading-tight">
@@ -48,7 +48,7 @@ export function HostBar({ reloadKey, onRefresh, apiStatus }) {
           <div className="font-mono text-[11px] tracking-widest text-accent">ONLINE MODEL LIBRARY</div>
         </div>
       </div>
-      <div className="min-w-0 flex-1 truncate font-mono text-xs">{host?.info?.importTarget === 'selected' ? null : status}</div>
+      <div className="order-last w-full min-w-0 truncate font-mono text-xs sm:order-none sm:w-auto sm:flex-1">{host?.info?.importTarget === 'selected' ? null : status}</div>
       {api && <Badge ok={api === 'ok'}>{api === 'ok' ? 'ONLINE' : api === 'db' ? 'DB LỖI' : 'OFFLINE'}</Badge>}
       <button onClick={onRefresh} title="Làm mới" className="rounded-md border border-line p-1.5 text-mute hover:bg-raised hover:text-fg">
         <Icon name="refresh" />

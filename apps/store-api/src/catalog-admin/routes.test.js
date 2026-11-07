@@ -147,7 +147,7 @@ test('GET models: pagination envelope, exact safe fields, ordered by name, no id
   assert.deepEqual(Object.keys(page).sort(), ['counts', 'items', 'limit', 'page', 'total']);
   assert.equal(page.total, 3); assert.equal(page.page, 1); assert.equal(page.limit, 20);
   assert.deepEqual(page.items.map((m) => m.name), ['apple', 'Mango', 'Zebra'], 'case-insensitive order');
-  assert.deepEqual(Object.keys(page.items[0]).sort(), ['categoryMismatch', 'categoryPath', 'id', 'name', 'nameOverridden', 'state', 'status', 'thumbUrl', 'updatedAt']);
+  assert.deepEqual(Object.keys(page.items[0]).sort(), ['categoryId', 'categoryIds', 'categoryMismatch', 'categoryPath', 'contentDomain', 'id', 'name', 'nameOverridden', 'state', 'status', 'thumbUrl', 'updatedAt']);
   assert.equal(page.items[0].categoryPath, 'Living / Sofa');
   const p2 = await (await j('/models?limit=2&page=2')).json();
   assert.deepEqual(p2.items.map((m) => m.name), ['Zebra']); assert.equal(p2.total, 3);
@@ -255,7 +255,7 @@ test('PATCH response has exactly the same safe fields as the list (no legacy id,
   const id = await addModel('Sofa A');
   await pool.query("update models set legacy_id = 'plugin-visible-old-id' where id = $1", [id]);
   const body = await (await j(`/models/${id}`, { method: 'PATCH', body: { name: 'Q' } })).json();
-  assert.deepEqual(Object.keys(body).sort(), ['categoryMismatch', 'categoryPath', 'id', 'name', 'nameOverridden', 'state', 'status', 'thumbUrl', 'updatedAt']);
+  assert.deepEqual(Object.keys(body).sort(), ['categoryId', 'categoryIds', 'categoryMismatch', 'categoryPath', 'contentDomain', 'id', 'name', 'nameOverridden', 'state', 'status', 'thumbUrl', 'updatedAt']);
   assert.equal(body.categoryPath, 'Living / Sofa');
   assert.equal(JSON.stringify(body).includes('plugin-visible-old-id'), false);
 });

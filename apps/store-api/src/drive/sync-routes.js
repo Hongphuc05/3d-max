@@ -1,6 +1,7 @@
 // Admin API cho luot dong bo, theo docs/v3-implementation-plan.md §2.2 (P3.2/P3.3). Mount SAU guard admin trong createDriveRouter.
 // Chi tra cot an toan: khong checkpoint, lease_owner, requested_by, Drive file ID. File loi hien ten + duong dan, khong ID.
 import express from 'express';
+import { contentDomain } from '../content-domain.js';
 import { apiError } from './errors.js';
 import { cancelJob, enqueueJob } from '../worker/queue.js';
 import { latestArchiveSnapshot } from '../worker/archive-snapshot.js';
@@ -8,13 +9,13 @@ import { latestArchiveSnapshot } from '../worker/archive-snapshot.js';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ITEM_STATUSES = new Set(['PENDING', 'DONE', 'FAILED', 'SKIPPED']);
 const TERMINAL = new Set(['COMPLETED', 'COMPLETED_WITH_ERRORS', 'FAILED', 'CANCELLED']);
-const COLUMNS = `id, source_id, mode, status, stage, scanned_folders, scanned_files, new_count, updated_count, unchanged_count,
+const COLUMNS = `id, source_id, content_domain, mode, status, stage, scanned_folders, scanned_files, new_count, updated_count, unchanged_count,
   missing_count, review_count, skipped_count, error_count, bytes_downloaded, started_at, finished_at, heartbeat_at, error_code, error_message`;
 
 // Job = {id,sourceId,mode,status,stage,counters:{scannedFolders,scannedFiles,new,updated,unchanged,missing,review,skipped,errors},
 //        bytesDownloaded,startedAt,finishedAt,heartbeatAt,errorCode,errorMessage}  (plan §2.2). JobSummary trong danh sach = cung dang.
 const publicJob = (r) => ({
-  id: r.id, sourceId: r.source_id, mode: r.mode, status: r.status, stage: r.stage,
+  id: r.id, sourceId: r.source_id, contentDomain: r.content_domain, mode: r.mode, status: r.status, stage: r.stage,
   counters: {
     scannedFolders: r.scanned_folders, scannedFiles: r.scanned_files, new: r.new_count, updated: r.updated_count,
     unchanged: r.unchanged_count, missing: r.missing_count, review: r.review_count, skipped: r.skipped_count, errors: r.error_count,
@@ -37,12 +38,13 @@ export function createSyncJobsRouter({ pool, pollMs = 2000, maxStreams = 5 }) {
 
   router.get('/summary', async (req, res, next) => {
     try {
+      const domain = contentDomain(req.query.contentDomain);
       const sourceId = typeof req.query.sourceId === 'string' ? req.query.sourceId : '';
       if (!UUID.test(sourceId)) throw apiError('INVALID_PARAMS');
       const source = (await pool.query('select 1 from drive_sources where id = $1', [sourceId])).rowCount;
       if (!source) throw apiError('INVALID_PARAMS');
       const [snapshot, models, reviews] = await Promise.all([
-        latestArchiveSnapshot(pool, sourceId),
+        latestArchiveSnapshot(pool, sourceId, domain),
         pool.query(`select
           count(*) filter (where has_preview)::int as preview_count,
           count(*) filter (where m.status = 'PUBLISHED' and f.id is not null
@@ -51,8 +53,8 @@ export function createSyncJobsRouter({ pool, pollMs = 2000, maxStreams = 5 }) {
           count(*) filter (where m.primary_file_id is not null and not has_preview)::int as archive_only_count
           from models m
           left join model_files f on f.id = m.primary_file_id
-          cross join lateral (select exists (select 1 from model_previews p where p.model_id = m.id and p.is_primary and p.variant = 'sm') as has_preview) preview_state`),
-        pool.query("select count(*)::int n from review_items where source_id = $1 and status = 'OPEN'", [sourceId]),
+          cross join lateral (select exists (select 1 from model_previews p where p.model_id = m.id and p.is_primary and p.variant = 'sm') as has_preview) preview_state where m.content_domain=$1`, [domain]),
+        pool.query("select count(*)::int n from review_items where source_id = $1 and status = 'OPEN' and content_domain=$2", [sourceId, domain]),
       ]);
       res.json({
         hasFullScan: Boolean(snapshot), driveArchiveCount: snapshot ? Number(snapshot.archive_count) : null,
@@ -66,12 +68,13 @@ export function createSyncJobsRouter({ pool, pollMs = 2000, maxStreams = 5 }) {
 
   router.post('/sync-jobs', express.json({ limit: '1kb' }), async (req, res, next) => {
     try {
-      const { sourceId, mode } = bodyKeys(req.body, ['sourceId', 'mode']);
+      const { sourceId, mode } = bodyKeys(req.body, ['sourceId', 'mode', 'contentDomain']);
+      const domain = contentDomain(req.body.contentDomain ?? req.query.contentDomain);
       if (!UUID.test(sourceId ?? '') || !['FULL', 'INCREMENTAL'].includes(mode)) throw apiError('INVALID_PARAMS');
       const source = (await pool.query('select enabled from drive_sources where id = $1', [sourceId])).rows[0];
       if (!source?.enabled) throw apiError('INVALID_PARAMS');
-      if (mode === 'INCREMENTAL' && !(await latestArchiveSnapshot(pool, sourceId))) throw apiError('FULL_SCAN_REQUIRED');
-      const job = await enqueueJob(pool, { sourceId, mode, requestedBy: req.user?.id ?? null });
+      if (mode === 'INCREMENTAL' && !(await latestArchiveSnapshot(pool, sourceId, domain))) throw apiError('FULL_SCAN_REQUIRED');
+      const job = await enqueueJob(pool, { sourceId, mode, contentDomain: domain, requestedBy: req.user?.id ?? null });
       res.status(202).json({ jobId: job.id });
     } catch (e) { next(e); }
   });
@@ -79,6 +82,7 @@ export function createSyncJobsRouter({ pool, pollMs = 2000, maxStreams = 5 }) {
   // Keyset theo (created_at, id): on dinh khi co job moi chen vao giua luc admin dang lat trang.
   router.get('/sync-jobs', async (req, res, next) => {
     try {
+      const domain = contentDomain(req.query.contentDomain);
       const limit = Math.min(Math.max(Number.parseInt(req.query.limit, 10) || 20, 1), 100);
       let after = null;
       if (req.query.cursor !== undefined) {
@@ -88,8 +92,8 @@ export function createSyncJobsRouter({ pool, pollMs = 2000, maxStreams = 5 }) {
       }
       const rows = (await pool.query(
         `select ${COLUMNS}, to_char(created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as seq from drive_sync_jobs
-          where $1::timestamptz is null or (created_at, id) < ($1::timestamptz, $2::uuid)
-          order by created_at desc, id desc limit $3`, [after?.[1] ?? null, after?.[2] ?? null, limit + 1])).rows;
+          where content_domain=$4 and ($1::timestamptz is null or (created_at, id) < ($1::timestamptz, $2::uuid))
+          order by created_at desc, id desc limit $3`, [after?.[1] ?? null, after?.[2] ?? null, limit + 1, domain])).rows;
       const page = rows.slice(0, limit);
       const last = page[page.length - 1];
       res.json({ items: page.map(publicJob), nextCursor: rows.length > limit ? `${last.seq}_${last.id}` : null });
@@ -108,8 +112,8 @@ export function createSyncJobsRouter({ pool, pollMs = 2000, maxStreams = 5 }) {
       if (!ITEM_STATUSES.has(status)) throw apiError('INVALID_PARAMS');
       const rows = (await pool.query(
         `select i.action, i.status, i.error_code, i.error_message, v.filename, v.path
-           from drive_sync_job_items i left join drive_inventory v on v.source_id = $2 and v.drive_file_id = i.drive_file_id
-          where i.job_id = $1 and i.status = $3 order by v.path nulls last, i.id limit 500`, [job.id, job.source_id, status])).rows;
+           from drive_sync_job_items i left join drive_inventory v on v.source_id = $2 and v.drive_file_id = i.drive_file_id and v.content_domain = $4
+          where i.job_id = $1 and i.status = $3 order by v.path nulls last, i.id limit 500`, [job.id, job.source_id, status, job.content_domain])).rows;
       res.json(rows.map((r) => ({ driveFileName: r.filename ?? null, path: r.path ?? null, action: r.action, status: r.status, errorCode: r.error_code, errorMessage: r.error_message })));
     } catch (e) { next(e); }
   });
@@ -128,8 +132,8 @@ export function createSyncJobsRouter({ pool, pollMs = 2000, maxStreams = 5 }) {
       const job = await mustGet(req.params.id);
       const source = (await pool.query('select enabled from drive_sources where id = $1', [job.source_id])).rows[0];
       if (!source?.enabled) throw apiError('INVALID_PARAMS');
-      if (job.mode === 'INCREMENTAL' && !(await latestArchiveSnapshot(pool, job.source_id))) throw apiError('FULL_SCAN_REQUIRED');
-      const created = await enqueueJob(pool, { sourceId: job.source_id, mode: job.mode, requestedBy: req.user?.id ?? null });
+      if (job.mode === 'INCREMENTAL' && !(await latestArchiveSnapshot(pool, job.source_id, job.content_domain))) throw apiError('FULL_SCAN_REQUIRED');
+      const created = await enqueueJob(pool, { sourceId: job.source_id, mode: job.mode, contentDomain: job.content_domain, requestedBy: req.user?.id ?? null });
       res.status(202).json({ jobId: created.id });
     } catch (e) { next(e); }
   });

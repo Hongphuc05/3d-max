@@ -16,12 +16,12 @@ const LIVE = "status in ('RUNNING','CANCELLING')";
 const apiError = (code, status, message) => Object.assign(new Error(message), { code, status });
 const leaseExpr = (n) => `now() + ($${n}::double precision * interval '1 millisecond')`;
 
-export async function enqueueJob(pool, { sourceId, mode, requestedBy = null }) {
-  if (!MODES.has(mode)) throw apiError('INVALID_PARAMS', 400, 'Invalid sync mode.');
+export async function enqueueJob(pool, { sourceId, mode, requestedBy = null, contentDomain = '3dmodels' }) {
+  if (!['3dmodels','3dscenes'].includes(contentDomain) || !MODES.has(mode)) throw apiError('INVALID_PARAMS', 400, 'Invalid sync mode.');
   try {
     const r = await pool.query(
-      "insert into drive_sync_jobs (source_id, mode, status, requested_by) values ($1, $2, 'QUEUED', $3) returning *",
-      [sourceId, mode, requestedBy]);
+      "insert into drive_sync_jobs (source_id, mode, status, requested_by, content_domain) values ($1, $2, 'QUEUED', $3, $4) returning *",
+      [sourceId, mode, requestedBy, contentDomain]);
     return r.rows[0];
   } catch (e) {
     if (e.code === '23505' && e.constraint === 'drive_sync_jobs_one_active_idx') {
@@ -94,11 +94,11 @@ export async function finishJob(pool, jobId, workerId, { status, errorCode = nul
        update drive_sync_jobs set status = $3, finished_at = now(), lease_owner = null, lease_expires_at = null, stage = null,
               error_code = $4, error_message = $5
         where id = $1 and lease_owner = $2 and ${LIVE}
-        returning id, source_id, mode, status, error_count
+        returning id, source_id, mode, status, error_count, content_domain
      ), pruned as (
        -- Keep one clean FULL baseline per source; discard failed/partial FULL snapshots and older baselines.
        delete from drive_archive_snapshot_runs r using completed c
-        where c.mode = 'FULL' and r.source_id = c.source_id
+        where c.mode = 'FULL' and r.source_id = c.source_id and r.content_domain = c.content_domain
           and ((c.status = 'COMPLETED' and c.error_count = 0 and r.job_id <> c.id)
             or ((c.status <> 'COMPLETED' or c.error_count <> 0) and r.job_id = c.id))
         returning r.job_id

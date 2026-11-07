@@ -221,6 +221,7 @@ namespace MaxWebViewHost
         private Dictionary<string, object> ProductSnapshot(string modelId, ModelDownloadInfo info)
         {
             var result = new Dictionary<string, object> { { "id", modelId }, { "slug", modelId }, { "name", modelId },
+                { "contentDomain", "3dmodels" }, { "categoryId", null }, { "categoryIds", new string[0] },
                 { "category", "Khác" }, { "subcategory", "" }, { "folderPath", "" }, { "folderIds", new string[0] },
                 { "thumb", null }, { "image", null }, { "downloadable", true }, { "status", "ready" },
                 { "info", new { sizeMB = Math.Round(info.SizeBytes / 1048576.0, 1), renderers = new string[0], formats = new[] { info.FileType }, hasTextures = false } } };
@@ -233,8 +234,17 @@ namespace MaxWebViewHost
             if (model != null)
             {
                 result["name"] = model["name"];
+                object domain, primary, aliases;
+                if (model.TryGetValue("contentDomain", out domain) && domain != null) result["contentDomain"] = domain;
+                model.TryGetValue("categoryId", out primary);
+                result["categoryId"] = primary;
+                var categoryIds = model.TryGetValue("categoryIds", out aliases) && aliases is System.Collections.IEnumerable && !(aliases is string)
+                    ? ((System.Collections.IEnumerable)aliases).Cast<object>().Select(Convert.ToString).Where(id => !string.IsNullOrEmpty(id)).ToList()
+                    : new List<string>();
+                if (primary != null && !categoryIds.Contains(Convert.ToString(primary))) categoryIds.Insert(0, Convert.ToString(primary));
+                result["categoryIds"] = categoryIds.ToArray();
                 var categories = serializer.Deserialize<Dictionary<string, object>[]>(Encoding.UTF8.GetString(cached.CategoriesJson));
-                var cat = categories.FirstOrDefault(c => Equals(c["id"], model["categoryId"]));
+                var cat = categories.FirstOrDefault(c => Equals(c["id"], primary));
                 if (cat != null)
                 {
                     result["folderPath"] = cat["fullPath"]; result["subcategory"] = cat["name"];
@@ -247,6 +257,19 @@ namespace MaxWebViewHost
                     }
                     result["folderIds"] = ancestors.ToArray();
                 }
+                // Include every alias and its ancestors so downloaded Scenes retain all placements offline.
+                var folders = new HashSet<string>((string[])result["folderIds"]);
+                foreach (var categoryId in categoryIds)
+                {
+                    var placement = categories.FirstOrDefault(c => Equals(c["id"], categoryId));
+                    var visited = new HashSet<string>();
+                    while (placement != null && visited.Add(Convert.ToString(placement["id"])))
+                    {
+                        folders.Add(Convert.ToString(placement["id"])); object parent; placement.TryGetValue("parentId", out parent);
+                        placement = parent == null ? null : categories.FirstOrDefault(c => Equals(c["id"], parent));
+                    }
+                }
+                result["folderIds"] = folders.ToArray();
             }
             var sm = cached.Previews.FirstOrDefault(p => p.ModelId == modelId && p.Variant == "sm");
             var lg = cached.Previews.FirstOrDefault(p => p.ModelId == modelId && p.Variant == "lg");

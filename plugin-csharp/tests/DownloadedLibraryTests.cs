@@ -65,7 +65,7 @@ class DownloadedLibraryTests
             return memory.ToArray();
         }
     }
-    static V3Library Fixture(DownloadedLibrary store, Server server, string temp)
+    static V3Library Fixture(DownloadedLibrary store, Server server, string temp, bool scene = false)
     {
         var library = (V3Library)Activator.CreateInstance(typeof(V3Library), true);
         var api = new BackendApi(new Uri("https://test.example/"), new HttpClient(server));
@@ -75,10 +75,11 @@ class DownloadedLibraryTests
         var previews = new PreviewCacheService(Path.Combine(temp, "previews"), api);
         var watcher = new CatalogUpdateWatcher(catalog, previews, api, TimeSpan.FromMinutes(5));
         var categoryId = Guid.NewGuid().ToString();
+        var aliasId = Guid.NewGuid().ToString();
         var cached = new CachedCatalog { CatalogVersion = 1,
-            CatalogJson = Encoding.UTF8.GetBytes(Json.Serialize(new { catalogVersion = 1, models = new[] { new { id = Model, name = "My chair", categoryId } } })),
-            CategoriesJson = Encoding.UTF8.GetBytes(Json.Serialize(new[] { new { id = categoryId, name = "Chairs", fullPath = "Furniture / Chairs", parentId = (string)null } })),
-            Previews = new[] { new PreviewEntry { ModelId = Model, Variant = "sm", Sha256 = new string('f', 64) } } };
+            CatalogJson = Encoding.UTF8.GetBytes(Json.Serialize(new { catalogVersion = 1, models = new[] { new { id = Model, name = "My chair", categoryId, contentDomain = scene ? "3dscenes" : null, categoryIds = scene ? new[] { categoryId, aliasId } : null } } })),
+            CategoriesJson = Encoding.UTF8.GetBytes(Json.Serialize(new[] { new { id = categoryId, name = "Chairs", fullPath = "Furniture / Chairs", parentId = (string)null }, new { id = aliasId, name = "Living", fullPath = "Living", parentId = (string)null } })),
+            Previews = new[] { new PreviewEntry { ModelId = Model, Variant = "sm", Sha256 = new string('f', 64), Url = scene ? "/previews/3dscenes/" + new string('f', 64) + ".webp" : null } } };
         typeof(CatalogUpdateWatcher).GetField("current", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(watcher, cached);
         Set(library, "Downloads", store); Set(library, "Session", session); Set(library, "Catalog", catalog); Set(library, "Watcher", watcher);
         Set(library, "Previews", previews); Set(library, "Downloader", new BackendModelDownloader(api, new Tokens()));
@@ -146,6 +147,7 @@ class DownloadedLibraryTests
         Directory.CreateDirectory(Path.Combine(legacyDirectory, "lowpoly")); File.WriteAllText(Path.Combine(legacyDirectory, "lowpoly", "second.max"), "two");
         store.Add(new DownloadedModel { modelId = legacyId, directory = legacyDirectory, entryFile = "first.fbx" });
         Check(store.Find(legacyId).importOptions == null, "older protected records remain readable before options migration");
+        Check(Equals(store.Find(legacyId).product["contentDomain"], "3dmodels"), "older downloaded records without product metadata default to Models after reload");
         var migrated = ReadOptions(store, legacyId);
         Check(migrated.options.Length == 2 && new DownloadedLibrary(Path.Combine(directory, "state"), directory).Find(legacyId).importOptions.Length == 2, "legacy extracted folders are scanned once and candidate index persists");
         File.WriteAllText(Path.Combine(legacyDirectory, "third.obj"), "three");
@@ -174,6 +176,19 @@ class DownloadedLibraryTests
     static async Task Run(string root)
     {
         await MultiOptions(root);
+        var sceneRoot = Path.Combine(root, "scenes");
+        var sceneState = Path.Combine(sceneRoot, "state");
+        var sceneStore = new DownloadedLibrary(sceneState, Path.Combine(sceneRoot, "files"));
+        var sceneServer = new Server { Package = MakePackage() };
+        using (var library = Fixture(sceneStore, sceneServer, sceneRoot, true))
+        {
+            await library.DownloadModelAsync(Model, CancellationToken.None, null);
+            var record = new DownloadedLibrary(sceneState, Path.Combine(sceneRoot, "files")).Find(Model);
+            Check(Equals(record.product["contentDomain"], "3dscenes") && ((System.Collections.IEnumerable)record.product["categoryIds"]).Cast<object>().Count() == 2,
+                "Scene domain and category aliases survive encrypted downloaded snapshot reload");
+            Check(Convert.ToString(record.product["thumb"]).StartsWith("/previews/3dscenes/") && ((System.Collections.IEnumerable)record.product["folderIds"]).Cast<object>().Count() == 2,
+                "Scene scoped preview and every category placement survive offline snapshot");
+        }
         var state = Path.Combine(root, "state"); var first = Path.Combine(root, "first"); var second = Path.Combine(root, "second");
         var store = new DownloadedLibrary(state, first);
         Check(!store.Allows(Binding), "new devices fail closed without verified rights");
@@ -185,6 +200,7 @@ class DownloadedLibraryTests
             Check(result != null && server.Sessions == 1 && server.Downloads == 1, "download fetches exactly one archive without scene or import dependencies");
             var model = store.Find(Model);
             Check(model != null && model.name == "My chair" && Equals(model.product["folderPath"], "Furniture / Chairs"), "catalog dictionary arrays produce persistent name and category snapshot");
+            Check(Equals(model.product["contentDomain"], "3dmodels"), "legacy catalog records default to Models");
             Check(File.Exists(Path.Combine(model.directory, "textures", "map.jpg")), "extracted textures remain beside local model");
             Check(Directory.GetFiles(first, "package.bin", SearchOption.AllDirectories).Length == 0, "archive removed after successful extraction and indexing");
             Check(changes == 1, "completed download publishes downloaded-library event");

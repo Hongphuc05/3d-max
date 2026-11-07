@@ -77,7 +77,7 @@ test('3DSMOOD scopes inventory to 3DMODELS without wrapper category or scene req
   ctx.saveProgress = async progress => { saves++; return q.saveProgress(pool, job.id, 'scan-worker', progress); };
   assert.equal((await scanSource({ pool, client: client(), job, source: scoped, ctx })).interrupted, true);
   const resumed = (await pool.query('select * from drive_sync_jobs where id=$1', [job.id])).rows[0];
-  assert.equal(resumed.checkpoint.scan.scopePolicy, 'models-v1');
+  assert.equal(resumed.checkpoint.scan.scopePolicy, 'catalog-v2');
   assert.equal((await scanSource({ pool, client: client(), job: resumed, source: scoped, ctx: ctxFor(resumed) })).done, true);
   assert.deepEqual((await inv()).map(row => row.path), ['Furniture', 'Furniture/chair.zip']);
   assert.ok(!fake.state.requests.some(request => request.query.q?.includes(scenes.id)), 'scene branch was never listed');

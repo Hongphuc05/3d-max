@@ -31,26 +31,26 @@ function toRow(f, parentId, path) {
 }
 
 // Mot job chi ghi mot file mot lan (file nam o 2 thu muc: lan thay dau thang) -> khong dung ON CONFLICT hai lan trong 1 cau lenh.
-async function upsertRows(pool, sourceId, jobId, rows, batchSize) {
+async function upsertRows(pool, sourceId, jobId, rows, batchSize, domain) {
   const unique = [...new Map(rows.map((r) => [r.id, r]).reverse()).values()].reverse();
   for (let i = 0; i < unique.length; i += batchSize) {
     const b = unique.slice(i, i + batchSize);
     const col = (k) => b.map((r) => r[k]);
     await pool.query(
       `insert into drive_inventory (source_id, drive_file_id, parent_drive_id, path, filename, mime_type, is_folder, is_shortcut,
-                                    shortcut_target_id, size_bytes, modified_time, md5_checksum, resource_key, can_download, last_seen_job_id)
-       select $1::uuid, t.id, t.parent, t.path, t.name, t.mime, t.is_folder, t.is_shortcut, t.target, t.size, t.modified, t.md5, t.rk, t.can_dl, $2::uuid
+                                    shortcut_target_id, size_bytes, modified_time, md5_checksum, resource_key, can_download, last_seen_job_id, content_domain)
+       select $1::uuid, t.id, t.parent, t.path, t.name, t.mime, t.is_folder, t.is_shortcut, t.target, t.size, t.modified, t.md5, t.rk, t.can_dl, $2::uuid, $16
          from unnest($3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::boolean[], $9::boolean[], $10::text[], $11::bigint[],
                      $12::timestamptz[], $13::text[], $14::text[], $15::boolean[])
               as t(id, parent, path, name, mime, is_folder, is_shortcut, target, size, modified, md5, rk, can_dl)
-       on conflict (source_id, drive_file_id) do update set
+       on conflict (source_id, content_domain, drive_file_id) do update set
          parent_drive_id = excluded.parent_drive_id, path = excluded.path, filename = excluded.filename, mime_type = excluded.mime_type,
          is_folder = excluded.is_folder, is_shortcut = excluded.is_shortcut, shortcut_target_id = excluded.shortcut_target_id,
          size_bytes = excluded.size_bytes, modified_time = excluded.modified_time, md5_checksum = excluded.md5_checksum,
          resource_key = excluded.resource_key, can_download = excluded.can_download, last_seen_job_id = excluded.last_seen_job_id
        where drive_inventory.last_seen_job_id is distinct from excluded.last_seen_job_id`,
       [sourceId, jobId, col('id'), col('parent'), col('path'), col('name'), col('mime'), col('isFolder'), col('isShortcut'),
-        col('target'), col('size'), col('modified'), col('md5'), col('rk'), col('canDownload')]);
+        col('target'), col('size'), col('modified'), col('md5'), col('rk'), col('canDownload'), domain]);
   }
 }
 
@@ -61,11 +61,11 @@ async function upsertRows(pool, sourceId, jobId, rows, batchSize) {
 export async function scanSource({ pool, client, job, source, ctx, pageSize = 1000, batchSize = 200, maxFiles = 100_000, maxFolders = 10_000 }) {
   if (ctx.cancelled) return { status: 'CANCELLED' };
   if (ctx.shuttingDown) return { interrupted: true };
-  if (job.checkpoint?.scan && isModelLibrarySource(source) && job.checkpoint.scan.scopePolicy !== MODEL_SCOPE_POLICY)
+  if (job.checkpoint?.scan && ((isModelLibrarySource(source) && job.checkpoint.scan.scopePolicy !== MODEL_SCOPE_POLICY) || (job.checkpoint.scan.contentDomain ?? '3dmodels') !== (job.content_domain ?? '3dmodels')))
     throw apiError('FULL_SCAN_REQUIRED'); // Never resume a partially scanned old, wider tree.
   let scope;
   if (!job.checkpoint?.scan) {
-    try { scope = await resolveModelScope(client, source, { signal: ctx.signal }); }
+    try { scope = await resolveModelScope(client, source, { signal: ctx.signal, contentDomain: job.content_domain ?? '3dmodels' }); }
     catch (error) {
       if (ctx.cancelled) return { status: 'CANCELLED' };
       if (ctx.shuttingDown) return { interrupted: true };
@@ -73,6 +73,7 @@ export async function scanSource({ pool, client, job, source, ctx, pageSize = 10
     }
   }
   const state = job.checkpoint?.scan ?? {
+    contentDomain: job.content_domain ?? '3dmodels',
     scopePolicy: isModelLibrarySource(source) ? MODEL_SCOPE_POLICY : 'legacy-v1',
     queue: [{ id: scope.id, path: '', rk: scope.resourceKey, root: true }],
     pageToken: null, visited: [scope.id],
@@ -132,7 +133,7 @@ export async function scanSource({ pool, client, job, source, ctx, pageSize = 10
         }
       }
     }
-    await upsertRows(pool, source.id, job.id, rows, batchSize);
+    await upsertRows(pool, source.id, job.id, rows, batchSize, job.content_domain ?? '3dmodels');
     if (state.counters.scannedFiles > maxFiles) throw limitError();
 
     state.pageToken = page.nextPageToken ?? null;

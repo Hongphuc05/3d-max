@@ -21,6 +21,8 @@ class CatalogCacheTests
         public List<string> IfNoneMatch = new List<string>();
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage r, CancellationToken t)
         {
+            if (!r.Headers.Contains("X-3dsmood-Content-Domains") || r.Headers.GetValues("X-3dsmood-Content-Domains").Single() != "1")
+                throw new Exception("All native catalog requests must advertise mixed content-domain capability.");
             lock (Calls) { Calls.Add(r.RequestUri.AbsolutePath); IfNoneMatch.Add(r.Headers.IfNoneMatch.Count == 0 ? null : r.Headers.IfNoneMatch.ToString()); }
             return Task.FromResult(Reply(r));
         }
@@ -86,6 +88,30 @@ class CatalogCacheTests
         var root = Path.Combine(Path.GetTempPath(), "catalog-cache-tests-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
         try
         {
+            {
+                var server = new Server();
+                server.BreakCatalog = d => {
+                    var models = (Dictionary<string, object>[])d["models"];
+                    models[0]["contentDomain"] = "3dscenes";
+                    models[0]["categoryIds"] = new[] { Uuid(900), Uuid(901) };
+                };
+                server.BreakManifest = d => {
+                    foreach (var p in (Dictionary<string, object>[])d["previews"])
+                        p["url"] = "/previews/3dscenes/" + p["sha256"] + ".webp";
+                };
+                var dir = Path.Combine(root, "scoped");
+                var cache = new CatalogCacheService(dir, new BackendApi(Api, new HttpClient(new Fake { Reply = server.Handle })));
+                var updated = await cache.UpdateAsync(CancellationToken.None);
+                var restored = cache.Load();
+                Check(updated.Catalog.Previews.All(p => p.Url.StartsWith("/previews/3dscenes/")) && restored.Previews[0].Url == updated.Catalog.Previews[0].Url, "scoped manifest URLs survive offline cache reload");
+                Check(Encoding.UTF8.GetString(restored.CatalogJson).Contains("3dscenes") && Encoding.UTF8.GetString(restored.CatalogJson).Contains("categoryIds"), "mixed content domain and alias fields survive catalog cache unchanged");
+                foreach (var bad in new[] { "/previews/unknown/", "/previews/3dscenes/extra/", "https://evil.test/previews/" })
+                {
+                    server.Version++;
+                    server.BreakManifest = d => { foreach (var p in (Dictionary<string, object>[])d["previews"]) p["url"] = bad + p["sha256"] + ".webp"; };
+                    Check(await CodeOf(async () => await cache.UpdateAsync(CancellationToken.None)) == "SERVER_UNAVAILABLE", "unsafe preview URL rejected: " + bad);
+                }
+            }
             // 1. First update stores a consistent set; Load returns it; nothing temporary is left.
             {
                 var dir = Path.Combine(root, "t1"); var server = new Server(); var fake = new Fake { Reply = server.Handle };
@@ -95,6 +121,7 @@ class CatalogCacheTests
                 Check(result.Changed && !result.Offline && result.Catalog.CatalogVersion == 1, "first update downloads and reports a change");
                 Check(result.Catalog.Previews.Length == 4 && result.Catalog.ModelIds.Length == 2, "previews and model ids are parsed");
                 Check(fake.Calls.SequenceEqual(new[] { "/api/v1/catalog/version", "/api/v1/catalog", "/api/v1/categories", "/api/v1/previews/manifest" }), "exactly the four public endpoints, in order");
+                Check(fake.Calls.Count == 4, "all four public endpoints advertise content-domain capability");
                 Check(Leftovers(dir).Length == 0 && File.Exists(Path.Combine(dir, "meta.json")), "no temporary files; meta.json present");
                 var again = new CatalogCacheService(dir, new BackendApi(Api, new HttpClient(fake))).Load();
                 Check(again != null && again.CatalogVersion == 1 && Encoding.UTF8.GetString(again.CatalogJson).Contains("Model 1"), "a new instance reads the same cache from disk");

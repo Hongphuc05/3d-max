@@ -3,20 +3,21 @@
 // Khong hien ID nao: chi tom tat + ten file ung vien.
 import { useEffect, useState } from 'react';
 import * as api from './api.js';
+import ContentDomainTabs from './ContentDomainTabs.jsx';
 import { adminError, panel, ResourceState, secondary, primary } from './AdminShared.jsx';
 
 const KIND_ORDER = ['REMAP_CANDIDATE', 'SUGGESTED_PAIR', 'AMBIGUOUS_PAIR', 'ORPHAN_MODEL', 'ORPHAN_IMAGE', 'PREVIEW_IN_ARCHIVE'];
 const kindLabels = { REMAP_CANDIDATE: 'Có thể đổi ID', SUGGESTED_PAIR: 'Gợi ý ghép cặp', AMBIGUOUS_PAIR: 'Ghép cặp không rõ', ORPHAN_MODEL: 'File model lẻ', ORPHAN_IMAGE: 'Ảnh lẻ', PREVIEW_IN_ARCHIVE: 'Ảnh trong file nén' };
 const ACCEPTABLE = new Set(['SUGGESTED_PAIR', 'REMAP_CANDIDATE']);
 
-function Item({ item, onResolved }) {
+function Item({ item, onResolved, contentDomain }) {
   const [state, setState] = useState({ busy: false, error: '', confirm: false });
   const acceptable = ACCEPTABLE.has(item.kind), remap = item.kind === 'REMAP_CANDIDATE';
 
   async function send(action, doneMessage) {
     if (state.busy) return;
     setState({ busy: true, error: '', confirm: false });
-    try { await api.adminReviewAction(item.id, action); onResolved(item.id, doneMessage); }
+    try { await api.adminReviewAction(item.id, action, contentDomain); onResolved(item.id, doneMessage); }
     catch (e) {
       if (e?.code === 'REVIEW_ALREADY_RESOLVED') onResolved(item.id, adminError(e)); // nguoi khac da xu ly: muc bien mat
       else setState({ busy: false, error: adminError(e), confirm: false });
@@ -47,6 +48,11 @@ function Item({ item, onResolved }) {
 }
 
 export default function AdminReview() {
+  const [domain, setDomain] = useState("3dmodels");
+  return <div className="space-y-5"><ContentDomainTabs value={domain} onChange={setDomain} /><ReviewDomain key={domain} contentDomain={domain} /></div>;
+}
+
+function ReviewDomain({ contentDomain }) {
   const [version, setVersion] = useState(0);
   const [state, setState] = useState({ items: null, loading: true, error: '' });
   const [message, setMessage] = useState('');
@@ -54,7 +60,7 @@ export default function AdminReview() {
   useEffect(() => {
     let stale = false;
     setState((s) => ({ ...s, loading: true, error: '' }));
-    api.adminReviewItems().then(
+    api.adminReviewItems(undefined, contentDomain).then(
       (items) => { if (!stale) setState({ items, loading: false, error: '' }); },
       (error) => { if (!stale) setState({ items: null, loading: false, error: adminError(error) }); });
     return () => { stale = true; };
@@ -76,7 +82,7 @@ export default function AdminReview() {
       const group = items.filter((item) => item.kind === kind);
       return <section key={kind} data-kind={kind} className={`${panel} space-y-1`}>
         <h3 className="font-bold">{kindLabels[kind]} ({group.length})</h3>
-        <ul>{group.map((item) => <Item key={item.id} item={item} onResolved={resolved} />)}</ul>
+        <ul>{group.map((item) => <Item contentDomain={contentDomain} key={item.id} item={item} onResolved={resolved} />)}</ul>
       </section>;
     })}
   </section>;

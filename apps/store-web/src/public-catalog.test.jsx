@@ -36,8 +36,9 @@ globalThis.fetch = async (url, opts) => {
   if (path === '/api/v1/catalog') return json({ models: [
     { id: id(101), name: 'Sofa One', categoryId: id(1), status: 'PUBLISHED' },
     { id: id(102), name: 'Sofa Two', categoryId: id(1), status: 'PUBLISHED' },
-    { id: id(103), name: 'Bed One', categoryId: id(2), status: 'PUBLISHED' }] });
-  if (path === '/api/v1/categories') return json([{ id: id(1), parentId: null, name: 'Living', fullPath: 'Living', modelCount: 2 }, { id: id(2), parentId: null, name: 'Bedroom', fullPath: 'Bedroom', modelCount: 1 }]);
+    { id: id(103), name: 'Bed One', categoryId: id(2), status: 'PUBLISHED' },
+    { id: id(109), name: 'Apartment Scene', categoryId: id(9), contentDomain: '3dscenes', status: 'PUBLISHED' }] });
+  if (path === '/api/v1/categories') return json([{ id: id(1), parentId: null, name: 'Living', fullPath: 'Living', modelCount: 2 }, { id: id(2), parentId: null, name: 'Bedroom', fullPath: 'Bedroom', modelCount: 1 }, { id: id(9), name: 'Scene Interior', fullPath: 'Scene Interior', contentDomain: '3dscenes', modelCount: 1 }]);
   if (path === '/api/v1/previews/manifest') return json({ previews: [] });
   throw new Error('unexpected ' + path);
 };
@@ -145,4 +146,11 @@ test('leaving the gallery cancels an in-flight package request without saving a 
   await act(async () => { releaseResponse(wrongHeaderResponse()); await flush(); });
   assert.equal(savedFiles.length, 0);
   downloadResponse = wrongHeaderResponse;
+});
+
+test("public gallery keeps Models scope when the capability response contains Scenes", async () => {
+  const root = await mount();
+  assert.equal(cards().length, 3);
+  assert.doesNotMatch(document.body.textContent, /Apartment Scene|Scene Interior/);
+  await act(() => root.unmount());
 });

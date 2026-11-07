@@ -7,6 +7,8 @@ import path from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
 import { isolatedTestDatabase } from '../test-database.js';
 
+const fetch = (url, options = {}) => globalThis.fetch(url, { ...options, headers: { 'X-3dsmood-Content-Domains': '1', ...options.headers } });
+
 const configured = Boolean(process.env.TEST_DATABASE_URL);
 const skip = !configured;
 let dispose, pool, manifest, routes, sourceId, previewDir;
@@ -34,10 +36,10 @@ beforeEach(async () => {
   await pool.query('update catalog_state set active_version = 0, manifest_checksum = null, published_at = null');
 });
 
-async function addModel(name, categoryPath, { status = 'PUBLISHED', price = 15000 } = {}) {
+async function addModel(name, categoryPath, { status = 'PUBLISHED', price = 15000, contentDomain = '3dmodels' } = {}) {
   const parts = categoryPath.split(' / '); let parent = null, p = '';
-  for (const part of parts) { p = p ? `${p} / ${part}` : part; parent = (await pool.query('insert into categories(parent_id,name,slug,full_path) values($1,$2,$2,$3) on conflict (full_path) do update set name=excluded.name returning id', [parent, part, p])).rows[0].id; }
-  const id = (await pool.query('insert into models(category_id,name,status) values($1,$2,$3) returning id', [parent, name, status])).rows[0].id;
+  for (const part of parts) { p = p ? `${p} / ${part}` : part; parent = (await pool.query('insert into categories(parent_id,name,slug,full_path,content_domain) values($1,$2,$2,$3,$4) on conflict (content_domain, full_path) do update set name=excluded.name returning id', [parent, part, p, contentDomain])).rows[0].id; }
+  const id = (await pool.query('insert into models(category_id,name,status,content_domain) values($1,$2,$3,$4) returning id', [parent, name, status, contentDomain])).rows[0].id;
   const driveId = `DRIVESECRET${String(++n).padStart(8, '0')}`;
   const f = (await pool.query("insert into model_files(model_id,source_id,drive_file_id,filename,file_type,size_bytes,sha256) values($1,$2,$3,$4,'rar',1234,$5) returning id", [id, sourceId, driveId, `${name}.rar`, SECRET_FILE_HASH])).rows[0].id;
   await pool.query('update models set primary_file_id=$1 where id=$2', [f, id]);
@@ -81,7 +83,7 @@ test('version endpoint: shape, ETag, 304 on a matching If-None-Match, a new ETag
     assert.deepEqual(Object.keys(body).sort(), ['catalogVersion', 'manifestChecksum', 'publishedAt']);
     assert.deepEqual([body.catalogVersion, /^[0-9a-f]{64}$/.test(body.manifestChecksum)], [1, true]);
     const etag = a.headers.get('etag');
-    assert.match(etag, /^"1-[0-9a-f]{64}"$/);
+    assert.match(etag, /^"1-[0-9a-f]{64}-domains1"$/);
     assert.equal(a.headers.get('cache-control'), 'no-cache', 'must revalidate (overrides the global no-store)');
     const again = await fetch(`${s.base}/api/v1/catalog/version`, { headers: { 'if-none-match': etag } });
     assert.deepEqual([again.status, await again.text()], [304, '']);
@@ -105,15 +107,15 @@ test('catalog, categories and previews manifest: exact public shape, only PUBLIS
     const cat = await (await fetch(`${s.base}/api/v1/catalog`)).json();
     assert.deepEqual(Object.keys(cat).sort(), ['catalogVersion', 'models']);
     assert.deepEqual(cat.models.map(m => m.name).sort(), ['Chair', 'Desk A']);
-    assert.deepEqual(Object.keys(cat.models[0]).sort(), ['categoryId', 'fileType', 'id', 'name', 'sizeBytes', 'status']);
+    assert.deepEqual(Object.keys(cat.models[0]).sort(), ['categoryId', 'categoryIds', 'contentDomain', 'fileType', 'id', 'name', 'sizeBytes', 'status']);
     assert.deepEqual([cat.models[0].status, cat.models[0].sizeBytes, cat.models[0].fileType], ['PUBLISHED', 1234, 'rar']);
     const cats = await (await fetch(`${s.base}/api/v1/categories`)).json();
     assert.deepEqual(Object.fromEntries(cats.map(c => [c.fullPath, c.modelCount])), { Furniture: 2, 'Furniture / Chair': 1, 'Furniture / Desk': 1 });
-    assert.deepEqual(Object.keys(cats[0]).sort(), ['fullPath', 'id', 'modelCount', 'name', 'parentId']);
+    assert.deepEqual(Object.keys(cats[0]).sort(), ['contentDomain', 'fullPath', 'id', 'modelCount', 'name', 'parentId']);
     const prev = await (await fetch(`${s.base}/api/v1/previews/manifest`)).json();
     assert.deepEqual([prev.catalogVersion, prev.previews.length], [1, 4]);
-    assert.deepEqual(Object.keys(prev.previews[0]).sort(), ['fileSize', 'height', 'modelId', 'sha256', 'url', 'variant', 'version', 'width']);
-    assert.ok(prev.previews.every(p => p.url === `/previews/${p.sha256}.webp`));
+    assert.deepEqual(Object.keys(prev.previews[0]).sort(), ['contentDomain', 'fileSize', 'height', 'modelId', 'sha256', 'url', 'variant', 'version', 'width']);
+    assert.ok(prev.previews.every(p => p.url === `/previews/3dmodels/${p.sha256}.webp`));
     for (const p of ['/api/v1/catalog', '/api/v1/categories', '/api/v1/previews/manifest']) {
       const r = await fetch(`${s.base}${p}`);
       assert.equal((await fetch(`${s.base}${p}`, { headers: { 'if-none-match': r.headers.get('etag') } })).status, 304, p);
@@ -129,6 +131,38 @@ test('nothing private leaks: no Drive id, source id, file name or model-file sha
       const r = await fetch(`${s.base}${p}`); const text = JSON.stringify([...r.headers]) + await r.text();
       for (const secret of [m.driveId, 'IMGSECRET', sourceId, SECRET_FILE_HASH, 'routesRootFolder1', 'Leak check.rar', 'drive_file_id']) assert.ok(!text.includes(secret), `${p} leaks ${secret}`);
     }
+  } finally { await s.close(); }
+});
+
+test('capability negotiation keeps old plugins on the exact Models contract and gives each catalog view its own checksum and ETag', { skip }, async () => {
+  const model = await addModel('Model', 'Shared');
+  const scene = await addModel('Scene', 'Shared', { contentDomain: '3dscenes' });
+  await bump();
+  const s = await startServer();
+  const old = url => globalThis.fetch(s.base + url);
+  try {
+    const mixed = await fetch(s.base + '/api/v1/catalog');
+    assert.deepEqual((await mixed.json()).models.map(m => m.id).sort(), [model.id, scene.id].sort());
+    assert.match(mixed.headers.get('etag'), /-domains1"$/);
+    assert.match(mixed.headers.get('vary'), /X-3dsmood-Content-Domains/i);
+    const legacy = await old('/api/v1/catalog');
+    const legacyModels = (await legacy.json()).models;
+    assert.deepEqual(legacyModels.map(m => m.id), [model.id]);
+    assert.equal(legacyModels[0].contentDomain, undefined);
+    assert.equal(legacyModels[0].categoryIds, undefined);
+    const categories = await (await old('/api/v1/categories')).json();
+    assert.ok(categories.every(c => c.contentDomain === undefined && c.modelCount === 1));
+    const previews = (await (await old('/api/v1/previews/manifest')).json()).previews;
+    assert.ok(previews.every(p => p.modelId === model.id && p.url === `/previews/${p.sha256}.webp` && p.contentDomain === undefined));
+    const version = await (await old('/api/v1/catalog/version')).json();
+    assert.equal(version.manifestChecksum, sha(JSON.stringify({ categories, models: legacyModels, previews })));
+    assert.notEqual(mixed.headers.get('etag'), legacy.headers.get('etag'));
+    assert.equal((await fetch(s.base + '/api/v1/catalog', { headers: { 'If-None-Match': legacy.headers.get('etag') } })).status, 200);
+    assert.equal((await globalThis.fetch(s.base + '/api/v1/catalog', { headers: { 'If-None-Match': legacy.headers.get('etag') } })).status, 304);
+    const preview = previews[0];
+    await mkdir(path.join(previewDir, '3dmodels'), { recursive: true });
+    await writeFile(path.join(previewDir, '3dmodels', `${preview.sha256}.webp`), 'new scoped bytes');
+    assert.equal(await (await old(preview.url)).text(), 'new scoped bytes', 'old flat URL reads a new Models blob');
   } finally { await s.close(); }
 });
 
@@ -169,6 +203,11 @@ test('preview files: served by exact content-hash name only, immutable cache; ev
     assert.match(ok.headers.get('cache-control'), /max-age=31536000/);
     assert.match(ok.headers.get('cache-control'), /immutable/);
     assert.equal((await fetch(`${s.base}/previews/${name}`, { method: 'HEAD' })).status, 200);
+    assert.equal((await fetch(`${s.base}/previews/3dmodels/${name}`)).status, 200, 'scoped Models URL falls back before physical relocation');
+    assert.equal((await fetch(`${s.base}/previews/3dscenes/${name}`)).status, 404, 'Scenes never reads a legacy Models blob');
+    await mkdir(path.join(previewDir, '3dscenes'), { recursive: true });
+    await writeFile(path.join(previewDir, '3dscenes', name), 'scene bytes');
+    assert.equal(await (await fetch(`${s.base}/previews/3dscenes/${name}`)).text(), 'scene bytes');
     for (const bad of ['tmp/x.part', 'secret.txt', `${'A'.repeat(64)}.webp`, `${'a'.repeat(63)}.webp`, `${'a'.repeat(64)}.png`, '..%2fsecret.txt', `${'b'.repeat(64)}.webp`]) {
       const r = await fetch(`${s.base}/previews/${bad}`);
       assert.deepEqual([r.status, await r.text()], [404, 'legacy'], bad);

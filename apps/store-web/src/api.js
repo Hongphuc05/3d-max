@@ -30,30 +30,30 @@ export const adminDriveKeys = (signal) => get('/admin/drive/keys', null, signal)
 export const adminSaveDriveKey = (slot, body) => request('PUT', `/admin/drive/keys/${encodeURIComponent(slot)}`, { body });
 export const adminDeleteDriveKey = (slot) => request('DELETE', `/admin/drive/keys/${encodeURIComponent(slot)}`);
 export const adminTestDriveKey = (slot) => request('POST', `/admin/drive/keys/${encodeURIComponent(slot)}/test`, { body: {} });
-export const adminDriveSummary = (sourceId, signal) => get('/admin/drive/summary', { sourceId }, signal);
+export const adminDriveSummary = (sourceId, signal, contentDomain = '3dmodels') => get('/admin/drive/summary', { sourceId, contentDomain }, signal);
 export const adminDriveAddSource = (body) => request('POST', '/admin/drive/sources', { body });
 export const adminDriveTestAccess = (sourceId, signal) => request('POST', '/admin/drive/test-access', { body: { sourceId }, signal });
 // P3.2 (plan §2.2): luot dong bo. Huy/Thu lai tra 202; huy khong co noi dung.
 export const adminSyncJobs = (params, signal) => get('/admin/drive/sync-jobs', params, signal);
 export const adminSyncJob = (id, signal) => get(`/admin/drive/sync-jobs/${encodeURIComponent(id)}`, null, signal);
 export const adminSyncItems = (id, status = 'FAILED', signal) => get(`/admin/drive/sync-jobs/${encodeURIComponent(id)}/items`, { status }, signal);
-export const adminStartSync = ({ sourceId, mode }) => request('POST', '/admin/drive/sync-jobs', { body: { sourceId, mode } });
+export const adminStartSync = ({ sourceId, mode, contentDomain = '3dmodels' }) => request('POST', '/admin/drive/sync-jobs', { body: { sourceId, mode, contentDomain } });
 export const adminCancelSync = (id) => request('POST', `/admin/drive/sync-jobs/${encodeURIComponent(id)}/cancel`, { body: {} });
 export const adminRetrySync = (id) => request('POST', `/admin/drive/sync-jobs/${encodeURIComponent(id)}/retry`, { body: {} });
 export const syncEventsUrl = (id) => `/api/admin/drive/sync-jobs/${encodeURIComponent(id)}/events`;
 // P3.7 (plan §2.7): cai dat + bang model. PUT cai dat gui du 7 truong; PATCH model chi gui truong doi.
 // P3.4 (plan §2.2): can duyet. POST tra 200 khong noi dung.
-export const adminReviewItems = (signal) => get('/admin/catalog/review', null, signal);
-export const adminReviewAction = (id, action) => request('POST', `/admin/catalog/review/${encodeURIComponent(id)}`, { body: { action } });
+export const adminReviewItems = (signal, contentDomain = '3dmodels') => get('/admin/catalog/review', { contentDomain }, signal);
+export const adminReviewAction = (id, action, contentDomain = '3dmodels') => request('POST', `/admin/catalog/review/${encodeURIComponent(id)}`, { body: { action, contentDomain } });
 export const adminSettings = (signal) => get('/admin/settings', null, signal);
 export const adminSaveSettings = (body) => request('PUT', '/admin/settings', { body });
 export const adminModels = (params, signal) => get('/admin/models', params, signal);
-export const adminCategories = (signal) => get('/admin/categories', null, signal);
-export const adminDeletePreview = (id) => request('DELETE', `/admin/models/${encodeURIComponent(id)}/preview`);
+export const adminCategories = (signal, contentDomain = '3dmodels') => get('/admin/categories', { contentDomain }, signal);
+export const adminDeletePreview = (id, contentDomain = '3dmodels') => request('DELETE', `/admin/models/${encodeURIComponent(id)}/preview`, { params: { contentDomain } });
 const MIME = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
 /** D29: gui MOT anh (raw body) vao danh muc `category` ("A/B"). replace=true sau khi admin xac nhan thay anh cu. */
-export async function adminUploadPreview(category, file, { replace = false, signal } = {}) {
-  const qs = new URLSearchParams({ category, filename: file.name, ...(replace ? { replace: '1' } : {}) });
+export async function adminUploadPreview(category, file, { replace = false, signal, contentDomain = '3dmodels' } = {}) {
+  const qs = new URLSearchParams({ category, contentDomain, filename: file.name, ...(replace ? { replace: '1' } : {}) });
   const r = await fetch(`/api/admin/previews?${qs}`, { method: 'POST', signal, credentials: 'include',
     headers: { 'Content-Type': file.type || MIME[file.name.split('.').pop().toLowerCase()] || 'application/octet-stream' }, body: file });
   const data = await r.json().catch(() => null);
