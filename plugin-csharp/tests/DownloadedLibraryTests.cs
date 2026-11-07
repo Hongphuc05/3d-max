@@ -176,14 +176,34 @@ class DownloadedLibraryTests
     static async Task Run(string root)
     {
         await MultiOptions(root);
+        var legacySettings = Path.Combine(root, "legacy-settings"); Directory.CreateDirectory(legacySettings);
+        var legacyModelDirectory = Path.Combine(root, "legacy-model-location");
+        var defaultScenes = Path.Combine(root, "default-scenes");
+        var oldSettings = Json.Serialize(new { downloadDirectory = legacyModelDirectory, models = new object[0], rights = new Dictionary<string, bool>() });
+        File.WriteAllBytes(Path.Combine(legacySettings, "index.dat"), ProtectedData.Protect(Encoding.UTF8.GetBytes(oldSettings), Encoding.UTF8.GetBytes("3DsMood.DownloadedLibrary.v1"), DataProtectionScope.CurrentUser));
+        var migratedSettings = new DownloadedLibrary(legacySettings, Path.Combine(root, "unused-default"), defaultScenes);
+        Check(migratedSettings.DownloadDirectory == legacyModelDirectory && migratedSettings.SceneDownloadDirectory == defaultScenes, "legacy protected settings retain the Models folder and initialize a separate Scenes default");
         var sceneRoot = Path.Combine(root, "scenes");
         var sceneState = Path.Combine(sceneRoot, "state");
         var sceneStore = new DownloadedLibrary(sceneState, Path.Combine(sceneRoot, "files"));
+        var selectedScenes = Path.Combine(sceneRoot, "ssd-scenes");
+        sceneStore.SetDownloadDirectory(selectedScenes, "3dscenes");
+        var selectedModels = Path.Combine(sceneRoot, "ssd-models");
+        sceneStore.SetDownloadDirectory(selectedModels);
+        Check(sceneStore.SceneDownloadDirectory == selectedScenes && sceneStore.DownloadDirectory == selectedModels, "Models and Scenes directory choices are independent");
         var sceneServer = new Server { Package = MakePackage() };
         using (var library = Fixture(sceneStore, sceneServer, sceneRoot, true))
         {
             await library.DownloadModelAsync(Model, CancellationToken.None, null);
             var record = new DownloadedLibrary(sceneState, Path.Combine(sceneRoot, "files")).Find(Model);
+            Check(record.directory.StartsWith(selectedScenes + Path.DirectorySeparatorChar) && !record.directory.StartsWith(selectedModels + Path.DirectorySeparatorChar), "Scene download extracts into its selected Scenes folder based on native catalog metadata");
+            var savedEntry = library.LocalEntry(Model);
+            var calls = sceneServer.Calls;
+            var nextScenes = Path.Combine(sceneRoot, "next-scenes");
+            sceneStore.SetDownloadDirectory(nextScenes, "3dscenes");
+            await library.DownloadModelAsync(Model, CancellationToken.None, null);
+            Check(library.LocalEntry(Model) == savedEntry && sceneServer.Calls == calls, "changing the Scenes folder preserves existing imports and never redownloads a local Scene");
+            Check(new DownloadedLibrary(sceneState, Path.Combine(sceneRoot, "files")).SceneDownloadDirectory == nextScenes, "Scenes folder choice survives protected index reload");
             Check(Equals(record.product["contentDomain"], "3dscenes") && ((System.Collections.IEnumerable)record.product["categoryIds"]).Cast<object>().Count() == 2,
                 "Scene domain and category aliases survive encrypted downloaded snapshot reload");
             Check(Convert.ToString(record.product["thumb"]).StartsWith("/previews/3dscenes/") && ((System.Collections.IEnumerable)record.product["folderIds"]).Cast<object>().Count() == 2,
@@ -199,6 +219,7 @@ class DownloadedLibraryTests
             var result = await library.DownloadModelAsync(Model, CancellationToken.None, null);
             Check(result != null && server.Sessions == 1 && server.Downloads == 1, "download fetches exactly one archive without scene or import dependencies");
             var model = store.Find(Model);
+            Check(model.directory.StartsWith(first + Path.DirectorySeparatorChar), "legacy Models download still uses its original Models folder");
             Check(model != null && model.name == "My chair" && Equals(model.product["folderPath"], "Furniture / Chairs"), "catalog dictionary arrays produce persistent name and category snapshot");
             Check(Equals(model.product["contentDomain"], "3dmodels"), "legacy catalog records default to Models");
             Check(File.Exists(Path.Combine(model.directory, "textures", "map.jpg")), "extracted textures remain beside local model");
@@ -248,6 +269,9 @@ class DownloadedLibraryTests
         Check(!BridgePolicy.TryParse(envelope.Replace("modelId", "path"), out parsed, out code), "download bridge rejects arbitrary paths");
         var choose = "{\"id\":\"settings-test\",\"version\":1,\"method\":\"library.chooseDownloadDirectory\",\"params\":{}}";
         Check(BridgePolicy.TryParse(choose, out parsed, out code) && !BridgePolicy.TryParse(choose.Replace("\"params\":{}", "\"params\":{\"path\":\"C:/Windows\"}"), out parsed, out code), "folder chooser cannot accept paths from JavaScript");
+        var chooseScene = choose.Replace("\"params\":{}", "\"params\":{\"contentDomain\":\"3dscenes\"}");
+        Check(BridgePolicy.TryParse(chooseScene, out parsed, out code), "folder chooser accepts the Scenes domain without a caller-provided path");
+        Check(!BridgePolicy.TryParse(chooseScene.Replace("3dscenes", "unknown"), out parsed, out code), "folder chooser rejects unknown domains");
     }
     static int Main()
     {

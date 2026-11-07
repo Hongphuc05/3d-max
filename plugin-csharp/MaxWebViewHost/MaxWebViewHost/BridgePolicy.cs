@@ -80,6 +80,9 @@ namespace MaxWebViewHost
         {
             switch (method)
             {
+                case "library.chooseDownloadDirectory":
+                    return HasOnly(p, "contentDomain") && (!p.ContainsKey("contentDomain")
+                        || (p["contentDomain"] is string && new[] { "3dmodels", "3dscenes" }.Contains((string)p["contentDomain"])));
                 case "device.signChallenge":
                     return p.Count == 2 && HasOnly(p, "challengeId", "message")
                         && Text(p, "challengeId", 36) && Text(p, "message", 512);

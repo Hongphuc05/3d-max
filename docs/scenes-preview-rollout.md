@@ -83,3 +83,11 @@ Public HTTPS verification at catalog version 50 confirmed:
 - The short-lived operator upload session was removed after completion.
 
 On-server upload results, the pre-upload database backup and previous installer are kept under `/var/lib/3dsmood/scenes-preview-rollout/`. Local audit and public verification reports remain in ignored `data/`; source image originals and credentials are not committed.
+
+## Separate local download folders (MZP 1.4.1)
+
+Settings exposes independent native folder pickers for Models and Scenes. The existing Models location is retained. Scenes defaults to the Windows Documents folder under `3DS Mood/Scenes`; either location can be changed independently and is saved in the protected local index. Older indexes initialize the new Scenes setting without moving downloaded contents.
+
+Native download routing reads the product's content domain from the cached catalog, while JavaScript passes only the requested domain to the folder picker. Neither bridge call accepts a filesystem path from JavaScript. Changing either setting affects subsequent downloads; already downloaded products continue to import from their recorded directory without downloading or extracting again.
+
+Validation: web 175 tests; downloaded-library 71 checks (including legacy settings migration, independent folders, actual Scene extraction root, persistence and stable existing imports); WebView transport 43 checks. Release x64 and fresh frontend builds, staged ZIP/RAR/7z extraction and MZP structure checks passed. Package version 1.4.1 SHA256: `15A06566C8D4039A96B2BC080E8D06104352C1852D9FC92370B97D859D44F3CA`.

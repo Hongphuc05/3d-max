@@ -166,7 +166,7 @@ namespace MaxWebViewHost
                 if (existing != null) return existing.PublicView();
                 var rights = await RefreshRightsAsync(ct).ConfigureAwait(false);
                 if (!rights.AllModels) throw new ApiException("NOT_ENTITLED", 403, "Thiết bị chưa có license thư viện.");
-                var root = Downloads.DownloadDirectory;
+                var root = Downloads.DirectoryFor(DownloadDomain(modelId));
                 Directory.CreateDirectory(root);
                 DownloadedLibrary.RejectReparse(root);
                 work = Path.Combine(root, ".3dsmood-" + Guid.NewGuid().ToString("N"));
@@ -216,6 +216,18 @@ namespace MaxWebViewHost
                 }
                 downloadGate.Release();
             }
+        }
+
+        private string DownloadDomain(string modelId)
+        {
+            var cached = GetCached();
+            if (cached == null) return "3dmodels";
+            var catalog = new JavaScriptSerializer { MaxJsonLength = 32 * 1024 * 1024 }
+                .Deserialize<Dictionary<string, object>>(Encoding.UTF8.GetString(cached.CatalogJson));
+            var models = ((System.Collections.IEnumerable)catalog["models"]).Cast<Dictionary<string, object>>();
+            var model = models.FirstOrDefault(m => Equals(m["id"], modelId));
+            object domain;
+            return model != null && model.TryGetValue("contentDomain", out domain) && domain != null ? Convert.ToString(domain) : "3dmodels";
         }
 
         private Dictionary<string, object> ProductSnapshot(string modelId, ModelDownloadInfo info)

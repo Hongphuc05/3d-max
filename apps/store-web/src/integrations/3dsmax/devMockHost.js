@@ -6,6 +6,7 @@ export function installMockHost() {
   let objects = 0;
   let models = JSON.parse(localStorage.getItem('3dsmood.mock.downloads') || '[]');
   let downloadDirectory = localStorage.getItem('3dsmood.mock.directory') || 'D:\\3DS Mood';
+  let sceneDownloadDirectory = localStorage.getItem('3dsmood.mock.sceneDirectory') || 'D:\\3DS Mood\\Scenes';
   const send = (data, delay) => setTimeout(() => listeners.forEach((f) => f({ data })), delay);
 
   window.chrome = window.chrome || {};
@@ -27,11 +28,16 @@ export function installMockHost() {
         case 'library.importOptions':
           if (!models.some(m => m.modelId === params.modelId)) return fail('MODEL_NOT_DOWNLOADED', 'Model chưa có trên máy.');
           return ok({ options: [{ optionId: 'a'.repeat(64), label: 'model.max', relativePath: 'model.max', format: 'max' }] });
-        case 'library.settings': return ok({ downloadDirectory });
+        case 'library.settings': return ok({ downloadDirectory, sceneDownloadDirectory });
         case 'library.chooseDownloadDirectory':
-          downloadDirectory = 'E:\\3DS Mood';
-          localStorage.setItem('3dsmood.mock.directory', downloadDirectory);
-          return ok({ downloadDirectory });
+          if (params.contentDomain === '3dscenes') {
+            sceneDownloadDirectory = 'E:\\Scenes';
+            localStorage.setItem('3dsmood.mock.sceneDirectory', sceneDownloadDirectory);
+          } else {
+            downloadDirectory = 'E:\\3DS Mood';
+            localStorage.setItem('3dsmood.mock.directory', downloadDirectory);
+          }
+          return ok({ downloadDirectory, sceneDownloadDirectory });
         case 'host.getInfo':
           return ok({ host: '3dsmax', hostVersion: '3ds Max (mock)', pluginVersion: '0.0.0-mock', protocolVersion: 1 });
         case 'scene.getInfo':

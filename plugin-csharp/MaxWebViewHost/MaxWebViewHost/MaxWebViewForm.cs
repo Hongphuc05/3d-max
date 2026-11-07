@@ -654,11 +654,12 @@ namespace MaxWebViewHost
                     var options = await Task.Run(() => _v3.Downloads.ImportOptions((string)parameters["modelId"]));
                     PostResponse(id, true, options, null); return;
                 }
-                if (method == "library.settings") { PostResponse(id, true, new { downloadDirectory = _v3.Downloads.DownloadDirectory }, null); return; }
+                if (method == "library.settings") { PostResponse(id, true, _v3.Downloads.Settings(), null); return; }
                 if (method == "library.chooseDownloadDirectory")
                 {
                     // WebView2 forbids a modal dialog inside its synchronous COM event callback.
-                    BeginInvoke(new Action(() => ChooseDownloadDirectory(id)));
+                    var domain = parameters.ContainsKey("contentDomain") ? (string)parameters["contentDomain"] : "3dmodels";
+                    BeginInvoke(new Action(() => ChooseDownloadDirectory(id, domain)));
                     return;
                 }
                 if (method == "library.refresh") await _v3.Watcher.CheckNowAsync(_lifetime.Token);
@@ -678,16 +679,16 @@ namespace MaxWebViewHost
             }
         }
 
-        private void ChooseDownloadDirectory(string id)
+        private void ChooseDownloadDirectory(string id, string contentDomain)
         {
             try
             {
                 if (_v3 == null || IsDisposed || Disposing || !_requestDocuments.ContainsKey(id)) return;
-                using (var picker = new FolderBrowserDialog { Description = "Chọn thư mục lưu model tải về", SelectedPath = _v3.Downloads.DownloadDirectory, ShowNewFolderButton = true })
+                using (var picker = new FolderBrowserDialog { Description = contentDomain == "3dscenes" ? "Chọn thư mục lưu scene tải về" : "Chọn thư mục lưu model tải về", SelectedPath = _v3.Downloads.DirectoryFor(contentDomain), ShowNewFolderButton = true })
                 {
                     var chosen = picker.ShowDialog(this) == DialogResult.OK;
-                    if (chosen) { _v3.Downloads.SetDownloadDirectory(picker.SelectedPath); _v3.DownloadsChanged(); }
-                    PostResponse(id, true, new { downloadDirectory = _v3.Downloads.DownloadDirectory, cancelled = !chosen }, null);
+                    if (chosen) { _v3.Downloads.SetDownloadDirectory(picker.SelectedPath, contentDomain); _v3.DownloadsChanged(); }
+                    PostResponse(id, true, new { downloadDirectory = _v3.Downloads.DownloadDirectory, sceneDownloadDirectory = _v3.Downloads.SceneDownloadDirectory, cancelled = !chosen }, null);
                 }
             }
             catch (Exception error)

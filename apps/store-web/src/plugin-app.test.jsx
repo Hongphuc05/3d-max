@@ -9,6 +9,8 @@ const listeners = new Set(); const calls = [];
 let importOutcome = { ok: true };
 let localModels = [];
 let downloadDirectory = 'D:\\3DS Mood';
+let sceneDownloadDirectory = 'D:\\Scenes';
+let cancelDirectoryChoice = false;
 dom.window.chrome = { webview: {
   addEventListener: (_t, f) => listeners.add(f),
   postMessage({ id, method, params }) {
@@ -19,8 +21,14 @@ dom.window.chrome = { webview: {
     if (method === 'scene.getInfo') return reply({ id, ok: true, result: { objects: 1, renderer: 'Corona' } });
     if (method === 'library.downloads') return reply({ id, ok: true, result: { models: localModels } });
     if (method === 'library.importOptions') return reply({ id, ok: true, result: { options: [{ optionId: 'a'.repeat(64), label: 'model.max', relativePath: 'model.max', format: 'max' }] } });
-    if (method === 'library.settings') return reply({ id, ok: true, result: { downloadDirectory } });
-    if (method === 'library.chooseDownloadDirectory') { downloadDirectory = 'E:\\Models'; return reply({ id, ok: true, result: { downloadDirectory } }); }
+    if (method === 'library.settings') return reply({ id, ok: true, result: { downloadDirectory, sceneDownloadDirectory } });
+    if (method === 'library.chooseDownloadDirectory') {
+      if (!cancelDirectoryChoice) {
+        if (params.contentDomain === '3dscenes') sceneDownloadDirectory = 'E:\\Scenes';
+        else downloadDirectory = 'E:\\Models';
+      }
+      return reply({ id, ok: true, result: { downloadDirectory, sceneDownloadDirectory, cancelled: cancelDirectoryChoice } });
+    }
     if (method === 'asset.download') {
       if (!importOutcome.ok) return reply({ id, ok: false, error: { code: 'NOT_ENTITLED', message: 'english' } });
       localModels = [...localModels.filter(m => m.modelId !== params.modelId), { modelId: params.modelId }];
@@ -153,7 +161,27 @@ test('Settings reads and changes the native download directory without sending a
   assert.match(document.querySelector('[role=dialog]').textContent, /D:\\3DS Mood/);
   await act(async () => { button('Chọn thư mục').click(); await flush(); }); await act(flush);
   assert.match(document.querySelector('[role=dialog]').textContent, /E:\\Models/);
-  assert.deepEqual(calls.find(c => c.method === 'library.chooseDownloadDirectory').params, {});
+  assert.deepEqual(calls.find(c => c.method === 'library.chooseDownloadDirectory').params, { contentDomain: '3dmodels' });
+  await done(root);
+});
+
+test('Scenes folder can be cancelled or changed independently and is shown again after reopening Settings', async () => {
+  server(); downloadDirectory = 'D:\\Models'; sceneDownloadDirectory = 'D:\\Scenes';
+  const root = await mount();
+  await act(async () => { button('Cài đặt').click(); await flush(); }); await act(flush);
+  const chooseScene = () => document.querySelector('[aria-label="Chọn thư mục lưu scene"]');
+  cancelDirectoryChoice = true;
+  try {
+    await act(async () => { chooseScene().click(); await flush(); }); await act(flush);
+    assert.match(document.querySelector('[role=dialog]').textContent, /D:\\Scenes/);
+  } finally { cancelDirectoryChoice = false; }
+  await act(async () => { chooseScene().click(); await flush(); }); await act(flush);
+  assert.match(document.querySelector('[role=dialog]').textContent, /E:\\Scenes/);
+  assert.match(document.querySelector('[role=dialog]').textContent, /D:\\Models/);
+  assert.deepEqual(calls.filter(c => c.method === 'library.chooseDownloadDirectory').at(-1).params, { contentDomain: '3dscenes' });
+  await act(async () => { document.querySelector('[aria-label="Đóng cài đặt"]').click(); await flush(); });
+  await act(async () => { button('Cài đặt').click(); await flush(); }); await act(flush);
+  assert.match(document.querySelector('[role=dialog]').textContent, /E:\\Scenes/);
   await done(root);
 });
 

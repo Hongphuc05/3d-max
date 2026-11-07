@@ -1,5 +1,5 @@
 # Package the reusable stage once. The public artifact is itself a ZIP-based MZP.
-param([string]$Version = '1.4.0', [string]$StageDirectory = (Join-Path (Split-Path $PSScriptRoot -Parent) 'stage'))
+param([string]$Version = '1.4.1', [string]$StageDirectory = (Join-Path (Split-Path $PSScriptRoot -Parent) 'stage'))
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 if ($Version -notmatch '^\d+\.\d+\.\d+([-.][A-Za-z0-9.-]+)?$') { throw 'Invalid release version.' }

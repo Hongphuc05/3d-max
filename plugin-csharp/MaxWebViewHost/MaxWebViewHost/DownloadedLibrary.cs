@@ -35,6 +35,7 @@ namespace MaxWebViewHost
     internal sealed class DownloadedLibraryState
     {
         public string downloadDirectory { get; set; }
+        public string sceneDownloadDirectory { get; set; }
         public List<DownloadedModel> models { get; set; } = new List<DownloadedModel>();
         public Dictionary<string, bool> rights { get; set; } = new Dictionary<string, bool>();
     }
@@ -45,16 +46,19 @@ namespace MaxWebViewHost
     {
         private readonly string stateDirectory;
         private readonly string defaultDirectory;
+        private readonly string defaultSceneDirectory;
         private readonly byte[] entropy = Encoding.UTF8.GetBytes("3DsMood.DownloadedLibrary.v1");
         private readonly string mutexName;
         private readonly JavaScriptSerializer json = new JavaScriptSerializer { MaxJsonLength = 32 * 1024 * 1024 };
         internal static string StateDirectory { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "3dMood", "Downloads"); } }
 
-        public DownloadedLibrary() : this(StateDirectory, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "3DS Mood", "Models")) { }
-        internal DownloadedLibrary(string stateDirectory, string defaultDirectory)
+        public DownloadedLibrary() : this(StateDirectory, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "3DS Mood", "Models"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "3DS Mood", "Scenes")) { }
+        internal DownloadedLibrary(string stateDirectory, string defaultDirectory, string defaultSceneDirectory = null)
         {
             this.stateDirectory = Path.GetFullPath(stateDirectory);
             this.defaultDirectory = Path.GetFullPath(defaultDirectory);
+            this.defaultSceneDirectory = Path.GetFullPath(defaultSceneDirectory ?? Path.Combine(defaultDirectory, "Scenes"));
             using (var sha = SHA256.Create()) mutexName = "Local\\3DsMood.Downloads." + BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(this.stateDirectory.ToUpperInvariant()))).Replace("-", "");
         }
 
@@ -77,12 +81,13 @@ namespace MaxWebViewHost
         private DownloadedLibraryState Read()
         {
             var path = Path.Combine(stateDirectory, "index.dat");
-            if (!File.Exists(path)) return new DownloadedLibraryState { downloadDirectory = defaultDirectory };
+            if (!File.Exists(path)) return new DownloadedLibraryState { downloadDirectory = defaultDirectory, sceneDownloadDirectory = defaultSceneDirectory };
             try
             {
                 if (new FileInfo(path).Length > 40 * 1024 * 1024) throw new InvalidDataException("Download index is too large.");
                 var state = json.Deserialize<DownloadedLibraryState>(Encoding.UTF8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(path), entropy, DataProtectionScope.CurrentUser)));
                 if (state == null || state.models == null || state.rights == null || string.IsNullOrEmpty(state.downloadDirectory)) throw new InvalidDataException("Download index is invalid.");
+                if (string.IsNullOrEmpty(state.sceneDownloadDirectory)) state.sceneDownloadDirectory = defaultSceneDirectory;
                 // Older indexes predate the mixed Models/Scenes catalog.
                 foreach (var model in state.models)
                     if (model != null)
@@ -113,8 +118,17 @@ namespace MaxWebViewHost
         }
 
         public string DownloadDirectory { get { return Locked(s => s.downloadDirectory); } }
-        public void SetDownloadDirectory(string directory)
+        public string SceneDownloadDirectory { get { return Locked(s => s.sceneDownloadDirectory); } }
+        public string DirectoryFor(string contentDomain)
         {
+            if (contentDomain == "3dmodels") return DownloadDirectory;
+            if (contentDomain == "3dscenes") return SceneDownloadDirectory;
+            throw new InvalidDataException("Phân vùng thư viện không hợp lệ.");
+        }
+        public object Settings() { return Locked(s => new { downloadDirectory = s.downloadDirectory, sceneDownloadDirectory = s.sceneDownloadDirectory }); }
+        public void SetDownloadDirectory(string directory, string contentDomain = "3dmodels")
+        {
+            if (contentDomain != "3dmodels" && contentDomain != "3dscenes") throw new InvalidDataException("Phân vùng thư viện không hợp lệ.");
             var full = Path.GetFullPath(directory);
             if (!Path.IsPathRooted(directory) || full.StartsWith("\\\\", StringComparison.Ordinal) || full.Length > 200) throw new InvalidDataException("Chọn thư mục trên ổ đĩa cục bộ (đường dẫn dưới 200 ký tự).");
             Directory.CreateDirectory(full);
@@ -122,7 +136,7 @@ namespace MaxWebViewHost
             var probe = Path.Combine(full, ".3dsmood-write-" + Guid.NewGuid().ToString("N"));
             using (new FileStream(probe, FileMode.CreateNew, FileAccess.Write)) { }
             File.Delete(probe);
-            Locked(s => { s.downloadDirectory = full; return true; }, true);
+            Locked(s => { if (contentDomain == "3dscenes") s.sceneDownloadDirectory = full; else s.downloadDirectory = full; return true; }, true);
         }
 
         internal static void RejectReparse(string path)
