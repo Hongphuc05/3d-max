@@ -33,7 +33,7 @@ function Device({ max }) {
         <Icon name="user" className="size-5" />Thiết bị
       </button>
       {open && (
-        <div className="absolute bottom-0 left-12 z-50 w-72 rounded-md border border-line bg-raised p-3 text-sm shadow-xl">
+        <div className="absolute left-12 top-0 z-50 w-72 rounded-md border border-line bg-raised p-3 text-sm shadow-xl">
           <div className="font-mono text-[10px] tracking-wider text-mute">MÃ MÁY</div>
           <div className="mt-1 break-all font-mono text-xs">{machineCode || (max ? 'Đang đọc…' : 'Chỉ có trong plugin 3ds Max')}</div>
           <p className="mt-2 font-mono text-[10px] text-mute">Quyền tải gắn với thiết bị này. Không cần tài khoản.</p>
@@ -112,7 +112,7 @@ export default function PluginApp({ orderPollMs }) {
         <nav className="flex w-14 shrink-0 flex-col items-center gap-2 border-r border-line bg-panel py-3">
           {[["3dmodels", "Models"], ["3dscenes", "Scenes"]].map(([domain, label]) => <button key={domain} onClick={() => selectDomain(domain)} aria-pressed={contentDomain === domain} title={label} className={"flex flex-col items-center gap-1 rounded-md p-2 text-[10px] " + (contentDomain === domain ? "bg-raised text-accent" : "text-mute hover:bg-raised hover:text-fg")}><Icon name="cube" className="size-5" />{label}</button>)}
           {max && <button onClick={() => setSettingsOpen(true)} title="Cài đặt" className="flex flex-col items-center gap-1 rounded-md p-2 text-[10px] text-mute hover:bg-raised hover:text-fg"><Icon name="settings" className="size-5" />Cài đặt</button>}
-          <div className="mt-auto"><Device max={max} /></div>
+          <Device max={max} />
         </nav>
 
         <div className={`${drawer ? 'fixed inset-0 z-30 bg-black/60' : 'hidden'} lg:static lg:z-auto lg:block lg:bg-transparent`} onClick={() => setDrawer(false)}>

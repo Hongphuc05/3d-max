@@ -62,6 +62,17 @@ namespace MaxWebViewHost
             DropDownWidth = Math.Max(1, Width);
         }
 
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+        // The managed setter skips the native message when the stored value is unchanged, but the native list
+        // width can still be stale after the toolbar switches layout; send it every time the list opens.
+        protected override void OnDropDown(EventArgs e)
+        {
+            base.OnDropDown(e);
+            if (IsHandleCreated) SendMessage(Handle, 0x0160, (IntPtr)Math.Max(1, Width), IntPtr.Zero); // CB_SETDROPPEDWIDTH
+        }
+
         protected override void OnDrawItem(DrawItemEventArgs e)
         {
             if (e.Index < 0 || e.Index >= Items.Count) return;
