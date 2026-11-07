@@ -199,7 +199,13 @@ namespace MaxWebViewHost
                     if (entry != null) break;
                 }
                 if (entry == null) throw new ApiException("ASSET_NO_IMPORTABLE_FILE", 422, "Gói model không có file .max/.fbx/.obj.");
-                if (File.Exists(package)) File.Delete(package);
+                if (File.Exists(package))
+                {
+                    // Keep the original archive (e.g. 1106880206.rar) beside content/, outside the scanned import tree.
+                    // shortcut: a path over MAX_PATH drops the archive instead of failing the download.
+                    try { File.Move(package, Path.Combine(work, folderName + "." + info.FileType)); }
+                    catch (Exception e) when (e is IOException || e is PathTooLongException) { File.Delete(package); }
+                }
                 ct.ThrowIfCancellationRequested();
                 var relativeEntry = entry.Substring(content.Length + 1);
                 var options = DownloadedLibrary.BuildOptions(modelId, content, files);

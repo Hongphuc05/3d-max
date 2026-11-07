@@ -101,3 +101,9 @@ New downloads still extract into an isolated temporary directory. After verifica
 Names retain Unicode and spaces. Windows-invalid characters, reserved device names and excessive lengths are sanitized. A colliding file or folder is never overwritten; a numeric suffix is used (`1106880206 (2)`, then `(3)`). Existing indexed downloads are returned immediately at their original paths, including older GUID directories, so saved texture references are not invalidated and no archive is downloaded again just to rename it.
 
 Validation: API download routes 21 tests; downloaded-library 80 checks including actual Models/Scenes names, renamed-folder import paths and both file/folder collisions; model downloader 46 checks including optional filename compatibility and malformed metadata rejection. Fresh Release x64/frontend builds, ZIP/RAR/7z staging and MZP structure passed. MZP 1.4.2 SHA256: `F754301A0A3D682CE65C961F5FD3329984E61014226FB4AF72D383AB1F985D06`.
+
+## Original archive kept (MZP 1.4.3)
+
+After a successful extraction the downloaded archive is no longer deleted. It is renamed from the temporary `package.bin` to `<folder name>.<rar|zip|7z>` and stored beside `content/`, for example `<Scenes directory>/1106880206/1106880206.rar`. It sits outside `content/`, so it is never offered as an import option. Archive-free direct `.max/.fbx/.obj` downloads are unchanged. If the resulting path exceeds the Windows path limit the archive is discarded and the download still succeeds. Previously downloaded items do not have an archive. Disk use grows by the archive size.
+
+Validation: downloaded-library 81 checks; Release x64/frontend build, ZIP/RAR/7z staging and MZP structure passed. MZP 1.4.3 SHA256: `82DEDD49570A1162E14342D85AEED26EB13D4F453F1040CA8A9F93B2F69228C5`. Not yet verified in an interactive 3ds Max session.

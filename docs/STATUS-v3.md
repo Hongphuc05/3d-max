@@ -301,3 +301,7 @@ Cài đặt có hai thư mục Models/Scenes độc lập, chọn bằng hộp t
 ### 2026-11-07 — Tên thư mục theo file Drive, MZP 1.4.2
 
 Import-session trả thêm filename của archive nguồn. Native tải/giải nén trong thư mục tạm rồi đổi tên nguyên tử sang tên Drive bỏ đuôi nén trước khi lập index, áp dụng cả Models/Scenes. Trùng file/folder thêm (2), (3), không ghi đè. Giữ tên Unicode và khoảng trắng, xử lý ký tự Windows không hợp lệ/tên thiết bị/độ dài. Dữ liệu đã tải giữ nguyên vị trí và không tải lại để đổi tên. Kiểm tra API download21, thư viện80, downloader46; build Release x64/frontend, archive staging và MZP structure đạt. MZP1.4.2 SHA256 F754301A0A3D682CE65C961F5FD3329984E61014226FB4AF72D383AB1F985D06.
+
+### 2026-11-07 — Giữ file nén gốc sau khi giải nén, MZP 1.4.3
+
+Sau khi giải nén thành công, native không xoá archive nữa mà đổi `package.bin` thành `<tên thư mục>.<rar|zip|7z>`, đặt cạnh `content/` (ví dụ `1106880206/1106880206.rar`), ngoài cây import nên không thành tuỳ chọn import. Thay đổi hành vi "bỏ archive sau thành công" của D30; tốn thêm dung lượng bằng file nén. Đường dẫn vượt MAX_PATH thì bỏ archive thay vì làm hỏng lượt tải. Model đã tải bằng bản cũ không có file nén. Kiểm tra: downloaded-library 81/81 pass; build Release x64/frontend, ZIP/RAR/7z staging, MZP structure đạt (`-SkipDependencyRestore` vì `npm ci` bị EPERM khoá node_modules). Chưa test trong Max thật. MZP1.4.3 SHA256 82DEDD49570A1162E14342D85AEED26EB13D4F453F1040CA8A9F93B2F69228C5.

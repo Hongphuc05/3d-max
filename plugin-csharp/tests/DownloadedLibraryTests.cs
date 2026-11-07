@@ -244,7 +244,8 @@ class DownloadedLibraryTests
             Check(model != null && model.name == "My chair" && Equals(model.product["folderPath"], "Furniture / Chairs"), "catalog dictionary arrays produce persistent name and category snapshot");
             Check(Equals(model.product["contentDomain"], "3dmodels"), "legacy catalog records default to Models");
             Check(File.Exists(Path.Combine(model.directory, "textures", "map.jpg")), "extracted textures remain beside local model");
-            Check(Directory.GetFiles(first, "package.bin", SearchOption.AllDirectories).Length == 0, "archive removed after successful extraction and indexing");
+            Check(Directory.GetFiles(first, "package.bin", SearchOption.AllDirectories).Length == 0, "no temporary package.bin is left after extraction and indexing");
+            Check(File.Exists(Path.Combine(Directory.GetParent(model.directory).FullName, "Drive model.zip")), "original archive is kept beside content/ under its Drive name");
             Check(changes == 1, "completed download publishes downloaded-library event");
             var calls = server.Calls;
             await library.DownloadModelAsync(Model, CancellationToken.None, null);
