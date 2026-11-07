@@ -16,7 +16,8 @@ namespace MaxWebViewHost
         internal static readonly string[] Methods = {
             "host.ping", "host.getInfo", "scene.getInfo", "scene.getSelection", "scene.createBox",
             "design.create", "asset.download", "asset.import", "device.getIdentity", "device.signChallenge",
-            "library.status", "library.refresh", "library.downloads", "library.importOptions", "library.settings", "library.chooseDownloadDirectory"
+            "library.status", "library.refresh", "library.downloads", "library.importOptions", "library.settings", "library.chooseDownloadDirectory",
+            "library.favorites", "library.setFavorite"
         };
 
         internal static bool IsTrusted(string value, Uri[] origins, string diagnosticUri)
@@ -83,6 +84,9 @@ namespace MaxWebViewHost
                 case "library.chooseDownloadDirectory":
                     return HasOnly(p, "contentDomain") && (!p.ContainsKey("contentDomain")
                         || (p["contentDomain"] is string && new[] { "3dmodels", "3dscenes" }.Contains((string)p["contentDomain"])));
+                case "library.setFavorite":
+                    return p.Count == 2 && HasOnly(p, "modelId", "favorite") && Text(p, "modelId", 36)
+                        && ModelUuid.IsMatch((string)p["modelId"]) && p["favorite"] is bool;
                 case "device.signChallenge":
                     return p.Count == 2 && HasOnly(p, "challengeId", "message")
                         && Text(p, "challengeId", 36) && Text(p, "message", 512);

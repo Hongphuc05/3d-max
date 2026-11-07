@@ -11,6 +11,7 @@ let localModels = [];
 let downloadDirectory = 'D:\\3DS Mood';
 let sceneDownloadDirectory = 'D:\\Scenes';
 let cancelDirectoryChoice = false;
+let favoriteIds = []; let failFavorite = false;
 dom.window.chrome = { webview: {
   addEventListener: (_t, f) => listeners.add(f),
   postMessage({ id, method, params }) {
@@ -20,6 +21,12 @@ dom.window.chrome = { webview: {
     if (method === 'host.getInfo') return reply({ id, ok: true, result: { hostVersion: '3ds Max 2022' } });
     if (method === 'scene.getInfo') return reply({ id, ok: true, result: { objects: 1, renderer: 'Corona' } });
     if (method === 'library.downloads') return reply({ id, ok: true, result: { models: localModels } });
+    if (method === 'library.favorites') return reply({ id, ok: true, result: { favorites: favoriteIds } });
+    if (method === 'library.setFavorite') {
+      if (failFavorite) return reply({ id, ok: false, error: { code: 'LIBRARY_UNAVAILABLE', message: 'x' } });
+      favoriteIds = [...favoriteIds.filter(f => f !== params.modelId), ...(params.favorite ? [params.modelId] : [])];
+      return reply({ id, ok: true, result: { favorites: favoriteIds } });
+    }
     if (method === 'library.importOptions') return reply({ id, ok: true, result: { options: [{ optionId: 'a'.repeat(64), label: 'model.max', relativePath: 'model.max', format: 'max' }] } });
     if (method === 'library.settings') return reply({ id, ok: true, result: { downloadDirectory, sceneDownloadDirectory } });
     if (method === 'library.chooseDownloadDirectory') {
@@ -50,7 +57,7 @@ const originalFetch = globalThis.fetch;
 after(() => { globalThis.fetch = originalFetch; dom.window.close(); });
 
 function server() {
-  calls.length = 0; localModels = [];
+  calls.length = 0; localModels = []; favoriteIds = []; failFavorite = false;
   version = 1; rights = { allModels: true };
   cats = [{ id: id(1), parentId: null, name: 'Living', fullPath: 'Living', modelCount: 2 }, { id: id(2), parentId: null, name: 'Bedroom', fullPath: 'Bedroom', modelCount: 1 }];
   globalThis.fetch = async (url) => {
@@ -335,5 +342,37 @@ test('Scenes isolates the mixed online catalog, category tree and persisted down
   await act(async () => { button('Models').click(); await flush(); });
   assert.equal(cards().length, 1);
   assert.match(cards()[0], /Sofa One/);
+  await done(root);
+});
+
+test('favorites: star on every card, a Yêu thích tab per Models/Scenes, persisted through the bridge with only a model id', async () => {
+  server(); const root = await mount();
+  const star = (card) => card.querySelector('button[aria-label$="yêu thích"]');
+  const groups = () => [...document.querySelectorAll('.group')];
+  assert.equal(groups().length, 3); assert.ok(groups().every((g) => star(g)), 'every card has a star');
+  assert.equal(button('Yêu thích').textContent, 'Yêu thích', 'no count while empty');
+  await act(async () => { star(groups()[1]).click(); await flush(); });
+  assert.deepEqual(calls.filter((c) => c.method === 'library.setFavorite').map((c) => c.params), [{ modelId: id(101), favorite: true }]);
+  assert.equal(button('Yêu thích (1)').textContent, 'Yêu thích (1)');
+  assert.equal(star(groups()[1]).getAttribute('aria-pressed'), 'true');
+  await act(async () => { button('Yêu thích (1)').click(); await flush(); });
+  assert.equal(groups().length, 1); assert.match(groups()[0].textContent, /Sofa One/);
+  await act(async () => { star(groups()[0]).click(); await flush(); });
+  assert.deepEqual(favoriteIds, []); assert.equal(groups().length, 0); assert.match(text(), /Chưa có model yêu thích/);
+  await done(root);
+});
+
+test('favorites survive remount, are scoped to the current Models/Scenes tab, and a failed save rolls back with a message', async () => {
+  server(); favoriteIds = [id(101)]; const root = await mount();
+  assert.equal(button('Yêu thích (1)').textContent, 'Yêu thích (1)', 'loaded from the native index');
+  await act(async () => { button('Scenes').click(); await flush(); });
+  assert.equal(button('Yêu thích').textContent, 'Yêu thích', 'a Model favorite is not counted in Scenes');
+  await act(async () => { button('Models').click(); await flush(); });
+  failFavorite = true;
+  const card = [...document.querySelectorAll('.group')][2];
+  await act(async () => { card.querySelector('button[aria-label$="yêu thích"]').click(); await flush(); });
+  await act(flush);
+  assert.match(document.querySelector('[role="alert"]').textContent, /Không lưu được yêu thích/);
+  assert.equal(button('Yêu thích (1)').textContent, 'Yêu thích (1)', 'failed save is rolled back');
   await done(root);
 });

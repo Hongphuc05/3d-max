@@ -8,12 +8,13 @@ const P = {
   close: 'M6 6l12 12M18 6 6 18',
   chevron: 'm9 6 6 6-6 6',
   download: 'M12 3v12m0 0-5-5m5 5 5-5M4 21h16',
+  star: 'm12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z',
   search: 'm21 21-4.3-4.3M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14Z',
 };
 
-export function Icon({ name, className = 'size-4' }) {
+export function Icon({ name, className = 'size-4', filled = false }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
       <path d={P[name]} />
     </svg>
   );

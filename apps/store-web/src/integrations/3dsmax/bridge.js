@@ -64,6 +64,8 @@ export const importModel = (modelId, optionId) => call('asset.import', optionId 
 export const getImportOptions = (modelId) => call('library.importOptions', { modelId }, 20000);
 export const getDownloadedModels = () => call('library.downloads', {}, 20000);
 export const getLibrarySettings = () => call('library.settings', {}, 20000);
+export const getFavorites = () => call('library.favorites', {}, 20000);
+export const setFavorite = (modelId, favorite) => call('library.setFavorite', { modelId, favorite }, 20000);
 export const chooseDownloadDirectory = (contentDomain = '3dmodels') => call('library.chooseDownloadDirectory', { contentDomain }, 10 * 60 * 1000);
 
 export const getLibraryStatus = () => call('library.status', {}, 20000);

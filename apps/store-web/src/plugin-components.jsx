@@ -40,9 +40,22 @@ export function BuyLibrary({ ctx, className = '' }) {
   return <button onClick={() => ctx.onBuy()} className={`${styles.base} ${styles.solid} py-2 text-sm ${className}`}>Mua thư viện</button>;
 }
 
+/** Ngoi sao yeu thich: chi hien trong plugin 3ds Max (ctx.onFavorite), luu o native tren may khach. */
+export function FavoriteStar({ p, ctx, className = '' }) {
+  if (!ctx.onFavorite) return null;
+  const on = ctx.isFavorite(p.id);
+  const label = on ? 'Bỏ khỏi yêu thích' : 'Thêm vào yêu thích';
+  return (
+    <button type="button" aria-pressed={on} aria-label={label} title={label} onClick={(e) => { e.stopPropagation(); ctx.onFavorite(p.id); }}
+      className={`grid size-7 place-items-center rounded-md bg-black/60 transition hover:bg-black/80 ${on ? 'text-warn' : 'text-white'} ${className}`}>
+      <Icon name="star" className="size-4" filled={on} />
+    </button>
+  );
+}
+
 export function PluginCard({ p, active, onOpen, ctx }) {
   return (
-    <div className={`group flex flex-col overflow-hidden rounded-lg border bg-panel transition ${active ? 'border-accent' : 'border-line hover:border-mute/60'}`}>
+    <div className={`group relative flex flex-col overflow-hidden rounded-lg border bg-panel transition ${active ? 'border-accent' : 'border-line hover:border-mute/60'}`}>
       <button onClick={() => onOpen(p)} className="relative aspect-square overflow-hidden bg-white">
         <Preview source={p.thumb} name={p.name} lazy />
       </button>
@@ -53,6 +66,7 @@ export function PluginCard({ p, active, onOpen, ctx }) {
         </div>
       </button>
       <div className="p-2"><ModelAction p={p} ctx={ctx} /></div>
+      <FavoriteStar p={p} ctx={ctx} className="absolute top-1.5 right-1.5" />
     </div>
   );
 }
@@ -78,6 +92,7 @@ export function PluginDetail({ p, onClose, ctx }) {
       <aside className="flex h-full w-full max-w-[380px] flex-col overflow-auto border-l border-line bg-panel xl:w-[340px]" onClick={(e) => e.stopPropagation()}>
         <div className="relative bg-white">
           <Preview source={p.image} name={p.name} />
+          <FavoriteStar p={p} ctx={ctx} className="absolute top-2 left-2" />
           <button onClick={onClose} aria-label="Đóng" className="absolute top-2 right-2 rounded-md bg-black/70 p-1.5 text-fg hover:bg-black"><Icon name="close" /></button>
         </div>
         <div className="flex flex-1 flex-col gap-3 p-4">

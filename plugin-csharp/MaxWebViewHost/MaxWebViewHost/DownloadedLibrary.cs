@@ -38,6 +38,7 @@ namespace MaxWebViewHost
         public string sceneDownloadDirectory { get; set; }
         public List<DownloadedModel> models { get; set; } = new List<DownloadedModel>();
         public Dictionary<string, bool> rights { get; set; } = new Dictionary<string, bool>();
+        public List<string> favorites { get; set; } = new List<string>(); // lowercase model UUIDs, any content domain
     }
 
     /// <summary>Small DPAPI-protected index outside installed files. Model contents are extracted once,
@@ -88,6 +89,7 @@ namespace MaxWebViewHost
                 var state = json.Deserialize<DownloadedLibraryState>(Encoding.UTF8.GetString(ProtectedData.Unprotect(File.ReadAllBytes(path), entropy, DataProtectionScope.CurrentUser)));
                 if (state == null || state.models == null || state.rights == null || string.IsNullOrEmpty(state.downloadDirectory)) throw new InvalidDataException("Download index is invalid.");
                 if (string.IsNullOrEmpty(state.sceneDownloadDirectory)) state.sceneDownloadDirectory = defaultSceneDirectory;
+                if (state.favorites == null) state.favorites = new List<string>(); // indexes written before favorites existed
                 // Older indexes predate the mixed Models/Scenes catalog.
                 foreach (var model in state.models)
                     if (model != null)
@@ -124,6 +126,24 @@ namespace MaxWebViewHost
             if (contentDomain == "3dmodels") return DownloadDirectory;
             if (contentDomain == "3dscenes") return SceneDownloadDirectory;
             throw new InvalidDataException("Phân vùng thư viện không hợp lệ.");
+        }
+        internal const int MaxFavorites = 5000;
+        public string[] Favorites() { return Locked(s => s.favorites.ToArray()); }
+        public string[] SetFavorite(string modelId, bool favorite)
+        {
+            Guid parsed;
+            if (!Guid.TryParse(modelId, out parsed)) throw new InvalidDataException("Mã model không hợp lệ.");
+            var id = parsed.ToString("D");
+            return Locked(s =>
+            {
+                s.favorites.RemoveAll(existing => string.Equals(existing, id, StringComparison.OrdinalIgnoreCase));
+                if (favorite)
+                {
+                    if (s.favorites.Count >= MaxFavorites) throw new InvalidDataException("Danh sách yêu thích đã đầy.");
+                    s.favorites.Add(id);
+                }
+                return s.favorites.ToArray();
+            }, true);
         }
         public object Settings() { return Locked(s => new { downloadDirectory = s.downloadDirectory, sceneDownloadDirectory = s.sceneDownloadDirectory }); }
         public void SetDownloadDirectory(string directory, string contentDomain = "3dmodels")

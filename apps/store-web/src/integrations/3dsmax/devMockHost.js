@@ -7,6 +7,7 @@ export function installMockHost() {
   let models = JSON.parse(localStorage.getItem('3dsmood.mock.downloads') || '[]');
   let downloadDirectory = localStorage.getItem('3dsmood.mock.directory') || 'D:\\3DS Mood';
   let sceneDownloadDirectory = localStorage.getItem('3dsmood.mock.sceneDirectory') || 'D:\\3DS Mood\\Scenes';
+  let favorites = JSON.parse(localStorage.getItem('3dsmood.mock.favorites') || '[]');
   const send = (data, delay) => setTimeout(() => listeners.forEach((f) => f({ data })), delay);
 
   window.chrome = window.chrome || {};
@@ -28,6 +29,11 @@ export function installMockHost() {
         case 'library.importOptions':
           if (!models.some(m => m.modelId === params.modelId)) return fail('MODEL_NOT_DOWNLOADED', 'Model chưa có trên máy.');
           return ok({ options: [{ optionId: 'a'.repeat(64), label: 'model.max', relativePath: 'model.max', format: 'max' }] });
+        case 'library.favorites': return ok({ favorites });
+        case 'library.setFavorite':
+          favorites = [...favorites.filter(f => f !== params.modelId.toLowerCase()), ...(params.favorite ? [params.modelId.toLowerCase()] : [])];
+          localStorage.setItem('3dsmood.mock.favorites', JSON.stringify(favorites));
+          return ok({ favorites });
         case 'library.settings': return ok({ downloadDirectory, sceneDownloadDirectory });
         case 'library.chooseDownloadDirectory':
           if (params.contentDomain === '3dscenes') {

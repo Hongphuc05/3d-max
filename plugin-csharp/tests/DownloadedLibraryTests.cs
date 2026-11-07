@@ -283,6 +283,13 @@ class DownloadedLibraryTests
         File.Delete(path);
         Check(restored.List().Length == 0, "missing local entry is excluded from downloaded list");
         try { restored.EntryPath(Model); throw new Exception("Expected missing model"); } catch (ApiException e) { Check(e.Code == "MODEL_NOT_DOWNLOADED", "missing local entry reports redownload requirement without silently downloading"); }
+        var favoriteId = Guid.NewGuid().ToString(); var otherId = Guid.NewGuid().ToString();
+        Check(restored.Favorites().Length == 0, "a library with no favorites starts empty");
+        restored.SetFavorite(favoriteId.ToUpperInvariant(), true); restored.SetFavorite(favoriteId, true); restored.SetFavorite(otherId, true);
+        Check(restored.Favorites().SequenceEqual(new[] { favoriteId, otherId }), "favorites are stored once, normalized to lowercase UUIDs");
+        Check(new DownloadedLibrary(state, first).Favorites().Length == 2, "favorites survive reopening the protected index");
+        Check(restored.SetFavorite(favoriteId, false).SequenceEqual(new[] { otherId }), "removing a favorite keeps the others");
+        try { restored.SetFavorite("..\\evil", true); throw new Exception("Expected invalid id"); } catch (InvalidDataException) { Check(true, "favorite rejects a non-UUID id"); }
         var index = Path.Combine(state, "index.dat"); var bytes = File.ReadAllBytes(index); bytes[bytes.Length - 1] ^= 1; File.WriteAllBytes(index, bytes);
         try { restored.List(); throw new Exception("Expected tampered index rejection"); } catch (InvalidDataException) { Check(true, "tampered DPAPI index fails closed"); }
         Dictionary<string, object> parsed; string code;
@@ -294,6 +301,13 @@ class DownloadedLibraryTests
         var chooseScene = choose.Replace("\"params\":{}", "\"params\":{\"contentDomain\":\"3dscenes\"}");
         Check(BridgePolicy.TryParse(chooseScene, out parsed, out code), "folder chooser accepts the Scenes domain without a caller-provided path");
         Check(!BridgePolicy.TryParse(chooseScene.Replace("3dscenes", "unknown"), out parsed, out code), "folder chooser rejects unknown domains");
+        string Fav(string method, string parameters) { return "{\"id\":\"fav-test\",\"version\":1,\"method\":\"" + method + "\",\"params\":" + parameters + "}"; }
+        Check(BridgePolicy.TryParse(Fav("library.favorites", "{}"), out parsed, out code) && !BridgePolicy.TryParse(Fav("library.favorites", "{\"x\":1}"), out parsed, out code), "favorites list takes no parameters");
+        Check(BridgePolicy.TryParse(Fav("library.setFavorite", "{\"modelId\":\"" + Model + "\",\"favorite\":true}"), out parsed, out code), "setFavorite accepts a model UUID and a boolean");
+        Check(!BridgePolicy.TryParse(Fav("library.setFavorite", "{\"modelId\":\"" + Model + "\",\"favorite\":\"yes\"}"), out parsed, out code)
+            && !BridgePolicy.TryParse(Fav("library.setFavorite", "{\"modelId\":\"C:/x\",\"favorite\":true}"), out parsed, out code)
+            && !BridgePolicy.TryParse(Fav("library.setFavorite", "{\"modelId\":\"" + Model + "\"}"), out parsed, out code)
+            && !BridgePolicy.TryParse(Fav("library.setFavorite", "{\"modelId\":\"" + Model + "\",\"favorite\":true,\"path\":\"C:/x\"}"), out parsed, out code), "setFavorite rejects non-boolean, non-UUID, missing or extra parameters");
     }
     static int Main()
     {

@@ -13,6 +13,7 @@ import { useJobs } from './queue.js';
 import { owns } from './v3-catalog.js';
 import { usePluginCatalog } from './usePluginCatalog.js';
 import { downloadedProducts, useDownloadedLibrary } from './useDownloadedLibrary.js';
+import { useFavorites } from './useFavorites.js';
 import PluginSettings from './PluginSettings.jsx';
 import ImportOptionsDialog from './ImportOptionsDialog.jsx';
 
@@ -63,20 +64,23 @@ export default function PluginApp({ orderPollMs }) {
   const completed = jobs.filter(j => j.status === 'done').length;
   const downloads = useDownloadedLibrary(reloadKey, completed);
   const downloadedIds = useMemo(() => new Set(downloads.models.map(m => m.modelId)), [downloads.models]);
+  const favorites = useFavorites();
   const ctx = useMemo(() => ({ max, entitlements, offline, local: tab === 'done', downloadedIds,
-    onBuy: () => setBuying(true), onDownloaded: () => setTab('done') }), [max, entitlements, offline, tab, downloadedIds]);
+    onBuy: () => setBuying(true), onDownloaded: () => setTab('done'),
+    ...(max ? { onFavorite: favorites.toggle, isFavorite: favorites.isFavorite } : {}) }), [max, entitlements, offline, tab, downloadedIds, favorites.toggle, favorites.ids]);
 
   // Chon model theo id (khong giu doi tuong cu): khi catalog tu lam moi, panel chi tiet cap nhat theo ban moi hoac dong neu model da bi go.
   const licensed = owns(entitlements);
   const mine = useMemo(() => downloadedProducts(downloads.models, allProducts).filter(p => (p.contentDomain || "3dmodels") === contentDomain), [downloads.models, allProducts, contentDomain]);
-  const active = useMemo(() => (tab === 'done' ? mine : products).find(p => p.id === activeId) || null, [products, mine, tab, activeId]);
+  const liked = useMemo(() => products.filter(p => favorites.ids.has(p.id.toLowerCase())), [products, favorites.ids]);
+  const active = useMemo(() => (tab === 'done' ? mine : tab === 'fav' ? liked : products).find(p => p.id === activeId) || null, [products, mine, liked, tab, activeId]);
   const listReady = tab === 'done' || state === 'ready';
   const rows = useMemo(() => {
     const needle = text.trim().toLowerCase();
-    return (tab === 'online' ? products : mine)
+    return (tab === 'online' ? products : tab === 'fav' ? liked : mine)
       .filter((p) => matchesCategory(p, subs) && (!needle || p.name.toLowerCase().includes(needle)))
       .sort(SORTS[sort][1]);
-  }, [products, mine, tab, subs, text, sort]);
+  }, [products, mine, liked, tab, subs, text, sort]);
 
   useEffect(() => setPage(1), [tab, subs, text, sort, contentDomain]);
   function selectDomain(domain) { setContentDomain(domain); setSubs(new Set()); setActiveId(null); setText(""); setPage(1); }
@@ -128,6 +132,7 @@ export default function PluginApp({ orderPollMs }) {
           <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
             {tabBtn('online', 'Online')}
             {tabBtn('done', `Đã tải${mine.length ? ` (${mine.length})` : ''}`)}
+            {max && tabBtn('fav', `Yêu thích${liked.length ? ` (${liked.length})` : ''}`)}
             <button onClick={() => setDrawer(true)} className="flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs text-mute hover:text-fg lg:hidden">
               <Icon name="filter" className="size-3.5" />Lọc{subs.size ? ` (${subs.size})` : ''}
               {max && activeJobs > 0 && <span className="text-accent">· {activeJobs} đang tải</span>}
@@ -150,6 +155,7 @@ export default function PluginApp({ orderPollMs }) {
 
           <div className="min-h-0 flex-1 overflow-auto px-3 pb-3">
             {tab === 'done' && downloads.error && <p role="alert" className="py-3 text-sm text-danger">{downloads.error}</p>}
+            {favorites.error && <p role="alert" className="py-3 text-sm text-danger">{favorites.error}</p>}
             {tab !== 'done' && state === 'error' && (
               <div role="alert" className="mx-auto mt-16 max-w-md rounded-md border border-danger/40 bg-danger/10 p-4 text-center font-mono text-xs text-danger">
                 <p>{error}</p>
@@ -158,7 +164,8 @@ export default function PluginApp({ orderPollMs }) {
             )}
             {listReady && rows.length === 0 && (
               <p className="py-16 text-center font-mono text-xs text-mute">
-                {tab === 'done' ? (mine.length ? 'Không có model đã tải nào khớp bộ lọc.' : 'Chưa có model đã tải. Bấm Download ở tab Online.')
+                {tab === 'fav' ? (liked.length ? 'Không có model yêu thích nào khớp bộ lọc.' : 'Chưa có model yêu thích. Bấm ngôi sao trên thẻ model để thêm.')
+                  : tab === 'done' ? (mine.length ? 'Không có model đã tải nào khớp bộ lọc.' : 'Chưa có model đã tải. Bấm Download ở tab Online.')
                   : products.length ? 'Không có model nào khớp bộ lọc.' : 'Catalog hiện đang trống.'}
               </p>
             )}

@@ -147,7 +147,8 @@ namespace MaxWebViewHost
             "scene.getInfo", "scene.getSelection", "scene.createBox",
             "design.create",
             "asset.download", "asset.import", "device.getIdentity", "device.signChallenge",
-            "library.status", "library.refresh", "library.downloads", "library.importOptions", "library.settings", "library.chooseDownloadDirectory"
+            "library.status", "library.refresh", "library.downloads", "library.importOptions", "library.settings", "library.chooseDownloadDirectory",
+            "library.favorites", "library.setFavorite"
         };
 
         /// <summary>Origin của backend 3dsmood, nơi host tải asset. Phải nằm trong TrustedOrigins.
@@ -664,6 +665,11 @@ namespace MaxWebViewHost
                 {
                     var options = await Task.Run(() => _v3.Downloads.ImportOptions((string)parameters["modelId"]));
                     PostResponse(id, true, options, null); return;
+                }
+                if (method == "library.favorites") { PostResponse(id, true, new { favorites = _v3.Downloads.Favorites() }, null); return; }
+                if (method == "library.setFavorite")
+                {
+                    PostResponse(id, true, new { favorites = _v3.Downloads.SetFavorite((string)parameters["modelId"], (bool)parameters["favorite"]) }, null); return;
                 }
                 if (method == "library.settings") { PostResponse(id, true, _v3.Downloads.Settings(), null); return; }
                 if (method == "library.chooseDownloadDirectory")
