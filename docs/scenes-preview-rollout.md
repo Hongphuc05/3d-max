@@ -62,4 +62,24 @@ Install the updated MZP to use Scenes. Native tests do not replace a real intera
 - All 49 supplied source images decode successfully within the server's pixel limit.
 - Native cache, routes, downloads, device sessions, selected-Max routing and packaged WebView checks passed. Final capability-header changes were rechecked in affected native suites.
 - MZP version 1.4.0 built with fresh frontend and native binaries; staged ZIP/RAR/7z extraction and package corruption-rejection checks passed. SHA256: `F0AF6971D566AC74CA791806FEC4215C247F83A13AC7A94E0463DA96E824EF2E`.
-- No interactive licensed Max scene merge/render has been performed for Scenes. Production image upload/relocation and completed production sync require separate deployment verification; local tests and metadata audit do not prove those steps happened.
+- No interactive licensed Max scene merge/render has been performed for Scenes. Production verification is recorded below separately from local tests.
+
+## Production verification (2026-11-07)
+
+Deployment of `bb63e79` completed successfully in GitHub Actions run `42352816700`. Verified VPS account roles: `ci` uploads/deploys code, `dsmood` runs API and worker, and the separate `3dsmood` SSH account has administrative sudo access. No root SSH configuration change was needed.
+
+Both automatic FULL jobs completed without errors: Models scanned 126 folders / 720 files; Scenes scanned 14 folders / 98 files and registered 48 canonical scenes from 49 archives. All 49 supplied previews uploaded successfully through the admin API and are paired (`FULL`). The duplicate `1116753112` appears in both Exterior and Interior / Other.
+
+A verified database backup was made before changing preview references. Relocation copied and verified all 640 existing Models preview blobs, then updated their references to `3dmodels/`; legacy flat files remain. Scenes uses 96 WebP blobs under `3dscenes/`. The resulting directories occupy approximately 37 MiB and 8 MiB respectively.
+
+Public HTTPS verification at catalog version 50 confirmed:
+
+- Modern catalog: 318 Models and 48 Scenes; legacy catalog: 318 Models, no Scenes.
+- All 96 public Scenes preview URLs return bytes matching their manifest SHA256 and file sizes.
+- Every one of the 49 requested category memberships exists; both duplicate memberships are present.
+- Sample legacy flat and modern Models preview URLs both return the expected image hashes.
+- The gallery download serves MZP 1.4.0 (9,770,007 bytes), matching the local package SHA256 above, with `application/octet-stream` and attachment filename `3dsmood-library.mzp`.
+- The installed Nginx configuration now directly serves scoped previews and correct MZP headers; syntax check and reload succeeded. API, worker and Nginx are active.
+- The short-lived operator upload session was removed after completion.
+
+On-server upload results, the pre-upload database backup and previous installer are kept under `/var/lib/3dsmood/scenes-preview-rollout/`. Local audit and public verification reports remain in ignored `data/`; source image originals and credentials are not committed.
