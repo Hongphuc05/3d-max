@@ -17,6 +17,7 @@ namespace MaxWebViewHost
         public string Sha256 { get; set; }
         public string FileType { get; set; }
         public string EntryFile { get; set; }
+        public string FileName { get; set; }
     }
 
     /// <summary>The plugin only ever talks to the 3DS Mood API. import-session -> verified stream to disk.
@@ -144,7 +145,9 @@ namespace MaxWebViewHost
                 || (md5 != null && !Md5Pattern.IsMatch(md5)) || (sha != null && !Sha256Pattern.IsMatch(sha))
                 || type == null || !FileTypes.Contains(type) || (entry != null && !SafeRelative(entry)))
                 throw ApiException.Unavailable();
-            return new ModelDownloadInfo { SessionId = session, SizeBytes = size, Md5 = md5, Sha256 = sha, FileType = type, EntryFile = entry };
+            var filename = Field(source, "filename");
+            if (filename != null && (!(filename is string) || ((string)filename).Length > 1000)) throw ApiException.Unavailable();
+            return new ModelDownloadInfo { SessionId = session, SizeBytes = size, Md5 = md5, Sha256 = sha, FileType = type, EntryFile = entry, FileName = filename as string };
         }
 
         private static object Field(System.Collections.Generic.Dictionary<string, object> source, string name)

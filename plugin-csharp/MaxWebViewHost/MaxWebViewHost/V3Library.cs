@@ -177,10 +177,12 @@ namespace MaxWebViewHost
                 try { info = await Downloader.DownloadAsync(modelId, package, ct, progress).ConfigureAwait(false); }
                 catch (ApiException e) when (e.Code == "DEVICE_BLOCKED" || e.Code == "NOT_ENTITLED")
                 { Downloads.RecordRights(deviceBinding, false); throw; }
+                var product = ProductSnapshot(modelId, info);
+                var folderName = DownloadFolderName(string.IsNullOrWhiteSpace(info.FileName) ? Convert.ToString(product["name"]) : info.FileName, root);
                 string[] files;
                 if (new[] { "max", "fbx", "obj" }.Contains(info.FileType))
                 {
-                    var direct = Path.Combine(content, "model." + info.FileType);
+                    var direct = Path.Combine(content, folderName + "." + info.FileType);
                     File.Move(package, direct); files = new[] { direct };
                 }
                 else files = ArchivePackage.Extract(package, content, ct, null);
@@ -199,10 +201,14 @@ namespace MaxWebViewHost
                 if (entry == null) throw new ApiException("ASSET_NO_IMPORTABLE_FILE", 422, "Gói model không có file .max/.fbx/.obj.");
                 if (File.Exists(package)) File.Delete(package);
                 ct.ThrowIfCancellationRequested();
-                var record = new DownloadedModel { modelId = modelId, directory = content, entryFile = entry.Substring(content.Length + 1),
-                    downloadedAt = DateTime.UtcNow.ToString("o"), sizeBytes = info.SizeBytes, name = modelId, product = ProductSnapshot(modelId, info) };
+                var relativeEntry = entry.Substring(content.Length + 1);
+                var options = DownloadedLibrary.BuildOptions(modelId, content, files);
+                work = CommitDownloadDirectory(work, root, folderName);
+                content = Path.Combine(work, "content");
+                var record = new DownloadedModel { modelId = modelId, directory = content, entryFile = relativeEntry,
+                    downloadedAt = DateTime.UtcNow.ToString("o"), sizeBytes = info.SizeBytes, name = modelId, product = product };
                 object name; if (record.product.TryGetValue("name", out name)) record.name = name as string ?? modelId;
-                record.importOptions = DownloadedLibrary.BuildOptions(modelId, content, files);
+                record.importOptions = options;
                 Downloads.Add(record);
                 work = null; // the indexed contents and textures now have a permanent stable location
                 DownloadsChanged();
@@ -216,6 +222,34 @@ namespace MaxWebViewHost
                 }
                 downloadGate.Release();
             }
+        }
+
+        // Drive names are labels, never filesystem paths. Keep readable names on Windows.
+        internal static string DownloadFolderName(string filename, string root)
+        {
+            var value = (filename ?? "").Normalize(System.Text.NormalizationForm.FormC).Trim();
+            var dot = value.LastIndexOf('.');
+            if (dot >= 0 && new[] { ".zip", ".rar", ".7z", ".max", ".fbx", ".obj" }.Contains(value.Substring(dot).ToLowerInvariant())) value = value.Substring(0, dot);
+            var invalid = Path.GetInvalidFileNameChars();
+            value = new string(value.Select(c => char.IsControl(c) || invalid.Contains(c) ? '_' : c).ToArray()).Trim().TrimEnd('.', ' ');
+            if (string.IsNullOrEmpty(value)) value = "Model";
+            var reserved = value.Split('.')[0].ToUpperInvariant();
+            if (new[] { "CON", "PRN", "AUX", "NUL" }.Contains(reserved)
+                || System.Text.RegularExpressions.Regex.IsMatch(reserved, "^(COM|LPT)[1-9¹²³]$")) value = "_" + value;
+            var limit = Math.Max(1, Math.Min(120, 220 - Path.GetFullPath(root).Length));
+            if (value.Length > limit) value = value.Substring(0, char.IsHighSurrogate(value[limit - 1]) ? limit - 1 : limit).TrimEnd('.', ' ');
+            return string.IsNullOrEmpty(value) ? "Model" : value;
+        }
+
+        private static string CommitDownloadDirectory(string staging, string root, string name)
+        {
+            for (var number = 1; number <= 10000; number++)
+            {
+                var target = Path.Combine(root, name + (number == 1 ? "" : " (" + number + ")"));
+                try { Directory.Move(staging, target); return target; }
+                catch (IOException) { if (!Directory.Exists(target) && !File.Exists(target)) throw; }
+            }
+            throw new IOException("Không tạo được thư mục tải: có quá nhiều thư mục trùng tên.");
         }
 
         private string DownloadDomain(string modelId)

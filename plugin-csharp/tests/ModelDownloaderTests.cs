@@ -68,12 +68,13 @@ class ModelDownloaderTests
             // 1. Happy path.
             {
                 var fake = new Fake(); var tokens = new Tokens(); var progress = new List<long>();
-                fake.Reply = r => r.Method == HttpMethod.Post ? Created(Info(data, d => d["entryFile"] = "scene/main.max")) : Stream(data);
+                fake.Reply = r => r.Method == HttpMethod.Post ? Created(Info(data, d => { d["entryFile"] = "scene/main.max"; d["filename"] = "1106880206.rar"; })) : Stream(data);
                 var info = await Make(fake, tokens).DownloadAsync(ModelId, dest, CancellationToken.None, (received, total) => progress.Add(received));
                 Check(File.ReadAllBytes(dest).SequenceEqual(data) && Parts(root).Length == 0, "the verified file is published and no .part is left");
                 Check(fake.Calls.SequenceEqual(new[] { "POST /api/v1/models/" + ModelId + "/import-session [" + tokens.Current + "]", "GET /api/v1/model-downloads/" + SessionId + " [" + tokens.Current + "]" }),
                     "one import-session then one stream, both with the device token");
                 Check(info.FileType == "rar" && info.EntryFile == "scene/main.max" && info.SizeBytes == data.Length, "session info (type, entry file, size) is returned to the caller");
+                Check(info.FileName == "1106880206.rar" && BackendModelDownloader.ParseInfo(Info(data)).FileName == null, "source filename is carried to the library and remains optional for older APIs");
                 Check(progress.Count > 0 && progress.Zip(progress.Skip(1), (a, b) => b >= a).All(x => x) && progress.Last() == data.Length, "progress is monotonic and ends at the file size");
             }
             // 2. Verification uses whatever the server announced: sha256, else md5, else size only.
@@ -144,6 +145,7 @@ class ModelDownloaderTests
                     { "md5 not hex", d => d["md5"] = "zz" }, { "sha256 not hex", d => d["sha256"] = "zz" },
                     { "unknown file type", d => d["fileType"] = "exe" }, { "entry file traversal", d => d["entryFile"] = "../evil.max" }, { "entry file absolute", d => d["entryFile"] = "C:/evil.max" },
                     { "missing size", d => d.Remove("sizeBytes") },
+                    { "filename wrong type", d => d["filename"] = 123 }, { "filename too long", d => d["filename"] = new string('x', 1001) },
                 };
                 foreach (var entry in cases)
                 {

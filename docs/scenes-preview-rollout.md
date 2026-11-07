@@ -91,3 +91,13 @@ Settings exposes independent native folder pickers for Models and Scenes. The ex
 Native download routing reads the product's content domain from the cached catalog, while JavaScript passes only the requested domain to the folder picker. Neither bridge call accepts a filesystem path from JavaScript. Changing either setting affects subsequent downloads; already downloaded products continue to import from their recorded directory without downloading or extracting again.
 
 Validation: web 175 tests; downloaded-library 71 checks (including legacy settings migration, independent folders, actual Scene extraction root, persistence and stable existing imports); WebView transport 43 checks. Release x64 and fresh frontend builds, staged ZIP/RAR/7z extraction and MZP structure checks passed. Package version 1.4.1 SHA256: `15A06566C8D4039A96B2BC080E8D06104352C1852D9FC92370B97D859D44F3CA`.
+
+## Download folder names (MZP 1.4.2)
+
+The authenticated import-session response now includes `filename` from the selected Drive archive. Native accepts this optional field, so older servers remain usable with a catalog-name fallback. Existing native clients ignore the additive field.
+
+New downloads still extract into an isolated temporary directory. After verification and extraction succeed, the entire directory is atomically renamed to the source filename without its archive extension, for both content domains. For example, `1106880206.rar` becomes `<Scenes directory>/1106880206/content/...`. The `content` layout and archive cleanup remain unchanged. The protected index and import options refer to the final directory before the completed download is exposed.
+
+Names retain Unicode and spaces. Windows-invalid characters, reserved device names and excessive lengths are sanitized. A colliding file or folder is never overwritten; a numeric suffix is used (`1106880206 (2)`, then `(3)`). Existing indexed downloads are returned immediately at their original paths, including older GUID directories, so saved texture references are not invalidated and no archive is downloaded again just to rename it.
+
+Validation: API download routes 21 tests; downloaded-library 80 checks including actual Models/Scenes names, renamed-folder import paths and both file/folder collisions; model downloader 46 checks including optional filename compatibility and malformed metadata rejection. Fresh Release x64/frontend builds, ZIP/RAR/7z staging and MZP structure passed. MZP 1.4.2 SHA256: `F754301A0A3D682CE65C961F5FD3329984E61014226FB4AF72D383AB1F985D06`.

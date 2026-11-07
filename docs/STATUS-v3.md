@@ -297,3 +297,7 @@ Kiểm tra: API407/407 không skip, web174/174, tooling4/4; native/build/package
 ### 2026-11-07 — Thư mục tải Scenes riêng, MZP 1.4.1
 
 Cài đặt có hai thư mục Models/Scenes độc lập, chọn bằng hộp thoại native. Native chọn đúng thư mục theo contentDomain trong catalog. Index cũ giữ nguyên thư mục Models và khởi tạo mặc định Scenes; lựa chọn mới tồn tại sau restart. Model/scene đã tải giữ nguyên vị trí và tiếp tục import local, không tải/giải nén lại. Bridge chỉ nhận domain hợp lệ, không nhận đường dẫn từ JS. Kiểm tra: web175/175, downloaded-library71, WebView43; build Release x64, frontend, archive staging và MZP structure đạt. MZP1.4.1 SHA256 15A06566C8D4039A96B2BC080E8D06104352C1852D9FC92370B97D859D44F3CA.
+
+### 2026-11-07 — Tên thư mục theo file Drive, MZP 1.4.2
+
+Import-session trả thêm filename của archive nguồn. Native tải/giải nén trong thư mục tạm rồi đổi tên nguyên tử sang tên Drive bỏ đuôi nén trước khi lập index, áp dụng cả Models/Scenes. Trùng file/folder thêm (2), (3), không ghi đè. Giữ tên Unicode và khoảng trắng, xử lý ký tự Windows không hợp lệ/tên thiết bị/độ dài. Dữ liệu đã tải giữ nguyên vị trí và không tải lại để đổi tên. Kiểm tra API download21, thư viện80, downloader46; build Release x64/frontend, archive staging và MZP structure đạt. MZP1.4.2 SHA256 F754301A0A3D682CE65C961F5FD3329984E61014226FB4AF72D383AB1F985D06.

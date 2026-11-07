@@ -16,7 +16,7 @@ const sha256 = (value) => createHash('sha256').update(value).digest();
 const STORAGE_CODES = new Set(['STORAGE_DOWNLOAD_FAILED', 'DOWNLOAD_SIZE_MISMATCH', 'DOWNLOAD_CHECKSUM_MISMATCH', 'DISK_SPACE_LOW', 'DOWNLOAD_TIMEOUT', 'DOWNLOAD_CANCELLED']);
 const logCode = (e) => (/^[A-Z][A-Z0-9_]{1,60}$/.test(e?.code ?? '') ? e.code : 'INTERNAL');
 
-const FILE_SQL = `select m.status as model_status, f.id as file_id, f.drive_file_id, f.file_type, f.size_bytes, f.md5_checksum, f.sha256, f.entry_file,
+const FILE_SQL = `select m.status as model_status, f.id as file_id, f.drive_file_id, f.filename, f.file_type, f.size_bytes, f.md5_checksum, f.sha256, f.entry_file,
                          f.can_download, f.download_status
                     from models m left join model_files f on f.id = m.primary_file_id where m.id = $1`;
 const ENTITLEMENT_SQL = `select id from entitlements where device_id = $1 and revoked_at is null limit 1`; // D28.1: quyen = ca thu vien
@@ -81,7 +81,7 @@ export function createDownloadRouter({ pool, cache, rateLimit, sessionsPerHour =
     warm(out.row);
     const { row } = out;
     res.status(201).json({ sessionId: out.token, expiresAt: out.expiresAt, sizeBytes: row.size_bytes == null ? null : Number(row.size_bytes),
-      md5: row.md5_checksum, sha256: row.sha256, fileType: row.file_type, entryFile: row.entry_file });
+      md5: row.md5_checksum, sha256: row.sha256, fileType: row.file_type, entryFile: row.entry_file, filename: row.filename });
   });
 
   router.get('/model-downloads/:sessionId', ...pre, requireDevice(pool), async (req, res) => {

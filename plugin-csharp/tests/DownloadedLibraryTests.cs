@@ -31,6 +31,7 @@ class DownloadedLibraryTests
         public int Calls, Sessions, Downloads;
         public bool Offline, Allowed = true;
         public string DownloadError;
+        public string FileName;
         public byte[] Package;
         static HttpResponseMessage Reply(object value, int status = 200) { return new HttpResponseMessage((HttpStatusCode)status) { Content = new StringContent(Json.Serialize(value), Encoding.UTF8, "application/json") }; }
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
@@ -44,7 +45,7 @@ class DownloadedLibraryTests
                 Sessions++;
                 if (DownloadError != null) return Task.FromResult(Reply(new { error = new { code = DownloadError, message = "Denied" } }, 403));
                 return Task.FromResult(Reply(new { sessionId = new string('x', 43), sizeBytes = Package.Length,
-                    fileType = "zip", md5 = Hex(MD5.Create().ComputeHash(Package)), sha256 = Hex(SHA256.Create().ComputeHash(Package)), entryFile = (string)null }));
+                    fileType = "zip", filename = FileName, md5 = Hex(MD5.Create().ComputeHash(Package)), sha256 = Hex(SHA256.Create().ComputeHash(Package)), entryFile = (string)null }));
             }
             if (path.Contains("/model-downloads/"))
             {
@@ -65,7 +66,7 @@ class DownloadedLibraryTests
             return memory.ToArray();
         }
     }
-    static V3Library Fixture(DownloadedLibrary store, Server server, string temp, bool scene = false)
+    static V3Library Fixture(DownloadedLibrary store, Server server, string temp, bool scene = false, string modelId = Model)
     {
         var library = (V3Library)Activator.CreateInstance(typeof(V3Library), true);
         var api = new BackendApi(new Uri("https://test.example/"), new HttpClient(server));
@@ -77,9 +78,9 @@ class DownloadedLibraryTests
         var categoryId = Guid.NewGuid().ToString();
         var aliasId = Guid.NewGuid().ToString();
         var cached = new CachedCatalog { CatalogVersion = 1,
-            CatalogJson = Encoding.UTF8.GetBytes(Json.Serialize(new { catalogVersion = 1, models = new[] { new { id = Model, name = "My chair", categoryId, contentDomain = scene ? "3dscenes" : null, categoryIds = scene ? new[] { categoryId, aliasId } : null } } })),
+            CatalogJson = Encoding.UTF8.GetBytes(Json.Serialize(new { catalogVersion = 1, models = new[] { new { id = modelId, name = "My chair", categoryId, contentDomain = scene ? "3dscenes" : null, categoryIds = scene ? new[] { categoryId, aliasId } : null } } })),
             CategoriesJson = Encoding.UTF8.GetBytes(Json.Serialize(new[] { new { id = categoryId, name = "Chairs", fullPath = "Furniture / Chairs", parentId = (string)null }, new { id = aliasId, name = "Living", fullPath = "Living", parentId = (string)null } })),
-            Previews = new[] { new PreviewEntry { ModelId = Model, Variant = "sm", Sha256 = new string('f', 64), Url = scene ? "/previews/3dscenes/" + new string('f', 64) + ".webp" : null } } };
+            Previews = new[] { new PreviewEntry { ModelId = modelId, Variant = "sm", Sha256 = new string('f', 64), Url = scene ? "/previews/3dscenes/" + new string('f', 64) + ".webp" : null } } };
         typeof(CatalogUpdateWatcher).GetField("current", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(watcher, cached);
         Set(library, "Downloads", store); Set(library, "Session", session); Set(library, "Catalog", catalog); Set(library, "Watcher", watcher);
         Set(library, "Previews", previews); Set(library, "Downloader", new BackendModelDownloader(api, new Tokens()));
@@ -176,6 +177,10 @@ class DownloadedLibraryTests
     static async Task Run(string root)
     {
         await MultiOptions(root);
+        Check(V3Library.DownloadFolderName("1106880206.rar", root) == "1106880206", "download folder preserves the Drive archive stem");
+        Check(V3Library.DownloadFolderName("Phòng khách & Sofa.zip", root) == "Phòng khách & Sofa", "readable Unicode names and spaces are retained");
+        Check(V3Library.DownloadFolderName("Bad:Name?.rar", root) == "Bad_Name_" && V3Library.DownloadFolderName("CON.zip", root) == "_CON", "Windows-invalid characters and reserved device names are made safe");
+        Check(V3Library.DownloadFolderName("..", root) == "Model" && V3Library.DownloadFolderName(new string('x', 500) + ".rar", root).Length <= 120, "empty or oversized archive stems cannot escape the root or exceed the folder budget");
         var legacySettings = Path.Combine(root, "legacy-settings"); Directory.CreateDirectory(legacySettings);
         var legacyModelDirectory = Path.Combine(root, "legacy-model-location");
         var defaultScenes = Path.Combine(root, "default-scenes");
@@ -191,12 +196,27 @@ class DownloadedLibraryTests
         var selectedModels = Path.Combine(sceneRoot, "ssd-models");
         sceneStore.SetDownloadDirectory(selectedModels);
         Check(sceneStore.SceneDownloadDirectory == selectedScenes && sceneStore.DownloadDirectory == selectedModels, "Models and Scenes directory choices are independent");
-        var sceneServer = new Server { Package = MakePackage() };
+        var sceneServer = new Server { Package = MakePackage(), FileName = "1106880206.rar" };
         using (var library = Fixture(sceneStore, sceneServer, sceneRoot, true))
         {
             await library.DownloadModelAsync(Model, CancellationToken.None, null);
             var record = new DownloadedLibrary(sceneState, Path.Combine(sceneRoot, "files")).Find(Model);
             Check(record.directory.StartsWith(selectedScenes + Path.DirectorySeparatorChar) && !record.directory.StartsWith(selectedModels + Path.DirectorySeparatorChar), "Scene download extracts into its selected Scenes folder based on native catalog metadata");
+            Check(Directory.GetParent(record.directory).Name == "1106880206", "completed Scene folder uses its exact Drive stem instead of the temporary GUID");
+            Check(Directory.GetDirectories(selectedScenes, ".3dsmood-*").Length == 0, "completed download leaves no temporary GUID folder behind");
+            var siblingId = Guid.NewGuid().ToString();
+            using (var sibling = Fixture(sceneStore, sceneServer, sceneRoot, true, siblingId))
+            {
+                await sibling.DownloadModelAsync(siblingId, CancellationToken.None, null);
+                Check(Directory.GetParent(sceneStore.Find(siblingId).directory).Name == "1106880206 (2)" && File.Exists(Path.Combine(record.directory, record.entryFile)), "same-named downloads receive a numeric suffix without modifying the existing Scene");
+            }
+            var fileCollision = Path.Combine(selectedScenes, "Occupied"); File.WriteAllText(fileCollision, "keep");
+            var thirdId = Guid.NewGuid().ToString(); sceneServer.FileName = "Occupied.zip";
+            using (var third = Fixture(sceneStore, sceneServer, sceneRoot, true, thirdId))
+            {
+                await third.DownloadModelAsync(thirdId, CancellationToken.None, null);
+                Check(Directory.GetParent(sceneStore.Find(thirdId).directory).Name == "Occupied (2)" && File.ReadAllText(fileCollision) == "keep", "a colliding user file is not overwritten or treated as a download directory");
+            }
             var savedEntry = library.LocalEntry(Model);
             var calls = sceneServer.Calls;
             var nextScenes = Path.Combine(sceneRoot, "next-scenes");
@@ -212,7 +232,7 @@ class DownloadedLibraryTests
         var state = Path.Combine(root, "state"); var first = Path.Combine(root, "first"); var second = Path.Combine(root, "second");
         var store = new DownloadedLibrary(state, first);
         Check(!store.Allows(Binding), "new devices fail closed without verified rights");
-        var server = new Server { Package = MakePackage() };
+        var server = new Server { Package = MakePackage(), FileName = "Drive model.zip" };
         using (var library = Fixture(store, server, root))
         {
             var changes = 0; library.HostEvent += (type, data) => { if (type == "library.downloadsChanged") changes++; };
@@ -220,6 +240,7 @@ class DownloadedLibraryTests
             Check(result != null && server.Sessions == 1 && server.Downloads == 1, "download fetches exactly one archive without scene or import dependencies");
             var model = store.Find(Model);
             Check(model.directory.StartsWith(first + Path.DirectorySeparatorChar), "legacy Models download still uses its original Models folder");
+            Check(Directory.GetParent(model.directory).Name == "Drive model", "Models folder uses the Drive filename even when catalog display name differs");
             Check(model != null && model.name == "My chair" && Equals(model.product["folderPath"], "Furniture / Chairs"), "catalog dictionary arrays produce persistent name and category snapshot");
             Check(Equals(model.product["contentDomain"], "3dmodels"), "legacy catalog records default to Models");
             Check(File.Exists(Path.Combine(model.directory, "textures", "map.jpg")), "extracted textures remain beside local model");

@@ -123,7 +123,8 @@ afterEach(async () => {
 test('happy path: entitled device gets a session, then the exact bytes from our copy; session COMPLETED, log written, sha256 learned', { skip }, async () => {
   const { dev, m, r, j } = await ready({ modelOpts: { file: { entry: 'scene/main.max' } } });
   assert.equal(r.status, 201);
-  assert.deepEqual(Object.keys(j).sort(), ['entryFile', 'expiresAt', 'fileType', 'md5', 'sessionId', 'sha256', 'sizeBytes']);
+  assert.deepEqual(Object.keys(j).sort(), ['entryFile', 'expiresAt', 'fileType', 'filename', 'md5', 'sessionId', 'sha256', 'sizeBytes']);
+  assert.equal(j.filename, 'm.rar', 'download metadata carries the source archive filename, independent of the catalog display name');
   assert.match(j.sessionId, /^[A-Za-z0-9_-]{43}$/);
   assert.deepEqual([j.sizeBytes, j.md5, j.sha256, j.fileType, j.entryFile], [m.data.length, hex('md5', m.data), null, 'rar', 'scene/main.max']);
   const ms = new Date(j.expiresAt) - Date.now();
