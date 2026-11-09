@@ -493,6 +493,25 @@ test('device popup: after an install the host keeps reporting "restart required"
   await done(root);
 });
 
+test('folder picker: shows the model image and name on the left, the folder list on the right, with the brand gradient', async () => {
+  const { FavoriteFolderDialog } = await import('./FavoriteFolders.jsx');
+  const host = document.createElement('div'); document.body.appendChild(host);
+  const root = createRoot(host);
+  const product = { id: id(301), name: 'Living room', image: '/previews/large.webp', thumb: '/previews/small.webp', contentDomain: '3dscenes' };
+  await act(async () => { root.render(<FavoriteFolderDialog product={product} folders={[{ id: id(302), name: 'Phòng khách', contentDomain: '3dscenes' }]} onAssign={async () => {}} onCreate={async () => id(303)} onClose={() => {}} />); await flush(); });
+  const left = document.querySelector('[data-testid=favorite-preview]');
+  assert.equal(left.querySelector('img').getAttribute('src'), '/previews/large.webp', 'the large image of the item being favorited');
+  assert.equal(left.textContent, 'Living room', 'its name sits under the image, read-only');
+  assert.equal(left.querySelector('input'), null);
+  const dialog = document.querySelector('[role=dialog]');
+  assert.ok(!left.contains(dialog.querySelector('input[type=search]')), 'the folder search is on the other side');
+  assert.deepEqual([...dialog.querySelectorAll('input[type=radio]')].map((r) => r.parentElement.textContent), ['Default', 'Phòng khách']);
+  assert.match(dialog.style.background, /linear-gradient/, 'red gradient background');
+  assert.match(dialog.querySelector('h2').className, /text-white/, 'the title is white');
+  assert.ok([...dialog.querySelectorAll('button')].some((b) => b.textContent.includes('Tạo thư mục mới')) && [...dialog.querySelectorAll('button')].some((b) => b.textContent === 'Thêm'));
+  await act(() => root.unmount()); host.remove();
+});
+
 test('first run with the VPS down: clear message + "Thử lại" loads the catalog; preview progress shows a bar', async () => {
   server(); const base = globalThis.fetch; let down = true;
   globalThis.fetch = async (url) => {

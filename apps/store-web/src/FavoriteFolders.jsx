@@ -1,6 +1,7 @@
 // Thu muc yeu thich: bang chon thu muc khi bam tim, va thanh thu muc (chip) o tab Yeu thich.
 // Moi model nam trong dung 1 thu muc; "Default" la thu muc co san (khong doi ten/xoa duoc).
 import { useEffect, useRef, useState } from 'react';
+import { Preview } from './components.jsx';
 import { Icon } from './icons.jsx';
 import { DEFAULT_FOLDER } from './useFavorites.js';
 
@@ -67,38 +68,44 @@ export function FavoriteFolderDialog({ product, folders, onAssign, onCreate, onC
     setBusy(true); setError('');
     try { await onAssign(product.id, selected); onClose(); } catch (e) { setError(message(e)); setBusy(false); }
   }
+  // Two panes like the brand design: the model/scene being favorited on the left, the folder picker on the right.
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4" onClick={onClose}>
       <section ref={section} role="dialog" aria-modal="true" aria-labelledby="fav-folder-title" onKeyDown={keyDown} onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[85vh] w-full max-w-sm flex-col gap-3 rounded-lg border border-line bg-panel p-5 shadow-xl">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 id="fav-folder-title" className="flex items-center gap-2 text-base font-bold"><Icon name="heart" className="size-4 text-danger" filled />Thêm vào yêu thích</h2>
-            <p className="mt-0.5 truncate font-mono text-[11px] text-mute" title={product.name}>{product.name}</p>
-          </div>
-          <button onClick={onClose} aria-label="Đóng" className="rounded-md p-1 text-mute hover:text-fg"><Icon name="close" /></button>
+        style={{ background: 'linear-gradient(180deg, #0b0809 0%, #160707 55%, #4a0b0b 100%)' }}
+        className="grid max-h-[90vh] w-full max-w-2xl overflow-auto rounded-xl border border-white/10 shadow-2xl sm:grid-cols-[15rem_minmax(0,1fr)]">
+        <div data-testid="favorite-preview" className="flex flex-col gap-3 p-5 sm:border-r sm:border-white/10">
+          <div className="overflow-hidden rounded-xl bg-white"><Preview source={product.image || product.thumb} name={product.name} /></div>
+          <div className="truncate rounded-md bg-white/10 px-3 py-2 text-sm text-white" title={product.name}>{product.name}</div>
         </div>
-        <label className="flex items-center gap-2 rounded-md border border-line bg-base px-2 focus-within:border-brand">
-          <Icon name="search" className="size-3.5 text-mute" />
-          <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm thư mục…" aria-label="Tìm thư mục" className="w-full bg-transparent py-1.5 text-sm outline-none placeholder:text-mute" />
-        </label>
-        <fieldset className="min-h-[7rem] space-y-1.5 overflow-auto">
-          <legend className="sr-only">Thư mục yêu thích</legend>
-          {shown.map((f) => (
-            <label key={f.id} className="flex cursor-pointer items-center gap-3 rounded-md border border-line px-3 py-2 text-sm focus-within:border-brand has-[:checked]:border-brand">
-              <input type="radio" name="fav-folder" value={f.id} checked={selected === f.id} onChange={() => setSelected(f.id)} className="shrink-0" />
-              <span className="min-w-0 truncate">{f.name}</span>
-            </label>
-          ))}
-          {shown.length === 0 && <p className="py-3 text-center font-mono text-xs text-mute">Không có thư mục nào khớp.</p>}
-        </fieldset>
-        {creating
-          ? <NameForm submitLabel="Tạo" onSubmit={create} onCancel={() => setCreating(false)} />
-          : <button type="button" onClick={() => setCreating(true)} className="self-start rounded-md px-1 py-1 text-xs font-bold text-brand hover:brightness-110">+ Tạo thư mục mới</button>}
-        {error && <p role="alert" className="text-xs text-danger">{error}</p>}
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} className={ghostBtn}>Hủy</button>
-          <button onClick={confirm} disabled={busy} className={solidBtn}>Thêm</button>
+        <div className="flex min-h-[19rem] min-w-0 flex-col gap-3 p-5">
+          <div className="flex items-center justify-between gap-3">
+            <h2 id="fav-folder-title" className="flex items-center gap-2 text-lg font-bold text-white"><Icon name="heart" className="size-5 text-white" />Thêm vào yêu thích</h2>
+            <button onClick={onClose} aria-label="Đóng" className="rounded-md p-1 text-white/70 hover:text-white"><Icon name="close" /></button>
+          </div>
+          <label className="flex items-center gap-2 rounded-md bg-white/10 px-3 focus-within:ring-1 focus-within:ring-brand">
+            <Icon name="search" className="size-4 text-white/70" />
+            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm thư mục…" aria-label="Tìm thư mục" className="w-full bg-transparent py-2 text-sm text-white outline-none placeholder:text-white/50" />
+          </label>
+          <fieldset className="min-h-[6rem] flex-1 space-y-1.5 overflow-auto">
+            <legend className="sr-only">Thư mục yêu thích</legend>
+            {shown.map((f) => (
+              <label key={f.id} className="flex cursor-pointer items-center gap-3 rounded-md border border-transparent px-2 py-2 text-sm text-white hover:bg-white/5 focus-within:border-brand has-[:checked]:bg-white/10">
+                <input type="radio" name="fav-folder" value={f.id} checked={selected === f.id} onChange={() => setSelected(f.id)} className="shrink-0" />
+                <span className="min-w-0 truncate">{f.name}</span>
+              </label>
+            ))}
+            {shown.length === 0 && <p className="py-3 text-center font-mono text-xs text-white/60">Không có thư mục nào khớp.</p>}
+          </fieldset>
+          {creating && <NameForm submitLabel="Tạo" onSubmit={create} onCancel={() => setCreating(false)} />}
+          {error && <p role="alert" className="text-xs text-danger">{error}</p>}
+          <div className="flex items-center justify-between gap-2">
+            {creating ? <span /> : <button type="button" onClick={() => setCreating(true)} className="flex items-center gap-2 rounded-md bg-white/10 px-3 py-2 text-xs font-bold text-white hover:bg-white/15"><span aria-hidden="true" className="text-lg leading-none">+</span>Tạo thư mục mới</button>}
+            <div className="flex gap-2">
+              <button onClick={onClose} className="rounded-md border border-white/20 px-4 py-2 text-xs text-white/80 hover:text-white">Hủy</button>
+              <button onClick={confirm} disabled={busy} className="rounded-md bg-accent px-5 py-2 text-xs font-bold text-white hover:brightness-125 disabled:opacity-40">Thêm</button>
+            </div>
+          </div>
         </div>
       </section>
     </div>

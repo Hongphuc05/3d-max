@@ -106,7 +106,7 @@ export default function PublicCatalog() {
           <p className="text-sm text-mute">Thư viện 3D model và scene cho 3ds Max. Xem toàn bộ model và scene, cài plugin để dùng trực tiếp trong Max.</p>
         </div>
         <div className="flex flex-col items-start gap-1 sm:items-end">
-          <DownloadButton className="w-full sm:w-auto sm:px-8 sm:py-3 sm:text-base" />
+          <DownloadButton className="w-full sm:w-auto sm:px-8 sm:py-3 sm:text-[1rem]" />
           <p className="text-xs text-mute">Trong 3ds Max: Scripting → Run Script → chọn file .mzp.</p>
         </div>
       </header>

@@ -59,7 +59,7 @@ function ConnectionPanel() {
   const data = resource.data;
   return <section className={`${panel} space-y-4`} aria-labelledby="telegram-connections-title">
     <div className="flex flex-wrap items-start justify-between gap-3">
-      <div><h3 id="telegram-connections-title" className="text-base font-bold">Kết nối Telegram bot</h3>
+      <div><h3 id="telegram-connections-title" className="text-[1rem] font-bold">Kết nối Telegram bot</h3>
         <p className="mt-1 max-w-3xl text-sm text-mute">Mỗi admin liên kết một tài khoản Telegram. Tài khoản đã liên kết nhận thông báo đơn mới và có thể xác nhận hoặc từ chối đơn ngay trong Telegram.</p>
       </div>
       {!data?.accounts?.length && <button type="button" className={primary} disabled={!data?.canConnect || connecting || Boolean(busyId)} onClick={connect}>

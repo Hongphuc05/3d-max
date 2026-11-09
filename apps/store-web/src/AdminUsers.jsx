@@ -53,7 +53,7 @@ export default function AdminUsers() {
     </div>
 
     {showCreate && <form onSubmit={create} className={`${panel} space-y-4`}>
-      <h3 className="text-base font-bold">Tạo tài khoản admin</h3>
+      <h3 className="text-[1rem] font-bold">Tạo tài khoản admin</h3>
       <div className="grid gap-3 md:grid-cols-3">
         <label className="space-y-1 text-sm"><span>Tên đăng nhập</span><input className={inputClass} value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="off" pattern="[a-z0-9][a-z0-9_.-]{2,63}" minLength={3} maxLength={64} required /></label>
         <label className="space-y-1 text-sm"><span>Họ và tên</span><input className={inputClass} value={displayName} onChange={(event) => setDisplayName(event.target.value)} autoComplete="name" minLength={1} maxLength={120} required /></label>

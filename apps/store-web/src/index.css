@@ -27,6 +27,8 @@
 
 :root { color-scheme: dark; accent-color: var(--color-accent); }
 body { @apply bg-base text-fg antialiased; }
+/* Boi den van ban theo mau thuong hieu (mac dinh cua trinh duyet la xanh duong, lech tong mau). */
+::selection { background: #8f120d; color: #ffffff; }
 
 /* Thanh tien do KHONG xac dinh (khong co tong khi dang quet): doan chay qua lai, khong gia phan tram. */
 @keyframes indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(300%); } }
