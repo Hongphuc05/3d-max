@@ -7,6 +7,7 @@ category:"3dsmood"
 internalCategory:"Platform"
 buttonText:"3dsmood"
 toolTip:"3dsmood"
+icon:#("3dsmood", 1)   -- 3dsmood_24i.bmp / _16i.bmp (+ _a alpha masks) in the user icons folder, copied by install.ms
 (
     on execute do
     (

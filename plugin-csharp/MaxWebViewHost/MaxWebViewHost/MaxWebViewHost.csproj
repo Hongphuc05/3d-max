@@ -87,6 +87,7 @@
     <Compile Include="V3Routes.cs" />
     <Compile Include="OrdersClient.cs" />
     <Compile Include="PluginUpdate.cs" />
+    <EmbeddedResource Include="Resources\3dsmood.ico" />
     <Compile Include="V3Library.cs" />
     <Compile Include="DownloadedLibrary.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

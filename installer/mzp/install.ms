@@ -37,6 +37,15 @@ global gPlatformSilentInstall
         ioFile.Copy (source + "PlatformLoader.ms") (root + "PlatformBridge.ms") true
         ioFile.Copy (source + "Platform-OpenPanel.mcr") ((getDir #userMacros) + "\\Platform-OpenPanel.mcr") true
         ioFile.Copy (source + "Platform-Agent.ms") ((getDir #userStartupScripts) + "\\Platform-Agent.ms") true
+        -- Toolbar button icon (the macro references it as icon:#("3dsmood", 1)). Cosmetic: never fail the install over it.
+        try
+        (
+            local iconDir = getDir #userIcons
+            ioDir.CreateDirectory iconDir
+            for iconName in #("3dsmood_16i.bmp", "3dsmood_16a.bmp", "3dsmood_24i.bmp", "3dsmood_24a.bmp") do
+                if ioFile.Exists (source + "icons\\" + iconName) do ioFile.Copy (source + "icons\\" + iconName) (iconDir + "\\" + iconName) true
+        )
+        catch ()
         local pointer = root + "active.txt"
         local pending = root + "active-" + (((dotNetClass "System.Guid").NewGuid()).ToString "N") + ".tmp"
         ioFile.WriteAllText pending payloadId

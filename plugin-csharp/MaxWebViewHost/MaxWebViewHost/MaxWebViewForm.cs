@@ -224,6 +224,7 @@ namespace MaxWebViewHost
             _readTarget = readTarget ?? throw new ArgumentNullException(nameof(readTarget));
             FormClosed += (sender, args) => _lifetime.Cancel();
             _ownerProcess = ownerProcess ?? CurrentOwnerProcess();
+            LoadWindowIcon();
             UpdateOwnerDisplay(null);
             Width = 1100;
             Height = 800;
@@ -284,6 +285,17 @@ namespace MaxWebViewHost
             _connectionTimer.Tick += async (s, e) => await MonitorConnectionAsync();
             FormClosed += (s, e) => { _connectionTimer.Dispose(); _packagedApp?.Dispose(); _v3?.Dispose(); };
             Load += async (s, e) => await InitAsync();
+        }
+
+        // Brand icon embedded in the DLL (Resources/3dsmood.ico). Builds that compile the sources without the resource (tests) keep the default icon.
+        private void LoadWindowIcon()
+        {
+            try
+            {
+                using (var stream = typeof(MaxWebViewForm).Assembly.GetManifestResourceStream("MaxWebViewHost.Resources.3dsmood.ico"))
+                    if (stream != null) Icon = new Icon(stream);
+            }
+            catch (Exception e) when (e is ArgumentException || e is IOException) { Debug.WriteLine("[icon] " + e.GetType().Name); }
         }
 
         private static ImportTarget CurrentOwnerProcess()

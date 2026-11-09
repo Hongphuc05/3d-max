@@ -20,6 +20,7 @@ try {
     }
     Copy-Item -LiteralPath (Join-Path $stage 'usermacros\Platform-OpenPanel.mcr') -Destination $package
     Copy-Item -LiteralPath (Join-Path $stage 'Startup\Platform-Agent.ms') -Destination $package
+    Copy-Item -LiteralPath (Join-Path $template 'icons') -Destination (Join-Path $package 'icons') -Recurse
     # The running plugin reads its own version from payload\version.txt (update check), so the label is part of the payload.
     [IO.File]::WriteAllText((Join-Path $package 'payload\version.txt'), $Version)
     # Digest includes file paths and bytes (incl. version.txt), not timestamps.
