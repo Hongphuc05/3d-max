@@ -303,6 +303,8 @@ class DownloadedLibraryTests
         Check(!BridgePolicy.TryParse(chooseScene.Replace("3dscenes", "unknown"), out parsed, out code), "folder chooser rejects unknown domains");
         string Fav(string method, string parameters) { return "{\"id\":\"fav-test\",\"version\":1,\"method\":\"" + method + "\",\"params\":" + parameters + "}"; }
         Check(BridgePolicy.TryParse(Fav("library.favorites", "{}"), out parsed, out code) && !BridgePolicy.TryParse(Fav("library.favorites", "{\"x\":1}"), out parsed, out code), "favorites list takes no parameters");
+        foreach (var update in new[] { "host.checkUpdate", "host.applyUpdate" })
+            Check(BridgePolicy.TryParse(Fav(update, "{}"), out parsed, out code) && !BridgePolicy.TryParse(Fav(update, "{\"url\":\"https://evil.test/x.mzp\"}"), out parsed, out code), update + " takes no parameters (host picks the package, never the web)");
         Check(BridgePolicy.TryParse(Fav("library.setFavorite", "{\"modelId\":\"" + Model + "\",\"favorite\":true}"), out parsed, out code), "setFavorite accepts a model UUID and a boolean");
         Check(!BridgePolicy.TryParse(Fav("library.setFavorite", "{\"modelId\":\"" + Model + "\",\"favorite\":\"yes\"}"), out parsed, out code)
             && !BridgePolicy.TryParse(Fav("library.setFavorite", "{\"modelId\":\"C:/x\",\"favorite\":true}"), out parsed, out code)

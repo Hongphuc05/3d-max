@@ -20,7 +20,9 @@ try {
     }
     Copy-Item -LiteralPath (Join-Path $stage 'usermacros\Platform-OpenPanel.mcr') -Destination $package
     Copy-Item -LiteralPath (Join-Path $stage 'Startup\Platform-Agent.ms') -Destination $package
-    # Digest includes file paths and bytes, not timestamps or the chosen release label.
+    # The running plugin reads its own version from payload\version.txt (update check), so the label is part of the payload.
+    [IO.File]::WriteAllText((Join-Path $package 'payload\version.txt'), $Version)
+    # Digest includes file paths and bytes (incl. version.txt), not timestamps.
     $manifest = Get-ChildItem -LiteralPath (Join-Path $package 'payload') -File -Recurse | Sort-Object FullName | ForEach-Object {
         $relative = $_.FullName.Substring((Join-Path $package 'payload').Length).Replace('\', '/')
         $relative + ' ' + (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash

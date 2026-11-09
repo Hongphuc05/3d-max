@@ -59,6 +59,8 @@
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Data" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Security" />
     <Reference Include="System.Web.Extensions" />
@@ -84,6 +86,7 @@
     <Compile Include="BackendModelDownloader.cs" />
     <Compile Include="V3Routes.cs" />
     <Compile Include="OrdersClient.cs" />
+    <Compile Include="PluginUpdate.cs" />
     <Compile Include="V3Library.cs" />
     <Compile Include="DownloadedLibrary.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

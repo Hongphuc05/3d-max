@@ -26,6 +26,7 @@ namespace MaxWebViewHost
         public CatalogUpdateWatcher Watcher { get; private set; }
         public BackendModelDownloader Downloader { get; private set; }
         public OrdersClient Orders { get; private set; }
+        public PluginUpdateService Update { get; private set; }
         public DownloadedLibrary Downloads { get; private set; }
         private string deviceBinding;
         private readonly SemaphoreSlim downloadGate = new SemaphoreSlim(1, 1);
@@ -55,6 +56,7 @@ namespace MaxWebViewHost
             library.Watcher = new CatalogUpdateWatcher(library.Catalog, library.Previews, api, TimeSpan.FromMinutes(5));
             library.Downloader = new BackendModelDownloader(downloadApi, library.Session);
             library.Orders = new OrdersClient(api, library.Session);
+            library.Update = new PluginUpdateService(api, downloadApi, Path.GetDirectoryName(typeof(V3Library).Assembly.Location), Path.Combine(dataRoot, "Update"));
             library.Watcher.Updated += c => library.Raise("library.updated", new Dictionary<string, object> { { "catalogVersion", c.CatalogVersion } });
             library.Watcher.OfflineChanged += offline => { library.Offline = offline; library.Raise("library.offline", new Dictionary<string, object> { { "offline", offline } }); };
             library.Previews.Progress += (done, total) =>

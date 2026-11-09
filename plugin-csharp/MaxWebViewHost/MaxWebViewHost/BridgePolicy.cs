@@ -14,7 +14,7 @@ namespace MaxWebViewHost
         private static readonly Regex ModelUuid = new Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", RegexOptions.CultureInvariant);
         private static readonly Regex Ticket = new Regex("^[A-Za-z0-9_-]{16,128}$", RegexOptions.CultureInvariant);
         internal static readonly string[] Methods = {
-            "host.ping", "host.getInfo", "scene.getInfo", "scene.getSelection", "scene.createBox",
+            "host.ping", "host.getInfo", "host.checkUpdate", "host.applyUpdate", "scene.getInfo", "scene.getSelection", "scene.createBox",
             "design.create", "asset.download", "asset.import", "device.getIdentity", "device.signChallenge",
             "library.status", "library.refresh", "library.downloads", "library.importOptions", "library.settings", "library.chooseDownloadDirectory",
             "library.favorites", "library.setFavorite"

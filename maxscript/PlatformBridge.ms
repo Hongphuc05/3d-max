@@ -309,6 +309,32 @@ fn pbHandleDesign id args = (
     )
 )
 
+-- Native-only: host downloaded + verified the new MZP and unpacked it into args.dir. Run its install.ms silently (side-by-side, the
+-- running version stays active until install.ms swaps active.txt), then let the host close every Max and start a fresh one.
+global gPlatformSilentInstall = false
+fn pbHandleUpdateInstall id args sink = (
+    local dir = args.Param "dir"
+    if dir == undefined or not (doesFileExist (dir + "install.ms")) then (
+        sink.PostError id "INVALID_PARAMS" "Gói cập nhật không tồn tại"
+        return undefined
+    )
+    if getSaveRequired() then (
+        sink.PostError id "SCENE_UNSAVED" "Scene có thay đổi chưa lưu. Hãy lưu scene rồi bấm Cập nhật lại."
+        return undefined
+    )
+    local failure = undefined
+    gPlatformSilentInstall = true
+    try (fileIn (dir + "install.ms")) catch (failure = getCurrentException())
+    gPlatformSilentInstall = false
+    if failure != undefined then (
+        format "[bridge] update.install failed: %\n" failure
+        sink.PostError id "UPDATE_INSTALL_FAILED" "Cài bản cập nhật thất bại. Bản hiện tại vẫn dùng được."
+    ) else (
+        sink.PostResultJson id "{\"restarting\":true}"
+        sink.RestartMaxForUpdate()
+    )
+)
+
 fn pbOnRequest sender args = (
     local id = args.Id
     local m = args.Method
@@ -343,6 +369,8 @@ fn pbOnRequest sender args = (
             )
             "design.create": pbHandleDesign id args
             "asset.importFile": pbHandleImportFile id args sender
+            -- Native-only (host dispatches it itself); not in the web allowlist.
+            "update.install": pbHandleUpdateInstall id args sender
             default: sender.PostError id "UNKNOWN_METHOD" ("Unknown method: " + m)
         )
     )

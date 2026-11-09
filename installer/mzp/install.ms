@@ -1,6 +1,10 @@
 -- MZP runs this file from its extracted package directory. Never loads DLLs here.
+-- gPlatformSilentInstall (set by the in-panel updater): no message boxes, errors are re-thrown to the caller.
+global gPlatformSilentInstall
 (
     local title = "3dsmood"
+    local silent = (gPlatformSilentInstall == true)
+    local failure = undefined
     try
     (
         if (maxVersion())[1] != 24000 do throw "Ban cai nay danh cho 3ds Max 2022."
@@ -57,7 +61,13 @@
             if (toLower a.Location) != (toLower (destination + "\\MaxWebViewHost.dll")) do restartNeeded = true
         local message = "Da cai 3dsmood.\n\nCustomize > Customize User Interface > Toolbars\nCategory: 3dsmood > keo nut 3dsmood vao toolbar."
         if restartNeeded do message += "\n\nHay khoi dong lai 3ds Max de nap ban moi."
-        messageBox message title:title
+        if not silent do messageBox message title:title
     )
-    catch (messageBox ("Cai dat chua hoan tat:\n" + getCurrentException()) title:title)
+    catch (failure = getCurrentException())
+    -- A throw with an argument is not allowed inside catch, so report after it.
+    if failure != undefined do
+    (
+        if silent then throw failure
+        else messageBox ("Cai dat chua hoan tat:\n" + failure) title:title
+    )
 )

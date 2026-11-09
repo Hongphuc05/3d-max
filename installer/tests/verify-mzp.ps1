@@ -5,7 +5,7 @@ $archive = [IO.Compression.ZipFile]::OpenRead([IO.Path]::GetFullPath($PackagePat
 try {
     if ($archive.Entries | Where-Object { $_.FullName.Contains('\') }) { throw 'MZP entries must use portable forward slashes.' }
     $names = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
-    foreach ($required in @('mzp.run', 'install.ms', 'PlatformLoader.ms', 'payload-id.txt', 'version.txt', 'Platform-OpenPanel.mcr', 'Platform-Agent.ms', 'payload/MaxWebViewHost.dll', 'payload/PlatformBridge.ms', 'payload/ThirdPartyNotices.txt', 'payload/plugin-config.json', 'payload/app/index.html')) {
+    foreach ($required in @('mzp.run', 'install.ms', 'PlatformLoader.ms', 'payload-id.txt', 'version.txt', 'Platform-OpenPanel.mcr', 'Platform-Agent.ms', 'payload/MaxWebViewHost.dll', 'payload/version.txt', 'payload/PlatformBridge.ms', 'payload/ThirdPartyNotices.txt', 'payload/plugin-config.json', 'payload/app/index.html')) {
         if ($names -cnotcontains $required) { throw "MZP missing $required" }
     }
     if ($names | Where-Object { $_ -match '(^|/)(\.\.?)(/|$)|^[\\/]|:|\.exe$|\.zip$|Cai-thu-cong|HUONG-DAN-CAI-DAT' }) { throw 'MZP contains unsafe or duplicate distribution files.' }

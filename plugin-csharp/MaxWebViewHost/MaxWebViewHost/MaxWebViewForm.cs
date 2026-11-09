@@ -139,11 +139,14 @@ namespace MaxWebViewHost
         public static string EnvironmentName = "3dsmood";
         public static string HostVersion = "unknown";
 
+        private bool _updating;
+        private string _updateScript, _updateMaxExe;
+
         /// <summary>Method allowlist. Web gọi method ngoài danh sách này thì bị từ chối ngay tại native,
         /// không tới được MAXScript. MAXScript có thể .Add thêm khi implement handler mới.</summary>
         public static readonly List<string> AllowedMethods = new List<string>
         {
-            "host.ping", "host.getInfo",
+            "host.ping", "host.getInfo", "host.checkUpdate", "host.applyUpdate",
             "scene.getInfo", "scene.getSelection", "scene.createBox",
             "design.create",
             "asset.download", "asset.import", "device.getIdentity", "device.signChallenge",
@@ -614,6 +617,10 @@ namespace MaxWebViewHost
                 return;
             }
 
+            if (method == "host.checkUpdate") { _ = CheckUpdateAsync(id); return; }
+            // WebView2 forbids a modal dialog inside its synchronous COM event callback.
+            if (method == "host.applyUpdate") { BeginInvoke(new Action(() => ConfirmAndApplyUpdate(id))); return; }
+
             if (method.StartsWith("host.", StringComparison.Ordinal))
             {
                 HandleHostMethod(id, method);
@@ -653,6 +660,95 @@ namespace MaxWebViewHost
             }
 
             Dispatch(id, method, paramsObj as Dictionary<string, object>);
+        }
+
+        private async Task CheckUpdateAsync(string id)
+        {
+            try
+            {
+                if (_v3 == null) { PostError(id, "LIBRARY_NOT_CONFIGURED", "Thư viện chưa sẵn sàng. Mở lại panel rồi thử lại."); return; }
+                using (var deadline = System.Threading.CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token))
+                {
+                    deadline.CancelAfter(TimeSpan.FromSeconds(15));
+                    var status = await _v3.Update.CheckAsync(deadline.Token).ConfigureAwait(false);
+                    PostResponse(id, true, new { current = status.Current, latest = status.Latest, updateAvailable = status.UpdateAvailable }, null);
+                }
+            }
+            catch (ApiException e) { PostError(id, e.Code, e.Message); }
+            catch (OperationCanceledException) { PostError(id, "UPDATE_UNAVAILABLE", "Không kiểm tra được bản cập nhật. Thử lại sau."); }
+        }
+
+        private void ConfirmAndApplyUpdate(string id)
+        {
+            if (IsDisposed || Disposing || !_requestDocuments.ContainsKey(id)) return;
+            if (_v3 == null) { PostError(id, "LIBRARY_NOT_CONFIGURED", "Thư viện chưa sẵn sàng. Mở lại panel rồi thử lại."); return; }
+            if (_updating) { PostError(id, "UPDATE_BUSY", "Đang cập nhật."); return; }
+            int windows;
+            using (var self = Process.GetCurrentProcess()) windows = Process.GetProcessesByName(self.ProcessName).Length;
+            var yes = MessageBox.Show(this, "Cập nhật 3dsmood sẽ đóng TẤT CẢ cửa sổ 3ds Max đang mở (" + windows + ") rồi mở lại 3ds Max trống.\n\nHãy lưu scene trước khi tiếp tục. Tiếp tục cập nhật?",
+                "3dsmood", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
+            if (!yes) { PostError(id, "UPDATE_CANCELLED", "Đã hủy cập nhật."); return; }
+            _updating = true;
+            _ = Task.Run(() => ApplyUpdateAsync(id));
+        }
+
+        // Download + verify + unpack here; Max itself runs install.ms (MAXScript "update.install") because it knows its own user folders.
+        // A failure anywhere before the final pointer swap in install.ms leaves the running version active.
+        private async Task ApplyUpdateAsync(string id)
+        {
+            var handedOver = false;
+            try
+            {
+                using (var cancellation = System.Threading.CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token))
+                {
+                    cancellation.CancelAfter(TimeSpan.FromMinutes(30));
+                    var status = await _v3.Update.CheckAsync(cancellation.Token).ConfigureAwait(false);
+                    if (!status.UpdateAvailable) { PostError(id, "UPDATE_NOT_NEEDED", "Phiên bản hiện tại là mới nhất."); return; }
+                    var clock = Stopwatch.StartNew();
+                    var directory = await _v3.Update.PrepareAsync(status, (received, total) =>
+                    {
+                        if (clock.ElapsedMilliseconds < 200 && received != total) return;
+                        clock.Restart(); PostProgress(id, received, total);
+                    }, cancellation.Token).ConfigureAwait(false);
+                    string maxExe;
+                    using (var self = Process.GetCurrentProcess()) maxExe = self.MainModule.FileName;
+                    _updateScript = _v3.Update.WriteRestartScript(maxExe);
+                    _updateMaxExe = maxExe;
+                    handedOver = true;
+                    BeginInvoke(new Action(() =>
+                    {
+                        try { Dispatch(id, "update.install", new Dictionary<string, object> { { "dir", directory } }); }
+                        finally { _updating = false; }
+                    }));
+                }
+            }
+            catch (ApiException e) { PostError(id, e.Code, e.Message); }
+            catch (InvalidDataException e) { PostError(id, "UPDATE_VERIFY_FAILED", e.Message); }
+            catch (OperationCanceledException) { PostError(id, "UPDATE_UNAVAILABLE", "Hết thời gian tải bản cập nhật. Thử lại sau."); }
+            catch (Exception e)
+            {
+                Debug.WriteLine("[update] " + e.GetType().Name);
+                PostError(id, "UPDATE_UNAVAILABLE", "Không tải hoặc chuẩn bị được bản cập nhật. Kiểm tra dung lượng ổ đĩa và thử lại.");
+            }
+            finally { if (!handedOver) _updating = false; }
+        }
+
+        /// <summary>Called by MAXScript (update.install) AFTER install.ms succeeded: start the restart script, ask every 3ds Max to close
+        /// (each one can still show its own "Save changes?" prompt), then this one.</summary>
+        public void RestartMaxForUpdate()
+        {
+            if (_updateScript == null || _updateMaxExe == null) return;
+            try
+            {
+                PluginUpdateService.StartDetached(_updateScript, _updateMaxExe);
+                using (var self = Process.GetCurrentProcess())
+                {
+                    foreach (var other in Process.GetProcessesByName(self.ProcessName))
+                        using (other) { if (other.Id != self.Id) try { other.CloseMainWindow(); } catch (Exception e) when (e is InvalidOperationException || e is System.ComponentModel.Win32Exception) { } }
+                    self.CloseMainWindow();
+                }
+            }
+            catch (Exception e) { Debug.WriteLine("[update] restart: " + e.GetType().Name); }
         }
 
         private async Task HandleLibraryMethodAsync(string id, string method, Dictionary<string, object> parameters)
@@ -913,7 +1009,7 @@ namespace MaxWebViewHost
                         { "importTarget", "selected" },
                         { "hostVersion", HostVersion },
                         { "plugin", "MaxWebViewHost" },
-                        { "pluginVersion", GetType().Assembly.GetName().Version.ToString() },
+                        { "pluginVersion", (_v3 != null ? _v3.Update.InstalledVersion() : null) ?? GetType().Assembly.GetName().Version.ToString() },
                         { "webview2Version", webviewVersion },
                         { "protocolVersion", 1 }
                     }, null);
