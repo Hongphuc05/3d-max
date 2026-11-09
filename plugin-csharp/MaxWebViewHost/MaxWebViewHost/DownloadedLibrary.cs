@@ -386,7 +386,11 @@ namespace MaxWebViewHost
         public object ImportOptions(string modelId)
         {
             var model = OptionsModel(modelId);
-            var available = model.importOptions.Where(o => { string path; return ValidOption(model, o, out path); }).ToArray();
+            var valid = model.importOptions.Where(o => { string path; return ValidOption(model, o, out path); }).ToArray();
+            // Only .max files are offered; .fbx/.obj stay in the index and are shown only when the package has no .max at all.
+            // A single remaining file lets the web import straight away (no picker).
+            Func<ImportOption, bool> isMax = o => string.Equals(Path.GetExtension(o.relativePath ?? ""), ".max", StringComparison.OrdinalIgnoreCase);
+            var available = valid.Any(isMax) ? valid.Where(isMax).ToArray() : valid;
             var preferred = available.FirstOrDefault(o => string.Equals(o.relativePath.Replace('/', Path.DirectorySeparatorChar), model.entryFile, StringComparison.OrdinalIgnoreCase));
             return new { options = available, defaultOptionId = preferred == null ? null : preferred.optionId };
         }

@@ -114,11 +114,11 @@ class DownloadedLibraryTests
             await library.DownloadModelAsync(Model, CancellationToken.None, null);
             var calls = server.Calls;
             var result = ReadOptions(store, Model);
-            Check(result.options.Length == 7, "seven real color/renderer/format candidates are all indexed at download");
+            Check(result.options.Length == 6 && store.Find(Model).importOptions.Length == 7, "only the six .max candidates are offered while all seven stay indexed at download");
             Check(result.options.Any(o => o.relativePath == names[0] && o.format == "max" && o.renderer == "corona" && o.maxVersion == 2020), "option metadata preserves variant subfolders and explicit filename hints");
-            Check(result.options.Single(o => o.format == "fbx").relativePath == "light_signal.FBX", "format matching accepts mixed-case extensions");
-            Check(result.options.All(o => o.optionId.Length == 64 && !Path.IsPathRooted(o.relativePath)) && result.options.Select(o => o.optionId).Distinct().Count() == 7, "public options expose opaque unique IDs and relative paths only");
-            Check(result.defaultOptionId != null, "legacy preferred file remains advisory default metadata");
+            Check(result.options.All(o => o.format == "max") && !result.options.Any(o => o.relativePath.EndsWith(".FBX")), "the picker lists .max only, even when a mixed-case .FBX sits beside them");
+            Check(result.options.All(o => o.optionId.Length == 64 && !Path.IsPathRooted(o.relativePath)) && result.options.Select(o => o.optionId).Distinct().Count() == 6, "public options expose opaque unique IDs and relative paths only");
+            Check(result.defaultOptionId == null || result.options.Any(o => o.optionId == result.defaultOptionId), "the advisory default is never a hidden .fbx: it is null here because the preferred file is the .FBX");
             try { library.LocalEntry(Model); throw new Exception("Expected selection required"); }
             catch (ApiException e) { Check(e.Code == "IMPORT_SELECTION_REQUIRED", "multiple candidates never auto-import an arbitrary preferred file"); }
             server.Offline = true;
@@ -134,10 +134,10 @@ class DownloadedLibraryTests
             Check(ReadOptions(restored, Model).options.Select(o => o.optionId).SequenceEqual(result.options.Select(o => o.optionId)), "all candidate choices and stable IDs survive process restart");
             var model = restored.Find(Model);
             File.WriteAllText(Path.Combine(model.directory, "late-added.max"), "unindexed");
-            Check(ReadOptions(restored, Model).options.Length == 7 && !restored.OwnsEntry(Path.Combine(model.directory, "late-added.max")), "already indexed model does not rescan or grant newly inserted files");
-            var preferred = result.options.Single(o => o.optionId == result.defaultOptionId);
+            Check(ReadOptions(restored, Model).options.Length == 6 && !restored.OwnsEntry(Path.Combine(model.directory, "late-added.max")), "already indexed model does not rescan or grant newly inserted files");
+            var preferred = result.options[0];
             File.Delete(library.LocalEntry(Model, preferred.optionId));
-            Check(restored.List().Length == 1 && ReadOptions(restored, Model).options.Length == 6, "missing advisory default keeps model visible when other candidates exist");
+            Check(restored.List().Length == 1 && ReadOptions(restored, Model).options.Length == 5, "missing offered file keeps model visible when other candidates exist");
             try { library.LocalEntry(Model, preferred.optionId); throw new Exception("Expected missing file"); }
             catch (ApiException e) { Check(e.Code == "MODEL_NOT_DOWNLOADED", "explicit missing candidate fails instead of falling back to another color or renderer"); }
             Check(server.Calls == calls, "missing and unknown choices never trigger silent downloads");
@@ -150,9 +150,13 @@ class DownloadedLibraryTests
         Check(store.Find(legacyId).importOptions == null, "older protected records remain readable before options migration");
         Check(Equals(store.Find(legacyId).product["contentDomain"], "3dmodels"), "older downloaded records without product metadata default to Models after reload");
         var migrated = ReadOptions(store, legacyId);
-        Check(migrated.options.Length == 2 && new DownloadedLibrary(Path.Combine(directory, "state"), directory).Find(legacyId).importOptions.Length == 2, "legacy extracted folders are scanned once and candidate index persists");
+        Check(migrated.options.Length == 1 && migrated.options[0].relativePath == "lowpoly/second.max" && new DownloadedLibrary(Path.Combine(directory, "state"), directory).Find(legacyId).importOptions.Length == 2, "legacy extracted folders are scanned once and persist; one .max beside an .fbx is the only offer (web imports it directly)");
         File.WriteAllText(Path.Combine(legacyDirectory, "third.obj"), "three");
-        Check(ReadOptions(store, legacyId).options.Length == 2, "legacy migration does not rescan on later option requests");
+        Check(ReadOptions(store, legacyId).options.Length == 1 && store.Find(legacyId).importOptions.Length == 2, "legacy migration does not rescan on later option requests");
+        var fbxOnlyId = Guid.NewGuid().ToString(); var fbxOnlyDirectory = Path.Combine(directory, "fbxonly"); Directory.CreateDirectory(fbxOnlyDirectory);
+        File.WriteAllText(Path.Combine(fbxOnlyDirectory, "a.fbx"), "1"); File.WriteAllText(Path.Combine(fbxOnlyDirectory, "b.obj"), "2");
+        store.Add(new DownloadedModel { modelId = fbxOnlyId, directory = fbxOnlyDirectory, entryFile = "a.fbx" });
+        Check(ReadOptions(store, fbxOnlyId).options.Select(o => o.format).OrderBy(x => x).SequenceEqual(new[] { "fbx", "obj" }), "a package with no .max still offers its .fbx and .obj files");
         try { DownloadedLibrary.ScanOptions(store.Find(legacyId), 2); throw new Exception("Expected bounded scan rejection"); }
         catch (InvalidDataException) { Check(true, "legacy scan enforces entry count budget"); }
         var outside = Path.Combine(directory, "outside.max"); File.WriteAllText(outside, "bad");
