@@ -5,7 +5,7 @@ import { Filters } from './components.jsx';
 import { matchesCategory } from './catalog-view.js';
 import { HostBar } from './HostBar.jsx';
 import { Icon } from './icons.jsx';
-import { applyPluginUpdate, checkPluginUpdate, getLibraryStatus, isMaxHost } from './integrations/3dsmax/bridge.js';
+import { applyPluginUpdate, checkPluginUpdate, getLibraryStatus, isMaxHost, refreshLibrary } from './integrations/3dsmax/bridge.js';
 import { BuyLibrary, PluginCard, PluginDetail } from './plugin-components.jsx';
 import OrderDialog from './OrderDialog.jsx';
 import { Queue } from './Queue.jsx';
@@ -164,6 +164,13 @@ export default function PluginApp({ orderPollMs }) {
   const view = rows.slice((page - 1) * PAGE, page * PAGE);
   const activeJobs = jobs.filter((j) => j.status === 'queued' || j.status === 'running').length;
 
+  // Lam moi: trong 3ds Max hoi may chu co catalog moi khong (host moi chi tu hoi moi 5 phut), roi doc lai du lieu cuc bo.
+  // Offline/loi mang: giu du lieu da luu (trang thai offline do host bao), van doc lai nhu cu.
+  const refresh = async () => {
+    if (max) { try { await refreshLibrary(); } catch { /* keep the saved catalog */ } }
+    setReloadKey((k) => k + 1);
+  };
+
   const tabBtn = (k, label, icon) => (
     <button onClick={() => setTab(k)}
       className={`rounded-md px-4 py-1.5 font-mono text-xs font-bold ${icon ? 'inline-flex items-center gap-1.5 ' : ''}${tab === k ? 'bg-accent text-accent-ink' : 'border border-line text-mute hover:text-fg'}`}>{icon && <Icon name={icon} className="size-3.5" filled />}{label}</button>
@@ -171,7 +178,7 @@ export default function PluginApp({ orderPollMs }) {
 
   return (
     <div className="flex h-screen flex-col">
-      <HostBar reloadKey={reloadKey} onRefresh={() => setReloadKey((k) => k + 1)} apiStatus={max ? (offline ? 'down' : 'ok') : null} />
+      <HostBar reloadKey={reloadKey} onRefresh={refresh} apiStatus={max ? (offline ? 'down' : 'ok') : null} />
       {offline && <div role="status" className="border-b border-warn/40 bg-warn/10 px-3 py-1 font-mono text-[11px] text-warn">Đang offline — hiển thị catalog đã lưu trên máy. Cần Internet để tải model.</div>}
       {max && entitlements && !licensed && !offline && (
         <div role="status" className="flex flex-wrap items-center justify-between gap-2 border-b border-accent/40 bg-accent/10 px-3 py-2 text-sm">

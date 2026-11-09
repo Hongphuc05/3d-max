@@ -15,6 +15,7 @@ export function HostBar({ reloadKey, onRefresh, apiStatus }) {
   const max = isMaxHost();
   const [host, setHost] = useState(null);
   const [api, setApi] = useState(null); // null | 'ok' | 'db' | 'down'
+  const [refreshing, setRefreshing] = useState(false);
   const imported = useImports().filter(j => j.status === 'done').map(j => `${j.modelId}:${j.finishedAt}`).join('|');
 
   useEffect(() => {
@@ -27,6 +28,13 @@ export function HostBar({ reloadKey, onRefresh, apiStatus }) {
     Promise.all([getHostInfo(), getSceneInfo()])
       .then(([info, scene]) => setHost({ info, scene }), (e) => setHost({ error: e.message }));
   }, [max, reloadKey, imported]);
+
+  // onRefresh may be async (it asks the host to check the server first): show it is working and ignore clicks meanwhile.
+  const refresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try { await onRefresh(); } finally { setRefreshing(false); }
+  };
 
   let status;
   if (!max) status = <span className="text-mute">Trình duyệt · chỉ xem catalog. Download &amp; import có trong plugin 3ds Max</span>;
@@ -50,8 +58,9 @@ export function HostBar({ reloadKey, onRefresh, apiStatus }) {
       </div>
       <div className="order-last w-full min-w-0 truncate font-mono text-xs sm:order-none sm:w-auto sm:flex-1">{host?.info?.importTarget === 'selected' ? null : status}</div>
       {api && <Badge ok={api === 'ok'}>{api === 'ok' ? 'ONLINE' : api === 'db' ? 'DB LỖI' : 'OFFLINE'}</Badge>}
-      <button onClick={onRefresh} title="Làm mới" className="rounded-md border border-line p-1.5 text-mute hover:bg-raised hover:text-fg">
-        <Icon name="refresh" />
+      <button onClick={refresh} disabled={refreshing} aria-busy={refreshing} aria-label="Làm mới" title={refreshing ? 'Đang làm mới…' : 'Làm mới'}
+        className="rounded-md border border-line p-1.5 text-mute hover:bg-raised hover:text-fg disabled:cursor-progress disabled:text-accent">
+        <Icon name="refresh" className={refreshing ? 'size-4 animate-spin' : 'size-4'} />
       </button>
     </header>
   );

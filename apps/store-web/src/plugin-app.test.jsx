@@ -13,6 +13,7 @@ let sceneDownloadDirectory = 'D:\\Scenes';
 let cancelDirectoryChoice = false;
 let favoriteIds = []; let failFavorite = false;
 let folders = []; let assignments = {}; let folderSeq = 0; let modelDates = {};
+let refreshHold = null; let refreshFails = false; // library.refresh: held until released / answers with an error
 const id_ = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 let updateCheck = { current: '1.4.4', latest: '1.4.4', updateAvailable: false }; let applyOutcome = { ok: true };
 dom.window.chrome = { webview: {
@@ -22,6 +23,10 @@ dom.window.chrome = { webview: {
     const reply = (data) => setTimeout(() => listeners.forEach((f) => f({ data })), 5);
     if (method === 'library.status') return reply({ id, ok: true, result: { machineCode: 'MAX-TESTCODE', offline: false } });
     if (method === 'host.getInfo') return reply({ id, ok: true, result: { hostVersion: '3ds Max 2022' } });
+    if (method === 'library.refresh') {
+      const answer = () => reply(refreshFails ? { id, ok: false, error: { code: 'SERVER_UNAVAILABLE', message: 'offline' } } : { id, ok: true, result: { machineCode: 'MAX-TESTCODE', offline: false } });
+      return refreshHold ? refreshHold.then(answer) : answer();
+    }
     if (method === 'host.checkUpdate') return reply({ id, ok: true, result: updateCheck });
     if (method === 'host.applyUpdate') {
       if (!applyOutcome.ok) return reply({ id, ok: false, error: { code: applyOutcome.code, message: applyOutcome.message } });
@@ -439,6 +444,34 @@ test('category rows have no cube icon before the name (Models and Scenes); the e
   const CUBE = 'M12 2 3 7v10';
   for (const row of rows) assert.ok(![...row.querySelectorAll('svg path')].some((p) => p.getAttribute('d').startsWith(CUBE)), 'no cube icon on a category row');
   assert.ok(rows.some((row) => row.querySelector('svg')), 'a parent category still shows its expand arrow');
+  await done(root);
+});
+
+test('refresh: asks the host to check the server first, shows it is working, ignores clicks meanwhile, then reloads; an offline host still reloads', async () => {
+  server(); const base = globalThis.fetch; let catalogLoads = 0;
+  globalThis.fetch = async (url, init) => { if (String(url) === '/api/v1/catalog') catalogLoads++; return base(url, init); };
+  let release; refreshHold = new Promise((r) => { release = r; });
+  const root = await mount();
+  const button_ = () => document.querySelector('button[aria-label="Làm mới"]');
+  const loadsBefore = catalogLoads;
+  await act(async () => { button_().click(); await flush(); });
+  assert.equal(calls.filter((c) => c.method === 'library.refresh').length, 1, 'the host is told to check the server');
+  assert.equal(button_().disabled, true); assert.equal(button_().getAttribute('aria-busy'), 'true'); assert.equal(button_().title, 'Đang làm mới…');
+  assert.match(button_().querySelector('svg').getAttribute('class'), /animate-spin/, 'the icon spins while working');
+  assert.equal(catalogLoads, loadsBefore, 'the grid is not reloaded until the host has answered');
+  await act(async () => { button_().click(); await flush(); });
+  assert.equal(calls.filter((c) => c.method === 'library.refresh').length, 1, 'clicks while refreshing are ignored');
+  release(); refreshHold = null;
+  await act(async () => { await flush(); await flush(); });
+  assert.equal(button_().disabled, false); assert.equal(button_().getAttribute('aria-busy'), 'false');
+  assert.doesNotMatch(button_().querySelector('svg').getAttribute('class'), /animate-spin/);
+  assert.ok(catalogLoads > loadsBefore, 'the catalog is read again after the host answered');
+  // Offline / server unreachable: the refresh call fails, the saved catalog is still reloaded and the button recovers.
+  refreshFails = true; const again = catalogLoads;
+  await act(async () => { button_().click(); await flush(); await flush(); });
+  assert.ok(catalogLoads > again, 'a failed server check still reloads local data'); assert.equal(button_().disabled, false);
+  refreshFails = false;
+  globalThis.fetch = base;
   await done(root);
 });
 
