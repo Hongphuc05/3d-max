@@ -34,6 +34,7 @@ internal static class WebViewTransportTests
         Assert(!MaxWebViewForm.IsArchiveDependencyFailure(new FileNotFoundException("package", "package.bin")), "missing model package is not misreported as missing dependency");
         AgentRejectsUnselectedTargets();
         ImportWaitsForPendingTargetRefresh();
+        TargetPickerIsNotRebuiltWhenNothingChanged();
         DeviceOperationsDoNotInheritCallerExecutionContext();
         AssetImportFormatPriority();
 
@@ -275,6 +276,43 @@ internal static class WebViewTransportTests
             }
             Assert(toolbar.Height == 64 && toolbar.RowCount == 1, "widening restores the single-row connection toolbar");
         }
+    }
+
+    // The window selector must not be rebuilt (it repaints and flashes) on every 1 s poll, nor scan windows when its list opens.
+    private static void TargetPickerIsNotRebuiltWhenNothingChanged()
+    {
+        var first = new ImportTarget(101, 1001, "max_a.max", @"D:\First\max_a.max", new string('a', 32));
+        var second = new ImportTarget(202, 2002, "max_b.max", @"D:\Second\max_b.max", new string('b', 32));
+        var visible = new[] { first, second };
+        var discoveries = 0;
+        // Every metadata read returns a NEW object, so a rebuilt list holds different instances than the previous one.
+        Func<ImportTarget, ImportTarget> copy = t => t == null ? null : new ImportTarget(t.ProcessId, t.StartedTicks, t.SceneTitle, t.ScenePath, t.DocumentToken);
+        using (var form = new MaxWebViewForm(() => { discoveries++; return visible; }, target => Task.FromResult(copy(Array.Find(visible, item => item.IsSameProcess(target)))), first))
+        {
+            var picker = (ComboBox)typeof(MaxWebViewForm).GetField("_targetPicker", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(form);
+            Pump(form.RefreshTargetsAsync());
+            Assert(picker.Items.Count == 3, "placeholder plus two Max windows");
+            var shown = picker.Items[1];
+            for (var poll = 0; poll < 3; poll++) Pump(form.RefreshTargetsAsync());
+            Assert(ReferenceEquals(picker.Items[1], shown), "polling an unchanged set of windows does not rebuild the selector");
+            var before = discoveries;
+            typeof(ComboBox).GetMethod("OnDropDown", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(picker, new object[] { EventArgs.Empty });
+            Assert(discoveries == before, "opening the list does not scan windows on the UI thread");
+            visible = new[] { first, new ImportTarget(202, 2002, "renamed.max", @"D:\Second\renamed.max", new string('c', 32)) };
+            Pump(form.RefreshTargetsAsync());
+            Assert(!ReferenceEquals(picker.Items[1], shown) && picker.Items.Cast<object>().OfType<ImportTarget>().Any(t => t.DisplayName.Contains("renamed")), "a real change (renamed scene) still refreshes the list");
+            visible = new[] { first };
+            Pump(form.RefreshTargetsAsync());
+            Assert(picker.Items.Count == 2, "a closed Max window disappears from the list");
+        }
+    }
+
+    private static void Pump(Task task)
+    {
+        var wait = System.Diagnostics.Stopwatch.StartNew();
+        while (!task.IsCompleted && wait.ElapsedMilliseconds < 5000) { Application.DoEvents(); System.Threading.Thread.Sleep(5); }
+        if (!task.IsCompleted) throw new TimeoutException("Test UI task did not complete");
+        task.GetAwaiter().GetResult();
     }
 
     private static T Pump<T>(Task<T> task)

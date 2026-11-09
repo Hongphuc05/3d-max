@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
@@ -255,15 +256,17 @@ namespace MaxWebViewHost
             LayoutConnectionToolbar(toolbar);
             _targetPicker.DropDown += (s, e) =>
             {
+                // No refresh here: the 1 s timer keeps the list current, and a synchronous window scan on the UI thread
+                // at the exact moment the list opens is what made opening it stutter.
                 _targetPicker.DropDownWidth = Math.Max(1, _targetPicker.Width);
-                RefreshTargets();
             };
             _targetPicker.SelectionChangeCommitted += (s, e) =>
             {
                 _targetSelection.Select(_targetPicker.SelectedItem as ImportTarget);
                 UpdateOwnerDisplay(_targetSelection.Current);
             };
-            _focusTimer.Tick += (s, e) => RefreshTargets();
+            // Nobody is choosing a window while the panel is minimized or hidden, so skip the scan then.
+            _focusTimer.Tick += (s, e) => { if (Visible && WindowState != FormWindowState.Minimized) RefreshTargets(); };
             _focusTimer.Start();
             FormClosed += (s, e) => _focusTimer.Dispose();
             Shown += (s, e) => RefreshTargets();
@@ -323,6 +326,12 @@ namespace MaxWebViewHost
             _focusMaxButton.Enabled = current != null;
             // Polling must not move items underneath an open dropdown.
             if (_targetPicker.DroppedDown) return;
+            // Rebuilding the list repaints the whole selector, so do it only when what it shows actually changed;
+            // doing it on every 1 s poll made the text flash.
+            var targets = _targetSelection.Targets;
+            var signature = PickerSignature(current, targets);
+            if (signature == _pickerSignature && _targetPicker.Items.Count == targets.Length + 1) return;
+            _pickerSignature = signature;
             _targetPicker.BeginUpdate();
             try
             {
@@ -330,11 +339,22 @@ namespace MaxWebViewHost
                 _targetPicker.Items.Add(_targetSelection.SelectedUnavailable
                     ? "Scene đã chọn không còn sẵn sàng — chọn lại cửa sổ Max"
                     : "Chọn cửa sổ 3ds Max để import…");
-                var targets = _targetSelection.Targets;
                 foreach (var target in targets) _targetPicker.Items.Add(target);
                 _targetPicker.SelectedIndex = current == null ? 0 : Array.FindIndex(targets, t => t.IsSameScene(current)) + 1;
             }
             finally { _targetPicker.EndUpdate(); }
+        }
+
+        private string _pickerSignature;
+
+        // Everything the selector displays or later hands back on selection (name, readiness, document) plus the selected scene.
+        private string PickerSignature(ImportTarget current, ImportTarget[] targets)
+        {
+            var text = new StringBuilder(_targetSelection.SelectedUnavailable ? "u|" : "n|");
+            if (current != null) text.Append(current.ProcessId).Append(':').Append(current.StartedTicks).Append(':').Append(current.ScenePath).Append(':').Append(current.DocumentToken);
+            foreach (var target in targets)
+                text.Append(';').Append(target.ProcessId).Append(':').Append(target.StartedTicks).Append(':').Append(target.DisplayName).Append(':').Append(target.ScenePath).Append(':').Append(target.DocumentToken);
+            return text.ToString();
         }
 
         private async void RefreshTargets()
