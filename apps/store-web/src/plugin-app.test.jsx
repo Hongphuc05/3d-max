@@ -12,6 +12,7 @@ let downloadDirectory = 'D:\\3DS Mood';
 let sceneDownloadDirectory = 'D:\\Scenes';
 let cancelDirectoryChoice = false;
 let favoriteIds = []; let failFavorite = false;
+let updateCheck = { current: '1.4.4', latest: '1.4.4', updateAvailable: false }; let applyOutcome = { ok: true };
 dom.window.chrome = { webview: {
   addEventListener: (_t, f) => listeners.add(f),
   postMessage({ id, method, params }) {
@@ -19,6 +20,12 @@ dom.window.chrome = { webview: {
     const reply = (data) => setTimeout(() => listeners.forEach((f) => f({ data })), 5);
     if (method === 'library.status') return reply({ id, ok: true, result: { machineCode: 'MAX-TESTCODE', offline: false } });
     if (method === 'host.getInfo') return reply({ id, ok: true, result: { hostVersion: '3ds Max 2022' } });
+    if (method === 'host.checkUpdate') return reply({ id, ok: true, result: updateCheck });
+    if (method === 'host.applyUpdate') {
+      if (!applyOutcome.ok) return reply({ id, ok: false, error: { code: applyOutcome.code, message: applyOutcome.message } });
+      setTimeout(() => listeners.forEach((f) => f({ data: { id, type: 'asset.progress', receivedBytes: 50, totalBytes: 100 } })), 3);
+      return reply({ id, ok: true, result: { restarting: true } });
+    }
     if (method === 'scene.getInfo') return reply({ id, ok: true, result: { objects: 1, renderer: 'Corona' } });
     if (method === 'library.downloads') return reply({ id, ok: true, result: { models: localModels } });
     if (method === 'library.favorites') return reply({ id, ok: true, result: { favorites: favoriteIds } });
@@ -293,6 +300,42 @@ test('the device popup shows the machine code from the host; category filter nar
   await done(root);
 });
 
+
+test('device popup: up-to-date plugin says it is the latest and offers no update button', async () => {
+  server(); updateCheck = { current: '1.4.4', latest: '1.4.4', updateAvailable: false };
+  const root = await mount();
+  await act(async () => { button('Thiết bị').click(); await flush(); });
+  assert.match(document.querySelector('[data-testid=plugin-update]').textContent, /Phiên bản hiện tại là mới nhất \(1\.4\.4\)/);
+  assert.equal(document.querySelectorAll('[data-testid=plugin-update] button').length, 0);
+  await done(root);
+});
+
+test('device popup: a newer release shows "Cập nhật"; applying ends with the restart notice and sends no URL or path', async () => {
+  server(); updateCheck = { current: '1.4.4', latest: '1.5.0', updateAvailable: true }; applyOutcome = { ok: true };
+  const root = await mount();
+  await act(async () => { button('Thiết bị').click(); await flush(); });
+  assert.match(document.querySelector('[data-testid=plugin-update]').textContent, /Có bản mới 1\.5\.0 \(đang dùng 1\.4\.4\)/);
+  await act(async () => { button('Cập nhật').click(); await flush(); });
+  assert.deepEqual(calls.find(c => c.method === 'host.applyUpdate').params, {});
+  assert.match(document.querySelector('[data-testid=plugin-update]').textContent, /Đã cài xong/);
+  await done(root);
+});
+
+test('device popup: cancelling the confirmation returns to the update button; a failure shows the host message and allows retry', async () => {
+  server(); updateCheck = { current: '1.4.4', latest: '1.5.0', updateAvailable: true };
+  applyOutcome = { ok: false, code: 'UPDATE_CANCELLED', message: 'Đã hủy cập nhật.' };
+  const root = await mount();
+  await act(async () => { button('Thiết bị').click(); await flush(); });
+  await act(async () => { button('Cập nhật').click(); await flush(); });
+  assert.ok(button('Cập nhật'), 'back to the update button after cancel');
+  assert.ok(!document.querySelector('[role=alert]'), 'cancel is not an error');
+  applyOutcome = { ok: false, code: 'SCENE_UNSAVED', message: 'Scene có thay đổi chưa lưu. Hãy lưu scene rồi bấm Cập nhật lại.' };
+  await act(async () => { button('Cập nhật').click(); await flush(); });
+  assert.match(document.querySelector('[data-testid=plugin-update] [role=alert]').textContent, /chưa lưu/);
+  assert.ok(button('Thử cập nhật lại'));
+  applyOutcome = { ok: true }; updateCheck = { current: '1.4.4', latest: '1.4.4', updateAvailable: false };
+  await done(root);
+});
 
 test('first run with the VPS down: clear message + "Thử lại" loads the catalog; preview progress shows a bar', async () => {
   server(); const base = globalThis.fetch; let down = true;

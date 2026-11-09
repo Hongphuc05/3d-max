@@ -44,6 +44,10 @@ export function installMockHost() {
             localStorage.setItem('3dsmood.mock.directory', downloadDirectory);
           }
           return ok({ downloadDirectory, sceneDownloadDirectory });
+        case 'host.checkUpdate':
+          return ok({ current: '0.0.0-mock', latest: '0.0.1', updateAvailable: true });
+        case 'host.applyUpdate':
+          return ok({ restarting: true }, 1200);
         case 'host.getInfo':
           return ok({ host: '3dsmax', hostVersion: '3ds Max (mock)', pluginVersion: '0.0.0-mock', protocolVersion: 1 });
         case 'scene.getInfo':

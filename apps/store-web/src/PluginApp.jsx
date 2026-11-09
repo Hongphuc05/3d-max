@@ -5,7 +5,7 @@ import { Filters } from './components.jsx';
 import { matchesCategory } from './catalog-view.js';
 import { HostBar } from './HostBar.jsx';
 import { Icon } from './icons.jsx';
-import { getLibraryStatus, isMaxHost } from './integrations/3dsmax/bridge.js';
+import { applyPluginUpdate, checkPluginUpdate, getLibraryStatus, isMaxHost } from './integrations/3dsmax/bridge.js';
 import { BuyLibrary, PluginCard, PluginDetail } from './plugin-components.jsx';
 import OrderDialog from './OrderDialog.jsx';
 import { Queue } from './Queue.jsx';
@@ -24,6 +24,54 @@ const SORTS = {
   big: ['Nặng → nhẹ', (a, b) => (b.info.sizeMB ?? 0) - (a.info.sizeMB ?? 0)],
 };
 
+// phase: checking | latest | available | applying | restarting | error | failed. Kiem tra moi lan mo popup (tru luc dang cap nhat).
+function UpdateSection() {
+  const [phase, setPhase] = useState('checking');
+  const [info, setInfo] = useState({});
+  const [pct, setPct] = useState(null);
+  const [message, setMessage] = useState('');
+  const check = () => {
+    setPhase('checking');
+    return checkPluginUpdate().then(
+      (r) => { setInfo({ current: r.current, latest: r.latest }); setPhase(r.updateAvailable ? 'available' : 'latest'); },
+      () => setPhase('error'));
+  };
+  useEffect(() => { check(); }, []);
+  const apply = async () => {
+    setPhase('applying'); setPct(null); setMessage('');
+    try {
+      await applyPluginUpdate(({ receivedBytes, totalBytes }) => setPct(totalBytes ? Math.min(100, Math.round(receivedBytes * 100 / totalBytes)) : null));
+      setPhase('restarting');
+    } catch (e) {
+      if (e.code === 'UPDATE_CANCELLED') return setPhase('available');
+      if (e.code === 'UPDATE_NOT_NEEDED') return check();
+      setMessage(e.message || 'Cập nhật thất bại.'); setPhase('failed');
+    }
+  };
+  const button = 'mt-2 w-full rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-ink hover:brightness-110';
+  return (
+    <div className="mt-3 border-t border-line pt-3" data-testid="plugin-update">
+      <div className="font-mono text-[10px] tracking-wider text-mute">PHIÊN BẢN</div>
+      {phase === 'checking' && <p className="mt-1 text-xs text-mute">Đang kiểm tra phiên bản…</p>}
+      {phase === 'latest' && <p className="mt-1 text-xs">Phiên bản hiện tại là mới nhất{info.current ? ` (${info.current})` : ''}.</p>}
+      {phase === 'available' && <>
+        <p className="mt-1 text-xs">Có bản mới <b>{info.latest}</b>{info.current ? ` (đang dùng ${info.current})` : ''}.</p>
+        <button onClick={apply} className={button}>Cập nhật</button>
+      </>}
+      {phase === 'applying' && <p className="mt-1 text-xs text-mute" role="status">{pct === null ? 'Đang chuẩn bị bản cập nhật…' : pct < 100 ? `Đang tải bản cập nhật… ${pct}%` : 'Đang cài đặt…'}</p>}
+      {phase === 'restarting' && <p className="mt-1 text-xs" role="status">Đã cài xong. 3ds Max sẽ đóng và tự mở lại.</p>}
+      {phase === 'error' && <>
+        <p className="mt-1 text-xs text-mute">Không kiểm tra được phiên bản.</p>
+        <button onClick={check} className={button}>Thử lại</button>
+      </>}
+      {phase === 'failed' && <>
+        <p className="mt-1 text-xs text-red-400" role="alert">{message}</p>
+        <button onClick={apply} className={button}>Thử cập nhật lại</button>
+      </>}
+    </div>
+  );
+}
+
 function Device({ max }) {
   const [machineCode, setMachineCode] = useState(null);
   const [open, setOpen] = useState(false);
@@ -38,6 +86,7 @@ function Device({ max }) {
           <div className="font-mono text-[10px] tracking-wider text-mute">MÃ MÁY</div>
           <div className="mt-1 break-all font-mono text-xs">{machineCode || (max ? 'Đang đọc…' : 'Chỉ có trong plugin 3ds Max')}</div>
           <p className="mt-2 font-mono text-[10px] text-mute">Quyền tải gắn với thiết bị này. Không cần tài khoản.</p>
+          {max && <UpdateSection />}
         </div>
       )}
     </div>

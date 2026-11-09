@@ -73,6 +73,10 @@ export const refreshLibrary = () => call('library.refresh', {}, 60000);
 
 export const importAsset = (assetId, ticket, onProgress) => call("asset.import", { assetId, ticket }, 31 * 60 * 1000, onProgress);
 
+// Cap nhat plugin: web khong gui URL/duong dan; host tu tai goi tu VPS, xac minh SHA256, nho Max cai roi dong/mo lai Max.
+export const checkPluginUpdate = () => call('host.checkUpdate', {}, 20000);
+export const applyPluginUpdate = (onProgress) => call('host.applyUpdate', {}, 31 * 60 * 1000, onProgress);
+
 export const getHostInfo = () => call("host.getInfo", {}, 5000);
 export const getSceneInfo = () => call("scene.getInfo", {}, 5000);
 
