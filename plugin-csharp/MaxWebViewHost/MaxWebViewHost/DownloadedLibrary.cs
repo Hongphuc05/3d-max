@@ -39,6 +39,16 @@ namespace MaxWebViewHost
         public List<DownloadedModel> models { get; set; } = new List<DownloadedModel>();
         public Dictionary<string, bool> rights { get; set; } = new Dictionary<string, bool>();
         public List<string> favorites { get; set; } = new List<string>(); // lowercase model UUIDs, any content domain
+        public List<FavoriteFolder> favoriteFolders { get; set; } = new List<FavoriteFolder>();
+        public Dictionary<string, string> favoriteFolderOf { get; set; } = new Dictionary<string, string>(); // model UUID -> folder id; absent = Default
+    }
+
+    /// <summary>User-made favorites folder. Default is virtual (no entry): a favorite with no assignment lives there.</summary>
+    internal sealed class FavoriteFolder
+    {
+        public string id { get; set; }
+        public string name { get; set; }
+        public string contentDomain { get; set; }
     }
 
     /// <summary>Small DPAPI-protected index outside installed files. Model contents are extracted once,
@@ -90,6 +100,12 @@ namespace MaxWebViewHost
                 if (state == null || state.models == null || state.rights == null || string.IsNullOrEmpty(state.downloadDirectory)) throw new InvalidDataException("Download index is invalid.");
                 if (string.IsNullOrEmpty(state.sceneDownloadDirectory)) state.sceneDownloadDirectory = defaultSceneDirectory;
                 if (state.favorites == null) state.favorites = new List<string>(); // indexes written before favorites existed
+                if (state.favoriteFolders == null) state.favoriteFolders = new List<FavoriteFolder>(); // ... or before favorite folders
+                if (state.favoriteFolderOf == null) state.favoriteFolderOf = new Dictionary<string, string>();
+                state.favoriteFolders.RemoveAll(folder => folder == null || folder.id == null || folder.name == null);
+                // Drop assignments whose model is no longer a favorite or whose folder is gone, so a stale entry can never resurrect.
+                foreach (var stale in state.favoriteFolderOf.Where(a => !state.favorites.Contains(a.Key) || !state.favoriteFolders.Any(f => f.id == a.Value)).Select(a => a.Key).ToList())
+                    state.favoriteFolderOf.Remove(stale);
                 // Older indexes predate the mixed Models/Scenes catalog.
                 foreach (var model in state.models)
                     if (model != null)
@@ -142,7 +158,107 @@ namespace MaxWebViewHost
                     if (s.favorites.Count >= MaxFavorites) throw new InvalidDataException("Danh sách yêu thích đã đầy.");
                     s.favorites.Add(id);
                 }
+                else s.favoriteFolderOf.Remove(id);
                 return s.favorites.ToArray();
+            }, true);
+        }
+
+        // ---- Favorite folders. A model sits in exactly one folder; "default" (no assignment) is the built-in one. ----
+        internal const int MaxFavoriteFolders = 50, MaxFolderNameLength = 40;
+        internal const string DefaultFolderId = "default";
+        private static readonly string[] ReservedFolderNames = { "default", "tất cả" };
+
+        private static object FavoriteView(DownloadedLibraryState s)
+        {
+            return new
+            {
+                favorites = s.favorites.ToArray(),
+                folders = s.favoriteFolders.Select(f => new { f.id, f.name, f.contentDomain }).ToArray(),
+                assignments = new Dictionary<string, string>(s.favoriteFolderOf)
+            };
+        }
+        public object FavoriteState() { return Locked(s => FavoriteView(s)); }
+
+        private static string NormalizeId(string modelId)
+        {
+            Guid parsed;
+            if (!Guid.TryParse(modelId, out parsed)) throw new InvalidDataException("Mã không hợp lệ.");
+            return parsed.ToString("D");
+        }
+        private static string NormalizeFolderName(string name)
+        {
+            var value = (name ?? "").Trim();
+            if (value.Length == 0 || value.Length > MaxFolderNameLength || value.Any(char.IsControl))
+                throw new InvalidDataException("Tên thư mục cần từ 1 đến " + MaxFolderNameLength + " ký tự.");
+            if (ReservedFolderNames.Contains(value.ToLowerInvariant())) throw new InvalidDataException("Tên này dành cho thư mục có sẵn. Hãy chọn tên khác.");
+            return value;
+        }
+        private static void RequireUniqueName(DownloadedLibraryState s, string name, string domain, string exceptId)
+        {
+            if (s.favoriteFolders.Any(f => f.id != exceptId && f.contentDomain == domain && string.Equals(f.name, name, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidDataException("Đã có thư mục tên này.");
+        }
+        private static FavoriteFolder FindFolder(DownloadedLibraryState s, string folderId)
+        {
+            var folder = s.favoriteFolders.FirstOrDefault(f => f.id == folderId);
+            if (folder == null) throw new InvalidDataException("Không tìm thấy thư mục yêu thích.");
+            return folder;
+        }
+
+        /// <summary>Favorites the model if it is not yet, and moves it into the folder ("default" = no folder).</summary>
+        public object SetFavoriteFolder(string modelId, string folderId)
+        {
+            var id = NormalizeId(modelId);
+            var folder = folderId == DefaultFolderId ? DefaultFolderId : NormalizeId(folderId);
+            return Locked(s =>
+            {
+                if (folder != DefaultFolderId) FindFolder(s, folder);
+                if (!s.favorites.Contains(id))
+                {
+                    if (s.favorites.Count >= MaxFavorites) throw new InvalidDataException("Danh sách yêu thích đã đầy.");
+                    s.favorites.Add(id);
+                }
+                if (folder == DefaultFolderId) s.favoriteFolderOf.Remove(id); else s.favoriteFolderOf[id] = folder;
+                return FavoriteView(s);
+            }, true);
+        }
+
+        public object CreateFavoriteFolder(string name, string contentDomain)
+        {
+            var clean = NormalizeFolderName(name);
+            if (contentDomain != "3dmodels" && contentDomain != "3dscenes") throw new InvalidDataException("Phân vùng thư viện không hợp lệ.");
+            return Locked(s =>
+            {
+                if (s.favoriteFolders.Count(f => f.contentDomain == contentDomain) >= MaxFavoriteFolders) throw new InvalidDataException("Đã đủ " + MaxFavoriteFolders + " thư mục.");
+                RequireUniqueName(s, clean, contentDomain, null);
+                s.favoriteFolders.Add(new FavoriteFolder { id = Guid.NewGuid().ToString("D"), name = clean, contentDomain = contentDomain });
+                return FavoriteView(s);
+            }, true);
+        }
+
+        public object RenameFavoriteFolder(string folderId, string name)
+        {
+            var id = NormalizeId(folderId); var clean = NormalizeFolderName(name);
+            return Locked(s =>
+            {
+                var folder = FindFolder(s, id);
+                RequireUniqueName(s, clean, folder.contentDomain, id);
+                folder.name = clean;
+                return FavoriteView(s);
+            }, true);
+        }
+
+        /// <summary>Deleting a folder un-favorites every model in it (each model lives in one folder only).</summary>
+        public object DeleteFavoriteFolder(string folderId)
+        {
+            var id = NormalizeId(folderId);
+            return Locked(s =>
+            {
+                FindFolder(s, id);
+                var members = s.favoriteFolderOf.Where(a => a.Value == id).Select(a => a.Key).ToList();
+                foreach (var member in members) { s.favoriteFolderOf.Remove(member); s.favorites.Remove(member); }
+                s.favoriteFolders.RemoveAll(f => f.id == id);
+                return FavoriteView(s);
             }, true);
         }
         public object Settings() { return Locked(s => new { downloadDirectory = s.downloadDirectory, sceneDownloadDirectory = s.sceneDownloadDirectory }); }

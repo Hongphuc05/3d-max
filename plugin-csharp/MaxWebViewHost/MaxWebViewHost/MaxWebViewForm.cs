@@ -151,7 +151,7 @@ namespace MaxWebViewHost
             "design.create",
             "asset.download", "asset.import", "device.getIdentity", "device.signChallenge",
             "library.status", "library.refresh", "library.downloads", "library.importOptions", "library.settings", "library.chooseDownloadDirectory",
-            "library.favorites", "library.setFavorite"
+            "library.favorites", "library.setFavorite", "library.setFavoriteFolder", "library.createFavoriteFolder", "library.renameFavoriteFolder", "library.deleteFavoriteFolder"
         };
 
         /// <summary>Origin của backend 3dsmood, nơi host tải asset. Phải nằm trong TrustedOrigins.
@@ -762,11 +762,17 @@ namespace MaxWebViewHost
                     var options = await Task.Run(() => _v3.Downloads.ImportOptions((string)parameters["modelId"]));
                     PostResponse(id, true, options, null); return;
                 }
-                if (method == "library.favorites") { PostResponse(id, true, new { favorites = _v3.Downloads.Favorites() }, null); return; }
+                // Every favorites reply is the full state {favorites, folders, assignments}; older web code only reads "favorites".
+                if (method == "library.favorites") { PostResponse(id, true, _v3.Downloads.FavoriteState(), null); return; }
                 if (method == "library.setFavorite")
                 {
-                    PostResponse(id, true, new { favorites = _v3.Downloads.SetFavorite((string)parameters["modelId"], (bool)parameters["favorite"]) }, null); return;
+                    _v3.Downloads.SetFavorite((string)parameters["modelId"], (bool)parameters["favorite"]);
+                    PostResponse(id, true, _v3.Downloads.FavoriteState(), null); return;
                 }
+                if (method == "library.setFavoriteFolder") { PostResponse(id, true, _v3.Downloads.SetFavoriteFolder((string)parameters["modelId"], (string)parameters["folderId"]), null); return; }
+                if (method == "library.createFavoriteFolder") { PostResponse(id, true, _v3.Downloads.CreateFavoriteFolder((string)parameters["name"], (string)parameters["contentDomain"]), null); return; }
+                if (method == "library.renameFavoriteFolder") { PostResponse(id, true, _v3.Downloads.RenameFavoriteFolder((string)parameters["folderId"], (string)parameters["name"]), null); return; }
+                if (method == "library.deleteFavoriteFolder") { PostResponse(id, true, _v3.Downloads.DeleteFavoriteFolder((string)parameters["folderId"]), null); return; }
                 if (method == "library.settings") { PostResponse(id, true, _v3.Downloads.Settings(), null); return; }
                 if (method == "library.chooseDownloadDirectory")
                 {

@@ -17,7 +17,7 @@ namespace MaxWebViewHost
             "host.ping", "host.getInfo", "host.checkUpdate", "host.applyUpdate", "scene.getInfo", "scene.getSelection", "scene.createBox",
             "design.create", "asset.download", "asset.import", "device.getIdentity", "device.signChallenge",
             "library.status", "library.refresh", "library.downloads", "library.importOptions", "library.settings", "library.chooseDownloadDirectory",
-            "library.favorites", "library.setFavorite"
+            "library.favorites", "library.setFavorite", "library.setFavoriteFolder", "library.createFavoriteFolder", "library.renameFavoriteFolder", "library.deleteFavoriteFolder"
         };
 
         internal static bool IsTrusted(string value, Uri[] origins, string diagnosticUri)
@@ -87,6 +87,16 @@ namespace MaxWebViewHost
                 case "library.setFavorite":
                     return p.Count == 2 && HasOnly(p, "modelId", "favorite") && Text(p, "modelId", 36)
                         && ModelUuid.IsMatch((string)p["modelId"]) && p["favorite"] is bool;
+                case "library.setFavoriteFolder":
+                    return p.Count == 2 && HasOnly(p, "modelId", "folderId") && Text(p, "modelId", 36) && ModelUuid.IsMatch((string)p["modelId"])
+                        && Text(p, "folderId", 36) && ((string)p["folderId"] == "default" || ModelUuid.IsMatch((string)p["folderId"]));
+                case "library.createFavoriteFolder":
+                    return p.Count == 2 && HasOnly(p, "name", "contentDomain") && Text(p, "name", 40)
+                        && p["contentDomain"] is string && new[] { "3dmodels", "3dscenes" }.Contains((string)p["contentDomain"]);
+                case "library.renameFavoriteFolder":
+                    return p.Count == 2 && HasOnly(p, "folderId", "name") && Text(p, "folderId", 36) && ModelUuid.IsMatch((string)p["folderId"]) && Text(p, "name", 40);
+                case "library.deleteFavoriteFolder":
+                    return p.Count == 1 && HasOnly(p, "folderId") && Text(p, "folderId", 36) && ModelUuid.IsMatch((string)p["folderId"]);
                 case "device.signChallenge":
                     return p.Count == 2 && HasOnly(p, "challengeId", "message")
                         && Text(p, "challengeId", 36) && Text(p, "message", 512);

@@ -290,6 +290,39 @@ class DownloadedLibraryTests
         Check(new DownloadedLibrary(state, first).Favorites().Length == 2, "favorites survive reopening the protected index");
         Check(restored.SetFavorite(favoriteId, false).SequenceEqual(new[] { otherId }), "removing a favorite keeps the others");
         try { restored.SetFavorite("..\\evil", true); throw new Exception("Expected invalid id"); } catch (InvalidDataException) { Check(true, "favorite rejects a non-UUID id"); }
+        // Favorite folders: a model sits in exactly one folder; "default" is built in; deleting a folder un-favorites its models.
+        var js = new JavaScriptSerializer();
+        Func<object, Dictionary<string, object>> view = o => js.Deserialize<Dictionary<string, object>>(js.Serialize(o));
+        Func<Dictionary<string, object>, string[]> folderIds = v => ((System.Collections.ArrayList)v["folders"]).Cast<Dictionary<string, object>>().Select(f => (string)f["id"]).ToArray();
+        Func<Dictionary<string, object>, Dictionary<string, object>> assigned = v => (Dictionary<string, object>)v["assignments"];
+        Func<Action, bool> rejected = a => { try { a(); return false; } catch (InvalidDataException) { return true; } };
+        var created = view(restored.CreateFavoriteFolder("  Phòng khách ", "3dmodels"));
+        var folder = folderIds(created).Single();
+        Check(((Dictionary<string, object>)((System.Collections.ArrayList)created["folders"])[0])["name"] as string == "Phòng khách", "folder name is trimmed");
+        Check(rejected(() => restored.CreateFavoriteFolder("PHÒNG KHÁCH", "3dmodels")), "folder names are unique per domain, ignoring case");
+        Check(folderIds(view(restored.CreateFavoriteFolder("Phòng khách", "3dscenes"))).Length == 2, "the same name is allowed in the other domain");
+        Check(rejected(() => restored.CreateFavoriteFolder("Default", "3dmodels")) && rejected(() => restored.CreateFavoriteFolder("tất cả", "3dmodels")), "built-in folder names are reserved");
+        Check(rejected(() => restored.CreateFavoriteFolder("   ", "3dmodels")) && rejected(() => restored.CreateFavoriteFolder(new string('x', 41), "3dmodels"))
+            && rejected(() => restored.CreateFavoriteFolder("a\nb", "3dmodels")) && rejected(() => restored.CreateFavoriteFolder("ok", "other")), "empty, long, control-character names and unknown domains are rejected");
+        var folderedId = Guid.NewGuid().ToString();
+        var placed = view(restored.SetFavoriteFolder(folderedId.ToUpperInvariant(), folder));
+        Check(((System.Collections.ArrayList)placed["favorites"]).Contains(folderedId) && (string)assigned(placed)[folderedId] == folder, "choosing a folder favorites the model into exactly that folder");
+        Check(!assigned(view(restored.SetFavoriteFolder(folderedId, "default"))).ContainsKey(folderedId) && restored.Favorites().Contains(folderedId), "moving to default clears the assignment but keeps the favorite");
+        Check(rejected(() => restored.SetFavoriteFolder(folderedId, Guid.NewGuid().ToString())) && rejected(() => restored.SetFavoriteFolder(folderedId, "..\\x")) && rejected(() => restored.SetFavoriteFolder("..\\x", "default")), "unknown folder and non-UUID ids are rejected");
+        restored.SetFavoriteFolder(folderedId, folder);
+        Check((string)assigned(view(new DownloadedLibrary(state, first).FavoriteState()))[folderedId] == folder, "folders and assignments survive reopening the protected index");
+        Check(rejected(() => restored.RenameFavoriteFolder(folder, "phòng khách")) == false && rejected(() => restored.RenameFavoriteFolder(folder, "Default")), "renaming to its own name (any case) is fine, to a reserved name is not");
+        var renamed = view(restored.RenameFavoriteFolder(folder, "Sảnh"));
+        Check(((Dictionary<string, object>)((System.Collections.ArrayList)renamed["folders"])[0])["name"] as string == "Sảnh", "folder can be renamed");
+        restored.SetFavorite(folderedId, false);
+        Check(!assigned(view(restored.FavoriteState())).ContainsKey(folderedId), "un-favoriting drops the folder assignment");
+        restored.SetFavoriteFolder(folderedId, folder);
+        var afterDelete = view(restored.DeleteFavoriteFolder(folder));
+        Check(!folderIds(afterDelete).Contains(folder) && !restored.Favorites().Contains(folderedId) && restored.Favorites().Contains(otherId) && assigned(afterDelete).Count == 0,
+            "deleting a folder un-favorites its models and keeps the Default ones");
+        Check(rejected(() => restored.DeleteFavoriteFolder(folder)), "deleting a missing folder is rejected");
+        for (var n = 0; n < 50; n++) restored.CreateFavoriteFolder("Thu muc " + n, "3dmodels");
+        Check(rejected(() => restored.CreateFavoriteFolder("One too many", "3dmodels")), "at most 50 folders per domain");
         var index = Path.Combine(state, "index.dat"); var bytes = File.ReadAllBytes(index); bytes[bytes.Length - 1] ^= 1; File.WriteAllBytes(index, bytes);
         try { restored.List(); throw new Exception("Expected tampered index rejection"); } catch (InvalidDataException) { Check(true, "tampered DPAPI index fails closed"); }
         Dictionary<string, object> parsed; string code;
@@ -303,6 +336,20 @@ class DownloadedLibraryTests
         Check(!BridgePolicy.TryParse(chooseScene.Replace("3dscenes", "unknown"), out parsed, out code), "folder chooser rejects unknown domains");
         string Fav(string method, string parameters) { return "{\"id\":\"fav-test\",\"version\":1,\"method\":\"" + method + "\",\"params\":" + parameters + "}"; }
         Check(BridgePolicy.TryParse(Fav("library.favorites", "{}"), out parsed, out code) && !BridgePolicy.TryParse(Fav("library.favorites", "{\"x\":1}"), out parsed, out code), "favorites list takes no parameters");
+        Check(BridgePolicy.TryParse(Fav("library.setFavoriteFolder", "{\"modelId\":\"" + Model + "\",\"folderId\":\"default\"}"), out parsed, out code)
+            && BridgePolicy.TryParse(Fav("library.setFavoriteFolder", "{\"modelId\":\"" + Model + "\",\"folderId\":\"" + Model + "\"}"), out parsed, out code), "setFavoriteFolder accepts a model UUID with default or a folder UUID");
+        Check(!BridgePolicy.TryParse(Fav("library.setFavoriteFolder", "{\"modelId\":\"" + Model + "\",\"folderId\":\"C:/x\"}"), out parsed, out code)
+            && !BridgePolicy.TryParse(Fav("library.setFavoriteFolder", "{\"modelId\":\"" + Model + "\"}"), out parsed, out code)
+            && !BridgePolicy.TryParse(Fav("library.setFavoriteFolder", "{\"modelId\":\"" + Model + "\",\"folderId\":\"default\",\"path\":\"x\"}"), out parsed, out code), "setFavoriteFolder rejects paths, missing and extra parameters");
+        Check(BridgePolicy.TryParse(Fav("library.createFavoriteFolder", "{\"name\":\"Phòng khách\",\"contentDomain\":\"3dscenes\"}"), out parsed, out code)
+            && !BridgePolicy.TryParse(Fav("library.createFavoriteFolder", "{\"name\":\"x\",\"contentDomain\":\"other\"}"), out parsed, out code)
+            && !BridgePolicy.TryParse(Fav("library.createFavoriteFolder", "{\"name\":\"" + new string('x', 41) + "\",\"contentDomain\":\"3dmodels\"}"), out parsed, out code)
+            && !BridgePolicy.TryParse(Fav("library.createFavoriteFolder", "{\"name\":\"x\"}"), out parsed, out code), "createFavoriteFolder takes a bounded name and a known domain");
+        Check(BridgePolicy.TryParse(Fav("library.renameFavoriteFolder", "{\"folderId\":\"" + Model + "\",\"name\":\"Mới\"}"), out parsed, out code)
+            && !BridgePolicy.TryParse(Fav("library.renameFavoriteFolder", "{\"folderId\":\"default\",\"name\":\"Mới\"}"), out parsed, out code), "the built-in default folder cannot be renamed through the bridge");
+        Check(BridgePolicy.TryParse(Fav("library.deleteFavoriteFolder", "{\"folderId\":\"" + Model + "\"}"), out parsed, out code)
+            && !BridgePolicy.TryParse(Fav("library.deleteFavoriteFolder", "{\"folderId\":\"default\"}"), out parsed, out code)
+            && !BridgePolicy.TryParse(Fav("library.deleteFavoriteFolder", "{}"), out parsed, out code), "the built-in default folder cannot be deleted through the bridge");
         foreach (var update in new[] { "host.checkUpdate", "host.applyUpdate" })
             Check(BridgePolicy.TryParse(Fav(update, "{}"), out parsed, out code) && !BridgePolicy.TryParse(Fav(update, "{\"url\":\"https://evil.test/x.mzp\"}"), out parsed, out code), update + " takes no parameters (host picks the package, never the web)");
         Check(BridgePolicy.TryParse(Fav("library.setFavorite", "{\"modelId\":\"" + Model + "\",\"favorite\":true}"), out parsed, out code), "setFavorite accepts a model UUID and a boolean");
