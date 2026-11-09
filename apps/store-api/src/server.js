@@ -32,6 +32,8 @@ import { createTelegramLinkService } from './telegram/linking.js';
 import { createTelegramAdminRouter } from './telegram/admin-routes.js';
 import { buildWebhookUrl } from './telegram/setup.js';
 import { createAdminUsersRouter } from './admin/users-routes.js';
+import { createReleaseReader } from './plugin-release/release.js';
+import { createPluginReleaseRouter } from './plugin-release/routes.js';
 
 const publicLink = createPublicLinkFetcher();
 
@@ -93,6 +95,8 @@ app.use('/api/v1', createDownloadRouter({ pool, cache: modelCache, rateLimit: ra
   sessionsPerHour: downloadConfig.sessionsPerHour, maxConcurrent: downloadConfig.maxConcurrent }));
 // v3 catalog cong khai cho plugin:.
 app.use('/api/v1', createCatalogV1Router({ pool, events: catalogEvents, rateLimit: rateLimit({ limit: 240 }) }));
+// Cap nhat plugin: version doc tu chinh file mzp ma nginx phuc vu o /download/ (release.yml dat file o day).
+app.use('/api/v1', createPluginReleaseRouter({ latest: createReleaseReader({ file: process.env.PLUGIN_RELEASE_FILE || '/var/www/3dsmood-download/3dsmood-library.mzp' }), rateLimit: rateLimit({ limit: 60 }) }));
 
 app.use(errorHandler);
 
