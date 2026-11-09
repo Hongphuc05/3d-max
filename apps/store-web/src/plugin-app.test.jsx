@@ -12,7 +12,7 @@ let downloadDirectory = 'D:\\3DS Mood';
 let sceneDownloadDirectory = 'D:\\Scenes';
 let cancelDirectoryChoice = false;
 let favoriteIds = []; let failFavorite = false;
-let folders = []; let assignments = {}; let folderSeq = 0;
+let folders = []; let assignments = {}; let folderSeq = 0; let modelDates = {};
 const id_ = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 let updateCheck = { current: '1.4.4', latest: '1.4.4', updateAvailable: false }; let applyOutcome = { ok: true };
 dom.window.chrome = { webview: {
@@ -90,7 +90,7 @@ const originalFetch = globalThis.fetch;
 after(() => { globalThis.fetch = originalFetch; dom.window.close(); });
 
 function server() {
-  calls.length = 0; localModels = []; favoriteIds = []; failFavorite = false; folders = []; assignments = {}; folderSeq = 0;
+  calls.length = 0; localModels = []; favoriteIds = []; failFavorite = false; folders = []; assignments = {}; folderSeq = 0; modelDates = {};
   version = 1; rights = { allModels: true };
   cats = [{ id: id(1), parentId: null, name: 'Living', fullPath: 'Living', modelCount: 2 }, { id: id(2), parentId: null, name: 'Bedroom', fullPath: 'Bedroom', modelCount: 1 }];
   globalThis.fetch = async (url) => {
@@ -100,7 +100,7 @@ function server() {
       { id: id(102), name: 'Sofa Two', categoryId: id(1), sizeBytes: 1048576, fileType: 'zip', status: 'PUBLISHED' },
       { id: id(103), name: 'Bed One', categoryId: id(2), sizeBytes: 2 * 1048576, fileType: 'rar', status: 'PUBLISHED' },
       ...(version >= 2 ? [{ id: id(104), name: 'Sofa Three', categoryId: id(1), sizeBytes: 1048576, fileType: 'rar', status: 'PUBLISHED' }] : []),
-    ] });
+    ].map((m) => (modelDates[m.id] ? { ...m, modifiedAt: modelDates[m.id] } : m)) });
     if (path === '/api/v1/categories') return json(cats);
     if (path === '/api/v1/previews/manifest') return json({ catalogVersion: version, previews: [] });
     if (path === '/api/v1/me/entitlements') return rights ? json(rights) : json({ error: { code: 'UNAUTHENTICATED' } }, 401);
@@ -415,6 +415,31 @@ test('a Scenes detail panel shows the image at its own proportions; Models keep 
     assert.match(host.querySelector('img').className, expected, domain);
   }
   await act(() => root.unmount()); host.remove();
+});
+
+test('sort offers Mới nhất and Cũ nhất next to the old orders; models without a date go last in both directions', async () => {
+  server(); modelDates = { [id(101)]: '2026-03-01T00:00:00.000Z', [id(103)]: '2026-05-01T00:00:00.000Z' }; // Sofa Two has no date
+  const root = await mount();
+  const select = document.querySelector('select');
+  assert.deepEqual([...select.options].map((o) => o.textContent), ['Tên A → Z', 'Mới nhất', 'Cũ nhất', 'Nhẹ → nặng', 'Nặng → nhẹ'], 'the three old orders stay');
+  assert.equal(select.value, 'name', 'the default is still A → Z');
+  const order = () => [...document.querySelectorAll('.group')].map((c) => c.querySelector('.truncate').textContent);
+  const choose = async (value) => { await act(async () => { Object.getOwnPropertyDescriptor(dom.window.HTMLSelectElement.prototype, 'value').set.call(select, value); select.dispatchEvent(new dom.window.Event('change', { bubbles: true })); await flush(); }); };
+  await choose('newest'); assert.deepEqual(order(), ['Bed One', 'Sofa One', 'Sofa Two']);
+  await choose('oldest'); assert.deepEqual(order(), ['Sofa One', 'Bed One', 'Sofa Two']);
+  await choose('name'); assert.deepEqual(order(), ['Bed One', 'Sofa One', 'Sofa Two']);
+  await done(root);
+});
+
+test('category rows have no cube icon before the name (Models and Scenes); the expand arrow stays', async () => {
+  server(); cats.push({ id: id(8), parentId: id(1), name: 'Sofas', fullPath: 'Living / Sofas', modelCount: 1 });
+  const root = await mount();
+  const rows = [...document.querySelectorAll('aside li > div')];
+  assert.ok(rows.length >= 2, 'categories are listed');
+  const CUBE = 'M12 2 3 7v10';
+  for (const row of rows) assert.ok(![...row.querySelectorAll('svg path')].some((p) => p.getAttribute('d').startsWith(CUBE)), 'no cube icon on a category row');
+  assert.ok(rows.some((row) => row.querySelector('svg')), 'a parent category still shows its expand arrow');
+  await done(root);
 });
 
 test('first run with the VPS down: clear message + "Thử lại" loads the catalog; preview progress shows a bar', async () => {

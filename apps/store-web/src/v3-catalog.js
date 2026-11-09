@@ -51,6 +51,8 @@ export function buildCatalog({ catalog, categories, manifest }) {
       folderPath: cat?.fullPath ?? '', folderIds: [...new Set([m.categoryId, ...(m.categoryIds || [])].flatMap(id => ancestorsOf(id, cats)))],
       thumb: thumb ? manifestPreviewUrl(thumb) : null, image: image ? manifestPreviewUrl(image) : null,
       info: { sizeMB: Number.isFinite(m.sizeBytes) ? Math.max(0.1, Math.round((m.sizeBytes / MB) * 10) / 10) : null, renderers: [], formats: m.fileType ? [m.fileType] : [], hasTextures: false },
+      // Ngay sua file tren Drive (ISO) de sap xep Moi nhat/Cu nhat; null neu may chu chua gui.
+      modifiedAt: Number.isFinite(Date.parse(m.modifiedAt)) ? m.modifiedAt : null,
       downloadable: true, status: 'ready',
     };
   });

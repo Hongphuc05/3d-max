@@ -34,7 +34,6 @@ function FolderFilter({ folder, parent, ancestors = [], subs, setSubs, open, set
           onChange={() => select(selected < keys.length)} />
         <button className="flex min-w-0 flex-1 items-center gap-2 text-left" aria-expanded={children.length ? expanded : undefined}
           onClick={() => children.length ? setOpen(toggle(open, [key], !expanded)) : select(!subs.has(key))}>
-          <Icon name="cube" className="size-4 shrink-0 text-mute" />
           <span className="flex-1 truncate" title={folder.path || folder.name}>{folder.name}</span>
           <span className="font-mono text-[10px] text-mute">{folder.count}</span>
           {children.length > 0 && <Icon name="chevron" className={`size-3.5 text-mute transition ${expanded ? 'rotate-90' : ''}`} />}
