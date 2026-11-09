@@ -54,9 +54,9 @@ export function Filters({ categories, subs, setSubs, renderers, setRenderers, re
   return (
     <div className="p-3">
       <div className="flex items-center gap-2">
-        <Icon name="filter" className="size-3.5 text-accent" />
+        <Icon name="filter" className="size-3.5 text-brand" />
         <span className="text-sm font-bold">Bộ lọc</span>
-        {active > 0 && <span className="rounded border border-accent/40 px-1.5 font-mono text-[10px] text-accent">{active}</span>}
+        {active > 0 && <span className="rounded border border-brand/40 px-1.5 font-mono text-[10px] text-brand">{active}</span>}
         {active > 0 && (
           <button onClick={() => { setSubs(new Set()); setRenderers(new Set()); }} className="ml-auto font-mono text-[11px] text-mute hover:text-fg">
             Xóa lọc
@@ -84,6 +84,11 @@ export function Filters({ categories, subs, setSubs, renderers, setRenderers, re
 // Nut Download trong 3ds Max: Download = tai goi ve may roi import vao scene (1 lan bam).
 // Tren trinh duyet khong co Download (O7) -> component nay khong render.
 // fit='cover': phu kin o vuong (cat rim). natural: giu ti le goc cua anh (khong ep vuong). Mac dinh giu hanh vi cu (vuong, contain).
+// Logo 3dsMood (public/logo.svg, chu trang tren nen toi). Dung chung cho plugin, gallery va admin.
+export function Logo({ className = 'h-9' }) {
+  return <img src="/logo.svg" alt="3dsMood Curated Models" className={`w-auto ${className}`} />;
+}
+
 export function Preview({ source, name, lazy = false, fit = 'contain', natural = false }) {
   // State is keyed by the source it describes, so a change of source needs no reset effect. A reset effect ran
   // after an already cached image fired its load event and left the preview invisible (blank cards after F5).

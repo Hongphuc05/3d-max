@@ -17,7 +17,7 @@ function countdown(ms) {
 
 function CheckResult({ result }) {
   return <ul className="space-y-1 text-sm" aria-label="Kết quả kiểm tra">
-    {result.details.map((item) => <li key={item.check} className={item.ok ? 'text-accent' : 'text-danger'}>
+    {result.details.map((item) => <li key={item.check} className={item.ok ? 'text-ok' : 'text-danger'}>
       {checks[item.check] || item.check}: {item.ok ? `Đạt${item.count != null ? ` (${item.count} mục)` : ''}` : `Không đạt${item.code ? ` (${item.code})` : ''}`}
     </li>)}
   </ul>;
@@ -87,7 +87,7 @@ function DriveKeySlot({ slot, onChanged }) {
     : slot.status === 'RATE_LIMITED' ? 'Đang nghỉ do quota'
       : slot.status === 'FAILED' ? `Lỗi${slot.reason ? ` (${slot.reason})` : ''}`
         : slot.configured ? 'Chưa kiểm tra' : 'Chưa cấu hình';
-  const healthClass = slot.status === 'HEALTHY' ? 'text-accent' : slot.status === 'FAILED' || slot.status === 'RATE_LIMITED' ? 'text-warn' : 'text-mute';
+  const healthClass = slot.status === 'HEALTHY' ? 'text-brand' : slot.status === 'FAILED' || slot.status === 'RATE_LIMITED' ? 'text-warn' : 'text-mute';
   return <form className={`${panel} space-y-3`} onSubmit={save}>
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h4 className="font-bold">Key {slot.slot}</h4>
@@ -98,7 +98,7 @@ function DriveKeySlot({ slot, onChanged }) {
     <div className="space-y-1 rounded-md border border-line px-3 py-2 text-xs">
       <p className="flex flex-wrap items-center gap-2">
         <span className={healthClass}>Trạng thái: {health}</span>
-        {slot.active && <span className="rounded-full bg-accent/10 px-2 py-1 text-accent">Đang dùng</span>}
+        {slot.active && <span className="rounded-full bg-accent/10 px-2 py-1 text-brand">Đang dùng</span>}
       </p>
       <p className={slot.status === 'RATE_LIMITED' ? 'text-warn' : 'text-mute'}>
         Quota còn lại: {slot.status === 'RATE_LIMITED' ? 'đã chạm giới hạn' : 'chưa có số liệu Cloud Monitoring'}
@@ -107,7 +107,7 @@ function DriveKeySlot({ slot, onChanged }) {
       {slot.cooldownUntil && <p className="text-warn">Key được thử lại sau: {dateTime(slot.cooldownUntil)}</p>}
     </div>
     {state.error && <p role="alert" className="text-sm text-danger">{state.error}</p>}
-    {state.notice && <p role="status" className="text-sm text-accent">{state.notice}</p>}
+    {state.notice && <p role="status" className="text-sm text-brand">{state.notice}</p>}
     <div className="flex flex-wrap gap-2">
       <button type="submit" className={primary} disabled={state.busy}>Lưu key</button>
       <button type="button" className={secondary} disabled={!slot.configured || state.busy} onClick={test}>Kiểm tra ngay</button>
@@ -166,13 +166,13 @@ export default function AdminDrive() {
       <div className={`${panel} space-y-2`}>
         <h3 className="font-bold">Tối đa 5 API key</h3>
         {status.configured
-          ? <p className="text-sm text-accent">Đã cấu hình khóa API Drive trên máy chủ.</p>
+          ? <p className="text-sm text-brand">Đã cấu hình khóa API Drive trên máy chủ.</p>
           : <p role="alert" className="text-sm text-warn">Chưa cấu hình. Hãy thêm ít nhất một API key ở slot bên dưới.</p>}
         {keyResource.data?.legacyFallback && <p className="text-xs text-mute">Hiện hệ thống đang dùng key tương thích cũ từ cấu hình máy chủ. Lưu key vào một slot để quản lý và xoay key trên giao diện.</p>}
         <p className="text-sm text-mute">Worker kiểm tra key đang dùng mỗi {keyResource.data?.automaticCheckMinutes ?? 10} phút. Khi Google giới hạn request, hệ thống tạm nghỉ key đó rồi chuyển sang key khác. Quota chính xác cần cấu hình quyền Cloud Monitoring phía máy chủ; các key cùng project có thể dùng chung quota.</p>
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line px-3 py-2 text-sm">
           <span className="text-mute">Kiểm tra tự động tiếp theo</span>
-          <span className="font-semibold text-accent" aria-live="polite">
+          <span className="font-semibold text-brand" aria-live="polite">
             {!activeSlot ? 'Chưa có key đang dùng' : nextCheckInMs == null ? 'Chờ lần kiểm tra đầu tiên' : nextCheckInMs <= 0 ? 'Đến hạn — chờ cập nhật trạng thái' : countdown(nextCheckInMs)}
           </span>
         </div>

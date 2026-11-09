@@ -19,7 +19,7 @@ export function Queue() {
   return (
     <section className="border-t border-line p-3">
       <div className="mb-2 flex items-center gap-2 text-xs font-bold">
-        <Icon name="download" className="size-3.5 text-accent" /> Hàng đợi
+        <Icon name="download" className="size-3.5 text-brand" /> Hàng đợi
         <span className="ml-auto font-mono font-normal text-mute">{jobs.length} job</span>
       </div>
       {jobs.length === 0 && <p className="font-mono text-[11px] text-mute">Trống. Bấm Download trên một model.</p>}

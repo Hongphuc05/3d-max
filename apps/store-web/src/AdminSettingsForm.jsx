@@ -44,7 +44,7 @@ const help = {
   maxPendingOrdersPerDevice: 'Mỗi máy được giữ tối đa bao nhiêu đơn đang chờ cùng lúc, chống tạo đơn hàng loạt. Đơn hết hạn không bị tính.',
 };
 const Help = ({ text }) => <span title={text} aria-label={text} tabIndex={0}
-  className="ml-1 inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-line text-[10px] text-mute hover:border-accent hover:text-accent">?</span>;
+  className="ml-1 inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-line text-[10px] text-mute hover:border-brand hover:text-brand">?</span>;
 
 function Form({ initial }) {
   const [base, setBase] = useState({ form: toForm(initial), updatedAt: initial.updatedAt });
@@ -83,7 +83,7 @@ function Form({ initial }) {
     </div>
     {bankIncomplete && <p className="text-xs text-warn">Điền đủ cả 4 thông tin ngân hàng thì mới tạo được đơn thanh toán.</p>}
     {state.error && <p role="alert" className="text-sm text-danger">{state.error}</p>}
-    {state.done && <p role="status" className="text-sm text-accent">Đã lưu cài đặt.</p>}
+    {state.done && <p role="status" className="text-sm text-brand">Đã lưu cài đặt.</p>}
     <button type="submit" className={primary} disabled={!dirty || state.busy}>Lưu cài đặt</button>
   </form>;
 }

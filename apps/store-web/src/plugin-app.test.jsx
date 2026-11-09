@@ -31,7 +31,7 @@ dom.window.chrome = { webview: {
     if (method === 'host.applyUpdate') {
       if (!applyOutcome.ok) return reply({ id, ok: false, error: { code: applyOutcome.code, message: applyOutcome.message } });
       setTimeout(() => listeners.forEach((f) => f({ data: { id, type: 'asset.progress', receivedBytes: 50, totalBytes: 100 } })), 3);
-      return reply({ id, ok: true, result: { restarting: true } });
+      return reply({ id, ok: true, result: { restartRequired: true } });
     }
     if (method === 'scene.getInfo') return reply({ id, ok: true, result: { objects: 1, renderer: 'Corona' } });
     if (method === 'library.downloads') return reply({ id, ok: true, result: { models: localModels } });
@@ -341,14 +341,15 @@ test('device popup: up-to-date plugin says it is the latest and offers no update
   await done(root);
 });
 
-test('device popup: a newer release shows "Cập nhật"; applying ends with the restart notice and sends no URL or path', async () => {
+test('device popup: a newer release shows "Cập nhật"; applying ends with the restart-Max notice (nothing closes by itself) and sends no URL or path', async () => {
   server(); updateCheck = { current: '1.4.4', latest: '1.5.0', updateAvailable: true }; applyOutcome = { ok: true };
   const root = await mount();
   await act(async () => { button('Thiết bị').click(); await flush(); });
   assert.match(document.querySelector('[data-testid=plugin-update]').textContent, /Có bản mới 1\.5\.0 \(đang dùng 1\.4\.4\)/);
   await act(async () => { button('Cập nhật').click(); await flush(); });
   assert.deepEqual(calls.find(c => c.method === 'host.applyUpdate').params, {});
-  assert.match(document.querySelector('[data-testid=plugin-update]').textContent, /Đã cài xong/);
+  assert.match(document.querySelector('[data-testid=plugin-update]').textContent, /Đã cài bản mới\. Hãy đóng và khởi động lại 3ds Max/);
+  assert.equal(document.querySelector('[data-testid=plugin-update] button'), null, 'no update button once installed');
   await done(root);
 });
 
@@ -360,9 +361,9 @@ test('device popup: cancelling the confirmation returns to the update button; a 
   await act(async () => { button('Cập nhật').click(); await flush(); });
   assert.ok(button('Cập nhật'), 'back to the update button after cancel');
   assert.ok(!document.querySelector('[role=alert]'), 'cancel is not an error');
-  applyOutcome = { ok: false, code: 'SCENE_UNSAVED', message: 'Scene có thay đổi chưa lưu. Hãy lưu scene rồi bấm Cập nhật lại.' };
+  applyOutcome = { ok: false, code: 'UPDATE_INSTALL_FAILED', message: 'Cài bản cập nhật thất bại. Bản hiện tại vẫn dùng được.' };
   await act(async () => { button('Cập nhật').click(); await flush(); });
-  assert.match(document.querySelector('[data-testid=plugin-update] [role=alert]').textContent, /chưa lưu/);
+  assert.match(document.querySelector('[data-testid=plugin-update] [role=alert]').textContent, /Cài bản cập nhật thất bại/);
   assert.ok(button('Thử cập nhật lại'));
   applyOutcome = { ok: true }; updateCheck = { current: '1.4.4', latest: '1.4.4', updateAvailable: false };
   await done(root);
@@ -472,6 +473,23 @@ test('refresh: asks the host to check the server first, shows it is working, ign
   assert.ok(catalogLoads > again, 'a failed server check still reloads local data'); assert.equal(button_().disabled, false);
   refreshFails = false;
   globalThis.fetch = base;
+  await done(root);
+});
+
+test('device popup: after an install the host keeps reporting "restart required" (reopening the popup does not offer the update again)', async () => {
+  server(); updateCheck = { current: '1.4.4', latest: '1.5.0', updateAvailable: false, restartRequired: true };
+  const root = await mount();
+  await act(async () => { button('Thiết bị').click(); await flush(); });
+  const section = () => document.querySelector('[data-testid=plugin-update]');
+  assert.match(section().textContent, /Đã cài bản mới. Hãy đóng và khởi động lại 3ds Max/);
+  assert.equal(section().querySelector('button'), null, 'no update button while a restart is pending');
+  // The host can also answer an apply with the same state (e.g. a second click racing the first).
+  updateCheck = { current: '1.4.4', latest: '1.5.0', updateAvailable: true }; applyOutcome = { ok: false, code: 'UPDATE_RESTART_REQUIRED', message: 'Đã cài bản mới.' };
+  await act(async () => { button('Thiết bị').click(); await flush(); button('Thiết bị').click(); await flush(); });
+  await act(async () => { button('Cập nhật').click(); await flush(); });
+  assert.match(section().textContent, /Hãy đóng và khởi động lại 3ds Max/);
+  assert.equal(document.querySelector('[role=alert]'), null, 'it is not shown as an error');
+  applyOutcome = { ok: true }; updateCheck = { current: '1.4.4', latest: '1.4.4', updateAvailable: false };
   await done(root);
 });
 

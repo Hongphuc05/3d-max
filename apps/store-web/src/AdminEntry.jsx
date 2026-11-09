@@ -1,6 +1,7 @@
 // Diem vao cua route /admin: dang nhap admin (tai khoan tao bang scripts/create-admin.js) -> AdminDashboard.
 import { useState } from 'react';
 import AdminDashboard from './AdminDashboard.jsx';
+import { Logo } from './components.jsx';
 import { AuthProvider, useAuth } from './auth.jsx';
 
 const MESSAGES = {
@@ -8,7 +9,7 @@ const MESSAGES = {
   TOO_MANY_ATTEMPTS: 'Thử sai quá nhiều lần. Vui lòng đợi 15 phút rồi thử lại.',
   BAD_ORIGIN: 'Yêu cầu bị từ chối (sai nguồn truy cập).',
 };
-const input = 'w-full rounded-md border border-line bg-base px-3 py-2.5 text-sm outline-none placeholder:text-mute focus:border-accent';
+const input = 'w-full rounded-md border border-line bg-base px-3 py-2.5 text-sm outline-none placeholder:text-mute focus:border-brand';
 
 function LoginForm() {
   const { login } = useAuth();
@@ -25,7 +26,8 @@ function LoginForm() {
   };
   return <div className="grid min-h-screen place-items-center bg-base p-4 text-fg">
     <form onSubmit={submit} className="w-full max-w-sm space-y-4 rounded-lg border border-line bg-panel p-6">
-      <h1 className="text-lg font-bold">Quản trị 3DsMood</h1>
+      <Logo className="mx-auto h-12" />
+      <h1 className="text-center text-lg font-bold">Quản trị 3DsMood</h1>
       <input className={input} type="text" required autoFocus autoComplete="username" aria-label="Tên đăng nhập" placeholder="Tên đăng nhập" maxLength={254}
         value={username} onChange={(e) => setUsername(e.target.value)} />
       <input className={input} type="password" required maxLength={128} autoComplete="current-password" placeholder="Mật khẩu"

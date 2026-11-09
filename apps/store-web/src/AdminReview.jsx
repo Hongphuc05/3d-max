@@ -75,7 +75,7 @@ function ReviewDomain({ contentDomain }) {
     <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-bold">Cần duyệt</h2>
       <button className={secondary} onClick={() => { setMessage(''); setVersion((v) => v + 1); }}>Làm mới</button></div>
     <ResourceState loading={state.loading && !items} error={state.error} retry={() => setVersion((v) => v + 1)} />
-    {message && <p role="status" className="text-sm text-accent">{message}</p>}
+    {message && <p role="status" className="text-sm text-brand">{message}</p>}
     {items && items.length === 0 && <p className={`${panel} text-sm text-mute`}>Không có mục nào cần duyệt.</p>}
     {hasPassive && <p className="text-xs text-mute">Ghép tay và chọn ảnh chính chưa có: các mục chỉ có nút "Đã xem" sẽ được xử lý ở phase sau.</p>}
     {kinds.map((kind) => {

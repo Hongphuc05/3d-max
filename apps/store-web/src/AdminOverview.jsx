@@ -8,7 +8,7 @@ const size = (n) => n == null ? '—' : n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFi
 function Tile({ label, value, hint, onClick }) {
   const body = <><p className="text-xs text-mute">{label}</p><p className="mt-1 font-mono text-xl font-bold">{value}</p>{hint && <p className="mt-1 text-xs text-mute">{hint}</p>}</>;
   return onClick
-    ? <button type="button" onClick={onClick} className={`${panel} text-left hover:border-accent`}>{body}</button>
+    ? <button type="button" onClick={onClick} className={`${panel} text-left hover:border-brand`}>{body}</button>
     : <div className={panel}>{body}</div>;
 }
 

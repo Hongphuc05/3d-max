@@ -3,19 +3,25 @@
 @font-face { font-family: 'Codec Pro'; font-weight: 400; src: url('/fonts/CodecPro/CodecPro-Regular.woff2') format('woff2'); font-display: swap; }
 @font-face { font-family: 'Codec Pro'; font-weight: 700; src: url('/fonts/CodecPro/CodecPro-Bold.woff2') format('woff2'); font-display: swap; }
 
-/* Theme toi kieu app desktop. Ten model/tieu de: Codec Pro. So lieu, dung luong, trang thai: monospace he thong. */
+/* Theme theo thuong hieu 3dsMood (logo do #8f120d, nen den).  Ten model/tieu de: Codec Pro. So lieu, dung luong, trang thai: monospace he thong. */
 @theme {
   --font-sans: 'Codec Pro', ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, Menlo, monospace;
-  --color-base: #0b0d0e;
-  --color-panel: #111416;
-  --color-raised: #181c1f;
-  --color-line: #252b2f;
-  --color-fg: #e6ebe8;
-  --color-mute: #87928c;
-  --color-accent: #45e08c;
-  --color-accent-ink: #04210f;
+  --color-base: #0c0c0c;
+  --color-bar: #121214;
+  --color-panel: #0e1116;
+  --color-raised: #161a1d;
+  --color-card: #070a0f;
+  --color-line: #262a30;
+  --color-fg: #ececea;
+  --color-mute: #8b9097;
+  /* Logo red (#8f120d): fills (tabs, primary buttons, logo box). brand: a lighter red for text/borders, which stays readable on near-black. */
+  --color-accent: #8f120d;
+  --color-accent-ink: #ffffff;
+  --color-brand: #e5484d;
   --color-warn: #f2b84b;
+  /* Trang thai thanh cong (ONLINE, Connected, ACTIVE): giu mau xanh, khong dung mau thuong hieu do. */
+  --color-ok: #45e08c;
   --color-danger: #f07171;
 }
 

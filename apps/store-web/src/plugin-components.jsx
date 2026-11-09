@@ -13,6 +13,8 @@ const styles = {
   base: 'w-full rounded-md font-bold transition disabled:cursor-default',
   solid: 'bg-accent text-accent-ink hover:brightness-110',
   ghost: 'border border-line text-mute',
+  // Nut tren the model: den, vien trang bo tron (thiet ke thuong hieu). Nut hanh dong chinh khac van dung solid (do).
+  outline: 'border border-white/80 bg-black text-fg hover:bg-white/10 disabled:opacity-50',
 };
 
 export function ModelAction({ p, ctx, big }) {
@@ -22,19 +24,20 @@ export function ModelAction({ p, ctx, big }) {
   const importLabel = localImport?.status === 'loading-options' ? 'Đang đọc file…' : localImport?.status === 'choosing' ? 'Đang chọn file…' : 'Đang import…';
   const importError = localImport?.error;
   const state = actionState({ max: ctx.max, entitlements: ctx.entitlements, owned: owns(ctx.entitlements), offline: ctx.offline, job });
-  const size = `${styles.base} ${big ? 'py-3 text-sm' : 'py-1.5 text-xs'}`;
+  const size = `${styles.base} ${big ? 'py-3 text-sm' : 'rounded-lg py-1.5 text-xs'}`;
+  const solid = big ? styles.solid : styles.outline;
   const click = (e) => { e.stopPropagation(); enqueue(p); };
   const downloaded = ctx.downloadedIds?.has(p.id);
   if (ctx.local) {
     const blocked = ctx.entitlements?.allModels === false;
     const runImport = e => { e.stopPropagation(); importDownloaded(p.id); };
-    return <div className="space-y-1"><button disabled={importing || blocked} onClick={runImport} className={`${size} ${styles.solid}`}>{importing ? importLabel : blocked ? 'Cần license thư viện' : 'Import'}</button>{importError && <p role="alert" className="text-xs text-danger">{importError}</p>}</div>;
+    return <div className="space-y-1"><button disabled={importing || blocked} onClick={runImport} className={`${size} ${solid}`}>{importing ? importLabel : blocked ? 'Cần license thư viện' : 'Import'}</button>{importError && <p role="alert" className="text-xs text-danger">{importError}</p>}</div>;
   }
-  if (downloaded || state.kind === 'done') return <button onClick={e => { e.stopPropagation(); ctx.onDownloaded?.(); }} className={`${size} border border-accent/50 text-accent hover:bg-accent/10`}>Đã tải · Xem</button>;
+  if (downloaded || state.kind === 'done') return <button onClick={e => { e.stopPropagation(); ctx.onDownloaded?.(); }} className={`${size} border border-brand/50 text-brand hover:bg-accent/10`}>Đã tải · Xem</button>;
   if (state.kind === 'view') return <div className="font-mono text-xs text-mute">{state.label}</div>;
-  if (state.disabled) return <button disabled className={`${size} ${styles.ghost} ${state.kind === 'running' ? 'animate-pulse text-accent' : ''}`}>{state.label}</button>;
+  if (state.disabled) return <button disabled className={`${size} ${styles.ghost} ${state.kind === 'running' ? 'animate-pulse text-brand' : ''}`}>{state.label}</button>;
   if (state.kind === 'failed') return <button onClick={click} className={`${size} border border-danger/50 text-danger hover:bg-danger/10`}>{state.label}</button>;
-  return <button onClick={click} className={`${size} ${styles.solid}`}>{big ? 'Download model' : state.label}</button>;
+  return <button onClick={click} className={`${size} ${solid}`}>{big ? 'Download model' : state.label}</button>;
 }
 
 /** Nut mua duy nhat (D28.1): license ca thu vien, khong co nut mua theo tung model. */
@@ -68,7 +71,7 @@ function HoverPreview({ p, anchor }) {
   const left = anchor.right + 8 + size <= vw - 8 ? anchor.right + 8 : Math.max(8, anchor.left - 8 - size);
   const top = Math.min(Math.max(8, anchor.top + anchor.height / 2 - size / 2), Math.max(8, vh - size - 8));
   return createPortal(
-    <div data-testid="hover-preview" className="pointer-events-none fixed z-50 overflow-hidden rounded-lg border border-accent/60 bg-white shadow-2xl" style={{ left, top, width: size, height: size }}>
+    <div data-testid="hover-preview" className="pointer-events-none fixed z-50 overflow-hidden rounded-lg border border-brand/60 bg-white shadow-2xl" style={{ left, top, width: size, height: size }}>
       <img src={src} alt="" onError={() => setFailed(true)} className="size-full object-contain" />
     </div>, document.body);
 }
@@ -76,7 +79,7 @@ function HoverPreview({ p, anchor }) {
 export function PluginCard({ p, active, onOpen, ctx }) {
   const [anchor, setAnchor] = useState(null);
   return (
-    <div className={`group relative flex flex-col overflow-hidden rounded-lg border bg-panel transition ${active ? 'border-accent' : 'border-line hover:border-mute/60'}`}>
+    <div className={`group relative flex flex-col overflow-hidden rounded-lg border bg-card transition ${active ? 'border-brand' : 'border-line hover:border-mute/60'}`}>
       <button onClick={() => onOpen(p)} onMouseEnter={(e) => setAnchor(e.currentTarget.getBoundingClientRect())} onMouseLeave={() => setAnchor(null)}
         className="relative aspect-square overflow-hidden bg-white">
         <Preview source={p.thumb} name={p.name} lazy fit={p.contentDomain === '3dscenes' ? 'cover' : 'contain'} />
@@ -128,7 +131,7 @@ export function PluginDetail({ p, onClose, ctx }) {
             <div className="font-mono text-[11px] text-mute">{p.folderPath || `${p.category} › ${p.subcategory}`}</div>
           </div>
           <div className="grid grid-cols-2 gap-x-4">
-            <Row k="QUYỀN DÙNG" v={ctx.entitlements ? (owned ? <span className="font-mono font-bold text-accent">License thư viện</span> : <span className="font-mono">Chưa có license</span>) : <span className="font-mono text-mute">—</span>} />
+            <Row k="QUYỀN DÙNG" v={ctx.entitlements ? (owned ? <span className="font-mono font-bold text-brand">License thư viện</span> : <span className="font-mono">Chưa có license</span>) : <span className="font-mono text-mute">—</span>} />
             <Row k="DUNG LƯỢNG" v={<span className="font-mono">{mb(p.info.sizeMB)}</span>} />
             <Row k="ĐỊNH DẠNG" v={p.info.formats.map((f) => '.' + f).join(' ') || '—'} />
           </div>

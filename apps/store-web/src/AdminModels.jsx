@@ -15,7 +15,7 @@ function CategoryNode({ node, selectedId, onSelect, depth = 0 }) {
   const [open, setOpen] = useState(false);
   const hasChildren = node.children.length > 0;
   return <li>
-    <div className={`flex items-center gap-1 rounded-md pr-2 ${selectedId === node.id ? 'bg-accent/10 text-accent' : 'text-mute hover:bg-raised hover:text-fg'}`} style={{ paddingLeft: `${depth * 14 + 4}px` }}>
+    <div className={`flex items-center gap-1 rounded-md pr-2 ${selectedId === node.id ? 'bg-accent/10 text-brand' : 'text-mute hover:bg-raised hover:text-fg'}`} style={{ paddingLeft: `${depth * 14 + 4}px` }}>
       {hasChildren ? <button type="button" aria-label={`${open ? 'Thu gọn' : 'Mở'} ${node.name}`} aria-expanded={open} onClick={() => setOpen((value) => !value)} className="grid size-7 shrink-0 place-items-center">
         <Icon name="chevron" className={`size-3.5 transition ${open ? 'rotate-90' : ''}`} />
       </button> : <span className="size-7 shrink-0" />}
@@ -67,7 +67,7 @@ function ModelCard({ contentDomain, model, editing, onEdit, onCancel, onSaved, o
       {model.thumbUrl
         ? <img src={model.thumbUrl} alt={model.name} loading="lazy" className="size-full object-contain transition duration-300 group-hover:scale-[1.03]" />
         : <div className="grid size-full place-items-center bg-raised text-center font-mono text-xs text-mute">Chưa có ảnh preview</div>}
-      <span data-state={model.state} className={`absolute left-2 top-2 rounded border px-2 py-1 text-[10px] shadow-sm ${model.state === 'FULL' ? 'border-accent/40 bg-base/90 text-accent' : 'border-line bg-base/90 text-mute'}`}>{stateLabel}</span>
+      <span data-state={model.state} className={`absolute left-2 top-2 rounded border px-2 py-1 text-[10px] shadow-sm ${model.state === 'FULL' ? 'border-brand/40 bg-base/90 text-brand' : 'border-line bg-base/90 text-mute'}`}>{stateLabel}</span>
     </div>
     <div className="flex min-h-32 flex-1 flex-col gap-2 p-3">
       {editing ? <input className={inputClass} name="editName" maxLength={300} value={name} onChange={(event) => setName(event.target.value)} aria-label={`Tên model ${model.name}`} />
@@ -139,12 +139,12 @@ export default function AdminModels({ contentDomain = '3dmodels' }) {
   return <div className="grid min-h-[70vh] min-w-0 grid-cols-1 overflow-hidden rounded-lg border border-line bg-base lg:grid-cols-[250px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]">
     <aside className="min-h-0 border-b border-line bg-panel lg:border-b-0 lg:border-r" aria-label="Danh mục model">
       <div className="border-b border-line p-4">
-        <p className="font-mono text-[10px] tracking-[0.16em] text-accent">BỘ LỌC</p>
+        <p className="font-mono text-[10px] tracking-[0.16em] text-brand">BỘ LỌC</p>
         <h2 className="mt-1 font-bold">Danh mục</h2>
       </div>
       <nav className="max-h-[38vh] overflow-auto p-2 lg:max-h-[calc(100vh-260px)]">
         <button type="button" aria-current={!selectedCategoryId ? 'page' : undefined} onClick={() => selectCategory('')}
-          className={`mb-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm ${!selectedCategoryId ? 'bg-accent/10 font-bold text-accent' : 'text-mute hover:bg-raised hover:text-fg'}`}>
+          className={`mb-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm ${!selectedCategoryId ? 'bg-accent/10 font-bold text-brand' : 'text-mute hover:bg-raised hover:text-fg'}`}>
           <Icon name="cube" className="size-4" /><span className="flex-1">Tất cả danh mục</span><span className="font-mono text-[10px]">{totalCategoryModels}</span>
         </button>
         {categoryTree.length > 0 && <ul className="space-y-px">{categoryTree.map((node) => <CategoryNode key={node.id} node={node} selectedId={selectedCategoryId} onSelect={selectCategory} />)}</ul>}
@@ -156,7 +156,7 @@ export default function AdminModels({ contentDomain = '3dmodels' }) {
     <section className="min-w-0 p-4 md:p-6">
       <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-48 flex-1">
-          <p className="font-mono text-[10px] tracking-[0.16em] text-accent">3DS MOOD / ADMIN</p>
+          <p className="font-mono text-[10px] tracking-[0.16em] text-brand">3DS MOOD / ADMIN</p>
           <h2 className="mt-1 text-xl font-bold">{selectedCategory?.name || 'Tất cả model'}</h2>
           <p className="mt-1 text-xs text-mute">{selectedCategory?.fullPath || 'Chọn một category để lọc model và thêm preview vào đúng danh mục.'}</p>
         </div>
@@ -166,7 +166,7 @@ export default function AdminModels({ contentDomain = '3dmodels' }) {
       </header>
 
       <form role="search" className="mb-4 flex flex-wrap items-center gap-2" onSubmit={search}>
-        <label className="flex min-w-48 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-accent">
+        <label className="flex min-w-48 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-brand">
           <Icon name="search" className="size-3.5 text-mute" />
           <input className="w-full bg-transparent py-2 text-sm outline-none placeholder:text-mute" name="q" aria-label="Tìm model" placeholder="Tìm model…" maxLength={100} value={draft.q} onChange={(event) => setDraft({ ...draft, q: event.target.value })} />
         </label>

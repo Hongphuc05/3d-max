@@ -1,6 +1,6 @@
 // Danh muc cong khai (trinh duyet thuong): chi xem model, khong mua/gia/license. Tai ve thu vien = MZP installer cua plugin.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Filters, Preview } from './components.jsx';
+import { Filters, Logo, Preview } from './components.jsx';
 import { Icon } from './icons.jsx';
 import { matchesCategory } from './catalog-view.js';
 import { usePluginCatalog } from './usePluginCatalog.js';
@@ -100,9 +100,9 @@ export default function PublicCatalog() {
 
   return (
     <div className="flex min-h-screen flex-col bg-base text-fg">
-      <header className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-line bg-panel px-4 py-4">
+      <header className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-line bg-bar px-4 py-4">
         <div className="min-w-0 flex-1 basis-64">
-          <div className="font-mono text-lg font-bold tracking-widest text-accent">3DS MOOD</div>
+          <Logo className="mb-2 h-12" />
           <p className="text-sm text-mute">Thư viện 3D model và scene cho 3ds Max. Xem toàn bộ model và scene, cài plugin để dùng trực tiếp trong Max.</p>
         </div>
         <div className="flex flex-col items-start gap-1 sm:items-end">
@@ -124,7 +124,7 @@ export default function PublicCatalog() {
             <button type="button" onClick={() => setDrawer(true)} className="flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs text-mute hover:text-fg lg:hidden">
               <Icon name="filter" className="size-3.5" />Danh mục{subs.size ? ` (${subs.size})` : ''}
             </button>
-            <label className="flex min-w-48 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-accent">
+            <label className="flex min-w-48 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-brand">
               <Icon name="search" className="size-3.5 text-mute" />
               <input value={text} onChange={(e) => setText(e.target.value)} placeholder={`Tìm ${noun}…`} aria-label={`Tìm ${noun}`} className="w-full bg-transparent py-1.5 text-sm outline-none placeholder:text-mute" />
             </label>

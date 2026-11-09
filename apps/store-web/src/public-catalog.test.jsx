@@ -179,7 +179,7 @@ test('a preview that is already loaded (cached) is visible without a load event,
   Object.defineProperty(proto, 'naturalWidth', { configurable: true, get() { return 480; } });
   try {
     const root = await mount();
-    const image = document.querySelector('img');
+    const image = document.querySelector('img:not([src="/logo.svg"])');
     assert.ok(image, 'the model with a manifest preview renders an image');
     assert.match(image.className, /opacity-100/, 'cached image is shown without waiting for a load event');
     await act(() => root.unmount());

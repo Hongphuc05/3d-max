@@ -34,7 +34,7 @@ const SORTS = {
   big: ['Nặng → nhẹ', (a, b) => (b.info.sizeMB ?? 0) - (a.info.sizeMB ?? 0)],
 };
 
-// phase: checking | latest | available | applying | restarting | error | failed. Kiem tra moi lan mo popup (tru luc dang cap nhat).
+// phase: checking | latest | available | applying | installed (cai xong, cho nguoi dung tu khoi dong lai Max) | error | failed. Kiem tra moi lan mo popup (tru luc dang cap nhat).
 function UpdateSection() {
   const [phase, setPhase] = useState('checking');
   const [info, setInfo] = useState({});
@@ -43,7 +43,7 @@ function UpdateSection() {
   const check = () => {
     setPhase('checking');
     return checkPluginUpdate().then(
-      (r) => { setInfo({ current: r.current, latest: r.latest }); setPhase(r.updateAvailable ? 'available' : 'latest'); },
+      (r) => { setInfo({ current: r.current, latest: r.latest }); setPhase(r.restartRequired ? 'installed' : r.updateAvailable ? 'available' : 'latest'); },
       () => setPhase('error'));
   };
   useEffect(() => { check(); }, []);
@@ -51,10 +51,11 @@ function UpdateSection() {
     setPhase('applying'); setPct(null); setMessage('');
     try {
       await applyPluginUpdate(({ receivedBytes, totalBytes }) => setPct(totalBytes ? Math.min(100, Math.round(receivedBytes * 100 / totalBytes)) : null));
-      setPhase('restarting');
+      setPhase('installed');
     } catch (e) {
       if (e.code === 'UPDATE_CANCELLED') return setPhase('available');
       if (e.code === 'UPDATE_NOT_NEEDED') return check();
+      if (e.code === 'UPDATE_RESTART_REQUIRED') return setPhase('installed');
       setMessage(e.message || 'Cập nhật thất bại.'); setPhase('failed');
     }
   };
@@ -69,7 +70,7 @@ function UpdateSection() {
         <button onClick={apply} className={button}>Cập nhật</button>
       </>}
       {phase === 'applying' && <p className="mt-1 text-xs text-mute" role="status">{pct === null ? 'Đang chuẩn bị bản cập nhật…' : pct < 100 ? `Đang tải bản cập nhật… ${pct}%` : 'Đang cài đặt…'}</p>}
-      {phase === 'restarting' && <p className="mt-1 text-xs" role="status">Đã cài xong. 3ds Max sẽ đóng và tự mở lại.</p>}
+      {phase === 'installed' && <p className="mt-1 text-xs" role="status">Đã cài bản mới. Hãy đóng và khởi động lại 3ds Max để dùng bản mới.</p>}
       {phase === 'error' && <>
         <p className="mt-1 text-xs text-mute">Không kiểm tra được phiên bản.</p>
         <button onClick={check} className={button}>Thử lại</button>
@@ -82,17 +83,25 @@ function UpdateSection() {
   );
 }
 
+// Mot muc dieu huong tren header: icon + nhan nho, muc dang chon to mau thuong hieu.
+function NavButton({ icon, label, active = false, onClick }) {
+  return (
+    <button onClick={onClick} aria-pressed={active} title={label}
+      className={'flex flex-col items-center gap-1 rounded-md px-3 py-1.5 text-[10px] transition ' + (active ? 'text-brand' : 'text-mute hover:bg-raised hover:text-fg')}>
+      <Icon name={icon} className="size-5" />{label}
+    </button>
+  );
+}
+
 function Device({ max }) {
   const [machineCode, setMachineCode] = useState(null);
   const [open, setOpen] = useState(false);
   useEffect(() => { if (max) getLibraryStatus().then((s) => setMachineCode(s?.machineCode ?? null), () => setMachineCode(null)); }, [max]);
   return (
     <div className="relative">
-      <button onClick={() => setOpen(!open)} title="Thiết bị" className="flex flex-col items-center gap-1 rounded-md p-2 text-[10px] text-mute hover:bg-raised hover:text-fg">
-        <Icon name="user" className="size-5" />Thiết bị
-      </button>
+      <NavButton icon="user" label="Thiết bị" active={open} onClick={() => setOpen(!open)} />
       {open && (
-        <div className="absolute left-12 top-0 z-50 w-72 rounded-md border border-line bg-raised p-3 text-sm shadow-xl">
+        <div className="absolute left-0 top-full z-50 mt-2 w-72 rounded-md border border-line bg-raised p-3 text-sm shadow-xl">
           <div className="font-mono text-[10px] tracking-wider text-mute">MÃ MÁY</div>
           <div className="mt-1 break-all font-mono text-xs">{machineCode || (max ? 'Đang đọc…' : 'Chỉ có trong plugin 3ds Max')}</div>
           <p className="mt-2 font-mono text-[10px] text-mute">Quyền tải gắn với thiết bị này. Không cần tài khoản.</p>
@@ -178,10 +187,14 @@ export default function PluginApp({ orderPollMs }) {
 
   return (
     <div className="flex h-screen flex-col">
-      <HostBar reloadKey={reloadKey} onRefresh={refresh} apiStatus={max ? (offline ? 'down' : 'ok') : null} />
+      <HostBar nav={<>
+        {[["3dmodels", "Models"], ["3dscenes", "Scenes"]].map(([domain, label]) => <NavButton key={domain} icon="cube" label={label} active={contentDomain === domain} onClick={() => selectDomain(domain)} />)}
+        {max && <NavButton icon="settings" label="Cài đặt" onClick={() => setSettingsOpen(true)} />}
+        <Device max={max} />
+      </>} reloadKey={reloadKey} onRefresh={refresh} apiStatus={max ? (offline ? 'down' : 'ok') : null} />
       {offline && <div role="status" className="border-b border-warn/40 bg-warn/10 px-3 py-1 font-mono text-[11px] text-warn">Đang offline — hiển thị catalog đã lưu trên máy. Cần Internet để tải model.</div>}
       {max && entitlements && !licensed && !offline && (
-        <div role="status" className="flex flex-wrap items-center justify-between gap-2 border-b border-accent/40 bg-accent/10 px-3 py-2 text-sm">
+        <div role="status" className="flex flex-wrap items-center justify-between gap-2 border-b border-brand/40 bg-accent/10 px-3 py-2 text-sm">
           <span>Thiết bị này chưa có license thư viện — các model đang bị khóa.</span><BuyLibrary ctx={ctx} className="!w-auto px-4" />
         </div>
       )}
@@ -195,14 +208,8 @@ export default function PluginApp({ orderPollMs }) {
       )}
 
       <div className="flex min-h-0 flex-1">
-        <nav className="flex w-14 shrink-0 flex-col items-center gap-2 border-r border-line bg-panel py-3">
-          {[["3dmodels", "Models"], ["3dscenes", "Scenes"]].map(([domain, label]) => <button key={domain} onClick={() => selectDomain(domain)} aria-pressed={contentDomain === domain} title={label} className={"flex flex-col items-center gap-1 rounded-md p-2 text-[10px] " + (contentDomain === domain ? "bg-raised text-accent" : "text-mute hover:bg-raised hover:text-fg")}><Icon name="cube" className="size-5" />{label}</button>)}
-          {max && <button onClick={() => setSettingsOpen(true)} title="Cài đặt" className="flex flex-col items-center gap-1 rounded-md p-2 text-[10px] text-mute hover:bg-raised hover:text-fg"><Icon name="settings" className="size-5" />Cài đặt</button>}
-          <Device max={max} />
-        </nav>
-
         <div className={`${drawer ? 'fixed inset-0 z-30 bg-black/60' : 'hidden'} lg:static lg:z-auto lg:block lg:bg-transparent`} onClick={() => setDrawer(false)}>
-          <aside className="flex h-full w-72 flex-col border-r border-line bg-panel lg:w-64" onClick={(e) => e.stopPropagation()}>
+          <aside className="flex h-full w-72 flex-col border-r border-line bg-panel lg:w-48" onClick={(e) => e.stopPropagation()}>
             <div className="min-h-0 flex-1 overflow-auto">
               <Filters categories={tree} subs={subs} setSubs={setSubs} renderers={new Set()} setRenderers={() => {}} rendererOptions={[]} />
             </div>
@@ -217,7 +224,7 @@ export default function PluginApp({ orderPollMs }) {
             {max && tabBtn('fav', `Yêu thích${liked.length ? ` (${liked.length})` : ''}`, 'heart')}
             <button onClick={() => setDrawer(true)} className="flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs text-mute hover:text-fg lg:hidden">
               <Icon name="filter" className="size-3.5" />Lọc{subs.size ? ` (${subs.size})` : ''}
-              {max && activeJobs > 0 && <span className="text-accent">· {activeJobs} đang tải</span>}
+              {max && activeJobs > 0 && <span className="text-brand">· {activeJobs} đang tải</span>}
             </button>
           </div>
 
@@ -229,15 +236,11 @@ export default function PluginApp({ orderPollMs }) {
           )}
 
           <div className="flex flex-wrap items-center gap-2 px-3 py-2">
-            <div className="mr-2 leading-tight">
-              <div className="font-mono text-[10px] tracking-widest text-accent">3DS MOOD {contentDomain === "3dscenes" ? "SCENES" : "MODELS"}</div>
-              <div className="font-mono text-xs text-mute">{listReady ? `${rows.length} model` : '…'}</div>
-            </div>
-            <label className="flex min-w-48 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-accent">
+            <label className="flex min-w-48 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-brand">
               <Icon name="search" className="size-3.5 text-mute" />
               <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Tìm model…" className="w-full bg-transparent py-1.5 text-sm outline-none placeholder:text-mute" />
             </label>
-            <select value={sort} onChange={(e) => setSort(e.target.value)} className="rounded-md border border-line bg-panel px-2 py-1.5 font-mono text-xs outline-none focus:border-accent">
+            <select value={sort} onChange={(e) => setSort(e.target.value)} className="rounded-md border border-line bg-panel px-2 py-1.5 font-mono text-xs outline-none focus:border-brand">
               {Object.entries(SORTS).map(([k, [label]]) => <option key={k} value={k}>{label}</option>)}
             </select>
           </div>
@@ -259,7 +262,7 @@ export default function PluginApp({ orderPollMs }) {
               </p>
             )}
             {tab !== 'done' && state === 'loading' && max && <p role="status" className="py-2 text-center font-mono text-xs text-mute">Lần đầu mở: đang tải catalog từ máy chủ (cần Internet)…</p>}
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2.5">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-2.5">
               {!listReady && state === 'loading'
                 ? Array.from({ length: 18 }, (_, i) => <div key={i} className="aspect-[3/4] animate-pulse rounded-lg bg-panel" />)
                 : view.map((p) => <PluginCard key={p.id} p={p} active={activeId === p.id} onOpen={(m) => setActiveId(m.id)} ctx={ctx} />)}

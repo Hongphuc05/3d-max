@@ -9,7 +9,7 @@ const secondary = 'rounded-md border border-line px-3 py-2 text-sm hover:bg-rais
 const primary = 'rounded-md bg-accent px-4 py-2 text-sm font-bold text-accent-ink disabled:opacity-50';
 
 const FINAL = {
-  CONFIRMED: { tone: 'text-accent', text: 'Đã xác nhận thanh toán! License thư viện đã được cấp cho thiết bị này, toàn bộ model đã mở khóa.' },
+  CONFIRMED: { tone: 'text-brand', text: 'Đã xác nhận thanh toán! License thư viện đã được cấp cho thiết bị này, toàn bộ model đã mở khóa.' },
   REJECTED: { tone: 'text-danger', text: 'Chủ cửa hàng chưa nhận được tiền hoặc đã từ chối đơn này. Liên hệ nhà cung cấp nếu bạn đã chuyển khoản.' },
   EXPIRED: { tone: 'text-warn', text: 'Đơn đã hết hạn. Nếu bạn đã chuyển khoản, hãy liên hệ nhà cung cấp kèm mã đơn.' },
   CANCELLED: { tone: 'text-mute', text: 'Đơn đã hủy.' },
@@ -86,7 +86,7 @@ export default function OrderDialog({ onClose, onConfirmed, pollMs = 4000 }) {
         {phase === 'creating' && <p role="status" className="text-sm text-mute">Đang tạo đơn…</p>}
         {phase === 'error' && <p role="alert" className="text-sm text-danger">{error}</p>}
         {order && <>
-          <p className="font-mono text-2xl text-accent">{vnd(order.amountVnd)}</p>
+          <p className="font-mono text-2xl text-brand">{vnd(order.amountVnd)}</p>
           <p className="text-xs text-mute">Mã đơn <span className="select-text font-mono">{order.code}</span></p>
         </>}
         {(phase === 'ready' || phase === 'claiming' || phase === 'waiting') && pay && <>
@@ -97,9 +97,9 @@ export default function OrderDialog({ onClose, onConfirmed, pollMs = 4000 }) {
             <div><dt className="text-mute">Ngân hàng</dt><dd>{pay.bankName}</dd></div>
             <div><dt className="text-mute">Chủ tài khoản</dt><dd>{pay.accountName}</dd></div>
             <div><dt className="text-mute">Số tài khoản</dt><dd className="flex items-center gap-2"><span className="select-text font-mono">{pay.accountNo}</span>
-              <button className="text-xs text-accent" onClick={() => copy('số tài khoản', pay.accountNo)}>Sao chép</button></dd></div>
+              <button className="text-xs text-brand" onClick={() => copy('số tài khoản', pay.accountNo)}>Sao chép</button></dd></div>
             <div><dt className="text-mute">Nội dung chuyển khoản (bắt buộc đúng)</dt><dd className="flex items-center gap-2"><span className="select-text font-mono font-bold">{pay.transferContent}</span>
-              <button className="text-xs text-accent" onClick={() => copy('nội dung', pay.transferContent)}>Sao chép</button></dd></div>
+              <button className="text-xs text-brand" onClick={() => copy('nội dung', pay.transferContent)}>Sao chép</button></dd></div>
           </dl>
           <p className="text-center font-mono text-sm" role="timer">{seconds > 0 ? `Đơn hết hạn sau ${hhmm}` : 'Đơn đã hết hạn.'}</p>
           {copied && <p className="text-xs text-mute" role="status">{copied}</p>}

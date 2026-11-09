@@ -34,7 +34,7 @@ export default function AdminAccount() {
       <label className="block space-y-2 text-sm"><span>Mật khẩu mới{!user.mustChangeCredentials && ' (để trống nếu giữ nguyên)'}</span><input className={inputClass} name="newPassword" type="password" value={newPassword} onChange={event => setNewPassword(event.target.value)} autoComplete="new-password" required={user.mustChangeCredentials} minLength={8} maxLength={128} /></label>
       <label className="block space-y-2 text-sm"><span>Xác nhận mật khẩu mới</span><input className={inputClass} name="confirmPassword" type="password" value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} autoComplete="new-password" required={Boolean(newPassword)} maxLength={128} /></label>
       {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-      {saved && <p role="status" className="text-sm text-accent">Đã lưu thông tin đăng nhập. Bạn đang dùng phiên đăng nhập mới.</p>}
+      {saved && <p role="status" className="text-sm text-brand">Đã lưu thông tin đăng nhập. Bạn đang dùng phiên đăng nhập mới.</p>}
       <button className={primary} disabled={busy}>{busy ? 'Đang lưu…' : 'Lưu thông tin đăng nhập'}</button>
     </form>
   </section>;

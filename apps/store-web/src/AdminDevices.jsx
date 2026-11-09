@@ -50,7 +50,7 @@ export default function AdminDevices() {
           <td className={td}>{d.name}<div className="font-mono text-[10px] text-mute">{short(d.id)}{d.status === 'BLOCKED' ? ' · bị chặn' : ''}</div></td>
           <td className={`${td} whitespace-nowrap`}>{dateTime(d.createdAt)}</td>
           <td className={`${td} whitespace-nowrap`}>{dateTime(d.lastSeenAt)}</td>
-          <td className={td}>{d.hasLicense ? <span className="font-bold text-accent">Có</span> : <span className="text-mute">Chưa</span>}</td>
+          <td className={td}>{d.hasLicense ? <span className="font-bold text-brand">Có</span> : <span className="text-mute">Chưa</span>}</td>
           <td className={td}><Actions device={d} others={free.filter((o) => o.id !== d.id)} onDone={() => setVersion((v) => v + 1)} /></td>
         </tr>)}</tbody></table></div>}
     </div>

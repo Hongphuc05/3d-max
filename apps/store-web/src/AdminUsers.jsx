@@ -63,7 +63,7 @@ export default function AdminUsers() {
     </form>}
 
     {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-    {notice && <p role="status" className="text-sm text-accent">{notice}</p>}
+    {notice && <p role="status" className="text-sm text-brand">{notice}</p>}
     <label className="flex items-center gap-2 text-sm text-mute">
       <input type="checkbox" checked={showDisabled} onChange={(event) => setShowDisabled(event.target.checked)} />
       Hiện cả tài khoản đã khóa
@@ -81,8 +81,8 @@ export default function AdminUsers() {
           {accounts.map((account) => <tr key={account.id}>
             <td className="px-4 py-3 font-semibold">{account.username}</td>
             <td className="px-4 py-3">{account.displayName || '—'}</td>
-            <td className="px-4 py-3"><span className="rounded-md border border-accent/30 px-2 py-1 text-xs text-accent">ADMIN</span>{account.isOwner && <span className="ml-2 text-xs text-mute">Chủ quản</span>}</td>
-            <td className={`px-4 py-3 ${account.disabledAt ? 'text-danger' : 'text-accent'}`}>{account.disabledAt ? 'Đã khóa' : account.mustChangeCredentials ? 'Chờ đổi mật khẩu' : 'Hoạt động'}</td>
+            <td className="px-4 py-3"><span className="rounded-md border border-brand/30 px-2 py-1 text-xs text-brand">ADMIN</span>{account.isOwner && <span className="ml-2 text-xs text-mute">Chủ quản</span>}</td>
+            <td className={`px-4 py-3 ${account.disabledAt ? 'text-danger' : 'text-brand'}`}>{account.disabledAt ? 'Đã khóa' : account.mustChangeCredentials ? 'Chờ đổi mật khẩu' : 'Hoạt động'}</td>
             <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-mute">{dateTime(account.createdAt)}</td>
             <td className="px-4 py-3">
               {account.isOwner ? <span className="block text-right text-xs text-mute">Tài khoản chủ quản</span> : <div className="flex justify-end gap-2">

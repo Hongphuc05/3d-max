@@ -4,7 +4,7 @@ import { adminError, dateTime, panel, primary, ResourceState, secondary, useAdmi
 
 const resultMessages = {
   pending: ['Bot đã mở trong tab mới. Nhấn Start trong Telegram để hoàn tất liên kết.', 'text-mute'],
-  connected: ['Đã kết nối Telegram. Tài khoản này sẽ nhận thông báo và có thể duyệt đơn.', 'text-accent'],
+  connected: ['Đã kết nối Telegram. Tài khoản này sẽ nhận thông báo và có thể duyệt đơn.', 'text-ok'],
 };
 
 function ConnectionPanel() {

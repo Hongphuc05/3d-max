@@ -23,7 +23,7 @@ function Choices({ pending }) {
       <p id="import-options-help" className="text-sm text-mute">Gói model có nhiều file. Chọn đúng phiên bản và renderer cần dùng; chỉ file được chọn sẽ được import.</p>
       <fieldset className="min-h-0 space-y-2 overflow-auto">
         <legend className="sr-only">File model đã lưu trên máy</legend>
-        {pending.options.map(option => <label key={option.optionId} className="flex cursor-pointer items-start gap-3 rounded-md border border-line p-3 focus-within:border-accent">
+        {pending.options.map(option => <label key={option.optionId} className="flex cursor-pointer items-start gap-3 rounded-md border border-line p-3 focus-within:border-brand">
           <input type="radio" name="import-option" value={option.optionId} checked={selected === option.optionId} onChange={() => setSelected(option.optionId)} className="mt-1 shrink-0" />
           <span className="min-w-0">
             <span className="block break-words text-sm font-bold">{option.label}</span>

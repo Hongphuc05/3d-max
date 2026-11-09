@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 export const primary = 'rounded-md bg-accent px-4 py-2 text-sm font-bold text-accent-ink disabled:opacity-40';
 export const secondary = 'rounded-md border border-line px-3 py-2 text-sm hover:bg-raised disabled:opacity-40';
-export const inputClass = 'w-full rounded-md border border-line bg-base px-3 py-2 text-sm outline-none focus:border-accent';
+export const inputClass = 'w-full rounded-md border border-line bg-base px-3 py-2 text-sm outline-none focus:border-brand';
 export const panel = 'rounded-lg border border-line bg-panel p-4 md:p-5';
 const messages = {
   UNAUTHENTICATED: 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.',
@@ -41,7 +41,7 @@ export const adminError = error => messages[error?.code] || error?.detail || 'Kh
 export const dateTime = value => value ? new Date(value).toLocaleString('vi-VN') : '—';
 const labels = { ACTIVE: 'Đang hoạt động', SUSPENDED: 'Tạm khóa', REVOKED: 'Đã thu hồi', PAID: 'Đã thanh toán', PENDING: 'Chờ thanh toán', CANCELLED: 'Đã hủy', FAILED: 'Thất bại', EXPIRED: 'Hết hạn' };
 export function Status({ value }) {
-  return <span className={`inline-flex whitespace-nowrap rounded border px-2 py-1 text-xs ${['ACTIVE', 'PAID'].includes(value) ? 'border-accent/30 text-accent' : ['REVOKED', 'FAILED'].includes(value) ? 'border-danger/30 text-danger' : 'border-line text-mute'}`}>{labels[value] || value || 'Chưa mua'}</span>;
+  return <span className={`inline-flex whitespace-nowrap rounded border px-2 py-1 text-xs ${['ACTIVE', 'PAID'].includes(value) ? 'border-ok/30 text-ok' : ['REVOKED', 'FAILED'].includes(value) ? 'border-danger/30 text-danger' : 'border-line text-mute'}`}>{labels[value] || value || 'Chưa mua'}</span>;
 }
 
 export function useAdminResource(load, dependencies) {

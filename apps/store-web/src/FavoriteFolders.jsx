@@ -5,7 +5,7 @@ import { Icon } from './icons.jsx';
 import { DEFAULT_FOLDER } from './useFavorites.js';
 
 const NAME_MAX = 40;
-const inputCls = 'min-w-0 flex-1 rounded-md border border-line bg-base px-2 py-1.5 text-sm outline-none focus:border-accent';
+const inputCls = 'min-w-0 flex-1 rounded-md border border-line bg-base px-2 py-1.5 text-sm outline-none focus:border-brand';
 const ghostBtn = 'rounded-md border border-line px-3 py-1.5 text-xs text-mute hover:text-fg disabled:opacity-40';
 const solidBtn = 'rounded-md bg-accent px-3 py-1.5 text-xs font-bold text-accent-ink hover:brightness-110 disabled:opacity-40';
 const message = (e) => e?.message || 'Không thực hiện được. Thử lại.';
@@ -78,14 +78,14 @@ export function FavoriteFolderDialog({ product, folders, onAssign, onCreate, onC
           </div>
           <button onClick={onClose} aria-label="Đóng" className="rounded-md p-1 text-mute hover:text-fg"><Icon name="close" /></button>
         </div>
-        <label className="flex items-center gap-2 rounded-md border border-line bg-base px-2 focus-within:border-accent">
+        <label className="flex items-center gap-2 rounded-md border border-line bg-base px-2 focus-within:border-brand">
           <Icon name="search" className="size-3.5 text-mute" />
           <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Tìm thư mục…" aria-label="Tìm thư mục" className="w-full bg-transparent py-1.5 text-sm outline-none placeholder:text-mute" />
         </label>
         <fieldset className="min-h-[7rem] space-y-1.5 overflow-auto">
           <legend className="sr-only">Thư mục yêu thích</legend>
           {shown.map((f) => (
-            <label key={f.id} className="flex cursor-pointer items-center gap-3 rounded-md border border-line px-3 py-2 text-sm focus-within:border-accent has-[:checked]:border-accent">
+            <label key={f.id} className="flex cursor-pointer items-center gap-3 rounded-md border border-line px-3 py-2 text-sm focus-within:border-brand has-[:checked]:border-brand">
               <input type="radio" name="fav-folder" value={f.id} checked={selected === f.id} onChange={() => setSelected(f.id)} className="shrink-0" />
               <span className="min-w-0 truncate">{f.name}</span>
             </label>
@@ -94,7 +94,7 @@ export function FavoriteFolderDialog({ product, folders, onAssign, onCreate, onC
         </fieldset>
         {creating
           ? <NameForm submitLabel="Tạo" onSubmit={create} onCancel={() => setCreating(false)} />
-          : <button type="button" onClick={() => setCreating(true)} className="self-start rounded-md px-1 py-1 text-xs font-bold text-accent hover:brightness-110">+ Tạo thư mục mới</button>}
+          : <button type="button" onClick={() => setCreating(true)} className="self-start rounded-md px-1 py-1 text-xs font-bold text-brand hover:brightness-110">+ Tạo thư mục mới</button>}
         {error && <p role="alert" className="text-xs text-danger">{error}</p>}
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className={ghostBtn}>Hủy</button>
