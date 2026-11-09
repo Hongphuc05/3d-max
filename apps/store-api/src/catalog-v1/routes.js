@@ -12,7 +12,7 @@ const DOMAIN_CAPABILITY = 'X-3dsmood-Content-Domains';
 
 // Older plugin validators reject unfamiliar URLs and fields. Keep their Models contract intact.
 function legacyManifest(manifest) {
-  const models = manifest.models.filter(m => (m.contentDomain ?? '3dmodels') === '3dmodels').map(({ contentDomain, categoryIds, ...model }) => model);
+  const models = manifest.models.filter(m => (m.contentDomain ?? '3dmodels') === '3dmodels').map(({ contentDomain, categoryIds, modifiedAt, ...model }) => model);
   const ids = new Set(models.map(m => m.id));
   const categories = manifest.categories.filter(c => (c.contentDomain ?? '3dmodels') === '3dmodels').map(({ contentDomain, ...category }) => category);
   const previews = manifest.previews.filter(p => ids.has(p.modelId)).map(({ contentDomain, ...preview }) => ({ ...preview, url: `/previews/${preview.sha256}.webp` }));

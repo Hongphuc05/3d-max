@@ -24,8 +24,9 @@ export async function readCatalogState(db) {
 export async function buildManifest(db) {
   const cats = (await db.query('select id, parent_id, name, full_path, content_domain from categories')).rows;
   const models = (await db.query(
-    `select m.id, m.name, m.category_id, m.content_domain, array(select mc.category_id from model_categories mc where mc.model_id=m.id order by mc.category_id) as category_ids, coalesce(f.size_bytes, 0) as size_bytes, f.file_type
+    `select m.id, m.name, m.category_id, m.content_domain, array(select mc.category_id from model_categories mc where mc.model_id=m.id order by mc.category_id) as category_ids, coalesce(f.size_bytes, 0) as size_bytes, f.file_type, i.modified_time as modified_at
        from models m join model_files f on f.id = m.primary_file_id
+       left join drive_inventory i on i.source_id = f.source_id and i.drive_file_id = f.drive_file_id and i.content_domain = m.content_domain -- ngay sua file tren Drive (sap xep Moi nhat/Cu nhat)
       where m.status = 'PUBLISHED'
         and exists (select 1 from model_previews pp where pp.model_id = m.id and pp.is_primary and pp.variant = 'sm') -- D29: chi model DU anh + file nen
       order by m.id`)).rows;
@@ -45,7 +46,9 @@ export async function buildManifest(db) {
   const out = {
     categories: cats.map((c) => ({ id: c.id, contentDomain: c.content_domain, parentId: c.parent_id, name: c.name, fullPath: c.full_path, modelCount: total(c.id) }))
       .filter((c) => c.modelCount > 0).sort((a, b) => (a.contentDomain.localeCompare(b.contentDomain) || a.fullPath.localeCompare(b.fullPath))),
-    models: models.map((m) => ({ id: m.id, name: m.name, contentDomain: m.content_domain, categoryId: m.category_id, categoryIds: m.category_ids, sizeBytes: Number(m.size_bytes), fileType: m.file_type, status: 'PUBLISHED' })),
+    models: models.map((m) => ({ id: m.id, name: m.name, contentDomain: m.content_domain, categoryId: m.category_id, categoryIds: m.category_ids, sizeBytes: Number(m.size_bytes), fileType: m.file_type, status: 'PUBLISHED',
+      // Chi them khi co ngay, de manifest cua model chua quet ngay khong doi (checksum on dinh); client cu bo qua truong la.
+      ...(m.modified_at ? { modifiedAt: new Date(m.modified_at).toISOString() } : {}) })),
     previews: previews.map((p) => ({ modelId: p.model_id, contentDomain: p.content_domain, variant: p.variant, url: previewUrl(p.local_path, p.content_domain), sha256: p.sha256, version: p.version, fileSize: p.file_size, width: p.width, height: p.height })),
   };
   out.checksum = createHash('sha256').update(JSON.stringify({ categories: out.categories, models: out.models, previews: out.previews })).digest('hex');

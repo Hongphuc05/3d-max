@@ -306,3 +306,18 @@ test('the events hub releases its database connection on stop (the pool can shut
   await hub.stop();
   assert.equal(pool.totalCount - pool.idleCount, before);
 });
+
+test('models carry the Drive modified time as modifiedAt (for Newest/Oldest sorting); old plugins never see it; models without a scan date omit it', { skip }, async () => {
+  const dated = await addModel('Dated', 'Shared');
+  const undated = await addModel('Undated', 'Shared');
+  await pool.query("insert into drive_inventory(source_id, drive_file_id, path, filename, mime_type, modified_time) values($1,$2,'/Dated.rar','Dated.rar','application/x-rar','2026-03-04T05:06:07Z')", [sourceId, dated.driveId]);
+  await bump();
+  const s = await startServer();
+  try {
+    const mixed = (await (await fetch(s.base + '/api/v1/catalog')).json()).models;
+    assert.equal(mixed.find(m => m.id === dated.id).modifiedAt, '2026-03-04T05:06:07.000Z');
+    assert.equal('modifiedAt' in mixed.find(m => m.id === undated.id), false, 'no scan date -> no field');
+    const legacy = (await (await globalThis.fetch(s.base + '/api/v1/catalog')).json()).models;
+    assert.ok(legacy.every(m => m.modifiedAt === undefined), 'the Models-only contract is unchanged for old plugins');
+  } finally { await s.close(); }
+});
