@@ -1,6 +1,6 @@
 // P4.4: giao dien plugin (UI-1: bo cuc 3 cot, loc cay, tim, sap xep, phan trang, tab Online / Đã tải) tren du lieu v3.
 // Khong co tai khoan, khong co man license: thiet bi + quyen do may chu quyet dinh (xem usePluginCatalog / v3-catalog).
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Filters } from './components.jsx';
 import { matchesCategory } from './catalog-view.js';
 import { HostBar } from './HostBar.jsx';
@@ -13,7 +13,8 @@ import { useJobs } from './queue.js';
 import { owns } from './v3-catalog.js';
 import { usePluginCatalog } from './usePluginCatalog.js';
 import { downloadedProducts, useDownloadedLibrary } from './useDownloadedLibrary.js';
-import { useFavorites } from './useFavorites.js';
+import { DEFAULT_FOLDER, useFavorites } from './useFavorites.js';
+import { FavoriteFolderBar, FavoriteFolderDialog } from './FavoriteFolders.jsx';
 import PluginSettings from './PluginSettings.jsx';
 import ImportOptionsDialog from './ImportOptionsDialog.jsx';
 
@@ -105,6 +106,8 @@ export default function PluginApp({ orderPollMs }) {
   const [reloadKey, setReloadKey] = useState(0);
   const [buying, setBuying] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [folderFilter, setFolderFilter] = useState('all');
+  const [picking, setPicking] = useState(null);
   const { products: allProducts, tree: allTree, state, error, offline, progress, entitlements } = usePluginCatalog(reloadKey);
   const products = useMemo(() => allProducts.filter(p => (p.contentDomain || "3dmodels") === contentDomain), [allProducts, contentDomain]);
   const tree = useMemo(() => allTree.filter(c => (c.contentDomain || "3dmodels") === contentDomain), [allTree, contentDomain]);
@@ -114,33 +117,47 @@ export default function PluginApp({ orderPollMs }) {
   const downloads = useDownloadedLibrary(reloadKey, completed);
   const downloadedIds = useMemo(() => new Set(downloads.models.map(m => m.modelId)), [downloads.models]);
   const favorites = useFavorites();
+  // Tim da yeu thich -> bo yeu thich ngay. Chua yeu thich -> mo bang chon thu muc (doi thu muc: bo yeu thich roi yeu thich lai).
+  const onFavorite = useCallback((id) => {
+    if (favorites.isFavorite(id)) favorites.remove(id);
+    else setPicking(allProducts.find((p) => p.id === id) ?? null);
+  }, [favorites.isFavorite, favorites.remove, allProducts]);
   const ctx = useMemo(() => ({ max, entitlements, offline, local: tab === 'done', downloadedIds,
     onBuy: () => setBuying(true), onDownloaded: () => setTab('done'),
-    ...(max ? { onFavorite: favorites.toggle, isFavorite: favorites.isFavorite } : {}) }), [max, entitlements, offline, tab, downloadedIds, favorites.toggle, favorites.ids]);
+    ...(max ? { onFavorite, isFavorite: favorites.isFavorite } : {}) }), [max, entitlements, offline, tab, downloadedIds, onFavorite, favorites.ids]);
 
   // Chon model theo id (khong giu doi tuong cu): khi catalog tu lam moi, panel chi tiet cap nhat theo ban moi hoac dong neu model da bi go.
   const licensed = owns(entitlements);
   const mine = useMemo(() => downloadedProducts(downloads.models, allProducts).filter(p => (p.contentDomain || "3dmodels") === contentDomain), [downloads.models, allProducts, contentDomain]);
   const liked = useMemo(() => products.filter(p => favorites.ids.has(p.id.toLowerCase())), [products, favorites.ids]);
-  const active = useMemo(() => (tab === 'done' ? mine : tab === 'fav' ? liked : products).find(p => p.id === activeId) || null, [products, mine, liked, tab, activeId]);
+  const domainFolders = useMemo(() => favorites.folders.filter(f => f.contentDomain === contentDomain), [favorites.folders, contentDomain]);
+  // Bo loc thu muc con hieu luc: thu muc vua bi xoa hoac thuoc loai khac thi quay ve "Tat ca".
+  const folder = folderFilter === 'all' || folderFilter === DEFAULT_FOLDER || domainFolders.some(f => f.id === folderFilter) ? folderFilter : 'all';
+  const folderCounts = useMemo(() => {
+    const counts = { all: liked.length };
+    for (const p of liked) { const key = favorites.assignments[p.id.toLowerCase()] ?? DEFAULT_FOLDER; counts[key] = (counts[key] ?? 0) + 1; }
+    return counts;
+  }, [liked, favorites.assignments]);
+  const likedShown = useMemo(() => folder === 'all' ? liked : liked.filter(p => (favorites.assignments[p.id.toLowerCase()] ?? DEFAULT_FOLDER) === folder), [liked, folder, favorites.assignments]);
+  const active = useMemo(() => (tab === 'done' ? mine : tab === 'fav' ? likedShown : products).find(p => p.id === activeId) || null, [products, mine, likedShown, tab, activeId]);
   const listReady = tab === 'done' || state === 'ready';
   const rows = useMemo(() => {
     const needle = text.trim().toLowerCase();
-    return (tab === 'online' ? products : tab === 'fav' ? liked : mine)
+    return (tab === 'online' ? products : tab === 'fav' ? likedShown : mine)
       .filter((p) => matchesCategory(p, subs) && (!needle || p.name.toLowerCase().includes(needle)))
       .sort(SORTS[sort][1]);
-  }, [products, mine, liked, tab, subs, text, sort]);
+  }, [products, mine, likedShown, tab, subs, text, sort]);
 
-  useEffect(() => setPage(1), [tab, subs, text, sort, contentDomain]);
+  useEffect(() => setPage(1), [tab, subs, text, sort, contentDomain, folder]);
   function selectDomain(domain) { setContentDomain(domain); setSubs(new Set()); setActiveId(null); setText(""); setPage(1); }
   const pages = Math.max(1, Math.ceil(rows.length / PAGE));
   useEffect(() => setPage((previous) => Math.min(previous, pages)), [pages]);
   const view = rows.slice((page - 1) * PAGE, page * PAGE);
   const activeJobs = jobs.filter((j) => j.status === 'queued' || j.status === 'running').length;
 
-  const tabBtn = (k, label) => (
+  const tabBtn = (k, label, icon) => (
     <button onClick={() => setTab(k)}
-      className={`rounded-md px-4 py-1.5 font-mono text-xs font-bold ${tab === k ? 'bg-accent text-accent-ink' : 'border border-line text-mute hover:text-fg'}`}>{label}</button>
+      className={`rounded-md px-4 py-1.5 font-mono text-xs font-bold ${icon ? 'inline-flex items-center gap-1.5 ' : ''}${tab === k ? 'bg-accent text-accent-ink' : 'border border-line text-mute hover:text-fg'}`}>{icon && <Icon name={icon} className="size-3.5" filled />}{label}</button>
   );
 
   return (
@@ -181,12 +198,19 @@ export default function PluginApp({ orderPollMs }) {
           <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
             {tabBtn('online', 'Online')}
             {tabBtn('done', `Đã tải${mine.length ? ` (${mine.length})` : ''}`)}
-            {max && tabBtn('fav', `Yêu thích${liked.length ? ` (${liked.length})` : ''}`)}
+            {max && tabBtn('fav', `Yêu thích${liked.length ? ` (${liked.length})` : ''}`, 'heart')}
             <button onClick={() => setDrawer(true)} className="flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs text-mute hover:text-fg lg:hidden">
               <Icon name="filter" className="size-3.5" />Lọc{subs.size ? ` (${subs.size})` : ''}
               {max && activeJobs > 0 && <span className="text-accent">· {activeJobs} đang tải</span>}
             </button>
           </div>
+
+          {max && tab === 'fav' && (
+            <div className="pt-2">
+              <FavoriteFolderBar folders={domainFolders} counts={folderCounts} active={folder} onSelect={setFolderFilter}
+                onCreate={(name) => favorites.createFolder(name, contentDomain)} onRename={favorites.renameFolder} onDelete={favorites.deleteFolder} />
+            </div>
+          )}
 
           <div className="flex flex-wrap items-center gap-2 px-3 py-2">
             <div className="mr-2 leading-tight">
@@ -213,7 +237,7 @@ export default function PluginApp({ orderPollMs }) {
             )}
             {listReady && rows.length === 0 && (
               <p className="py-16 text-center font-mono text-xs text-mute">
-                {tab === 'fav' ? (liked.length ? 'Không có model yêu thích nào khớp bộ lọc.' : 'Chưa có model yêu thích. Bấm ngôi sao trên thẻ model để thêm.')
+                {tab === 'fav' ? (liked.length ? (likedShown.length ? 'Không có model yêu thích nào khớp bộ lọc.' : 'Thư mục này chưa có model.') : 'Chưa có model yêu thích. Bấm trái tim trên thẻ model để thêm.')
                   : tab === 'done' ? (mine.length ? 'Không có model đã tải nào khớp bộ lọc.' : 'Chưa có model đã tải. Bấm Download ở tab Online.')
                   : products.length ? 'Không có model nào khớp bộ lọc.' : 'Catalog hiện đang trống.'}
               </p>
@@ -241,6 +265,8 @@ export default function PluginApp({ orderPollMs }) {
       {buying && <OrderDialog pollMs={orderPollMs} onClose={() => setBuying(false)} onConfirmed={() => setReloadKey((k) => k + 1)} />}
       {settingsOpen && <PluginSettings onClose={() => setSettingsOpen(false)} />}
       <ImportOptionsDialog />
+      {picking && <FavoriteFolderDialog product={picking} folders={domainFolders.filter(f => f.contentDomain === (picking.contentDomain || '3dmodels'))}
+        onAssign={favorites.assign} onCreate={(name) => favorites.createFolder(name, picking.contentDomain || '3dmodels')} onClose={() => setPicking(null)} />}
     </div>
   );
 }

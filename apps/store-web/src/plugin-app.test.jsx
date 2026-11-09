@@ -12,6 +12,8 @@ let downloadDirectory = 'D:\\3DS Mood';
 let sceneDownloadDirectory = 'D:\\Scenes';
 let cancelDirectoryChoice = false;
 let favoriteIds = []; let failFavorite = false;
+let folders = []; let assignments = {}; let folderSeq = 0;
+const id_ = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 let updateCheck = { current: '1.4.4', latest: '1.4.4', updateAvailable: false }; let applyOutcome = { ok: true };
 dom.window.chrome = { webview: {
   addEventListener: (_t, f) => listeners.add(f),
@@ -28,11 +30,35 @@ dom.window.chrome = { webview: {
     }
     if (method === 'scene.getInfo') return reply({ id, ok: true, result: { objects: 1, renderer: 'Corona' } });
     if (method === 'library.downloads') return reply({ id, ok: true, result: { models: localModels } });
-    if (method === 'library.favorites') return reply({ id, ok: true, result: { favorites: favoriteIds } });
+    const favState = () => ({ favorites: favoriteIds, folders, assignments });
+    const favError = (message) => reply({ id, ok: false, error: { code: 'LIBRARY_INVALID', message } });
+    if (method === 'library.favorites') return reply({ id, ok: true, result: favState() });
     if (method === 'library.setFavorite') {
       if (failFavorite) return reply({ id, ok: false, error: { code: 'LIBRARY_UNAVAILABLE', message: 'x' } });
       favoriteIds = [...favoriteIds.filter(f => f !== params.modelId), ...(params.favorite ? [params.modelId] : [])];
-      return reply({ id, ok: true, result: { favorites: favoriteIds } });
+      if (!params.favorite) delete assignments[params.modelId];
+      return reply({ id, ok: true, result: favState() });
+    }
+    if (method === 'library.setFavoriteFolder') {
+      if (params.folderId !== 'default' && !folders.some(f => f.id === params.folderId)) return favError('Không tìm thấy thư mục yêu thích.');
+      if (!favoriteIds.includes(params.modelId)) favoriteIds = [...favoriteIds, params.modelId];
+      if (params.folderId === 'default') delete assignments[params.modelId]; else assignments[params.modelId] = params.folderId;
+      return reply({ id, ok: true, result: favState() });
+    }
+    if (method === 'library.createFavoriteFolder') {
+      if (folders.some(f => f.contentDomain === params.contentDomain && f.name.toLowerCase() === params.name.trim().toLowerCase())) return favError('Đã có thư mục tên này.');
+      folders = [...folders, { id: id_(500 + folderSeq++), name: params.name.trim(), contentDomain: params.contentDomain }];
+      return reply({ id, ok: true, result: favState() });
+    }
+    if (method === 'library.renameFavoriteFolder') {
+      folders = folders.map(f => f.id === params.folderId ? { ...f, name: params.name.trim() } : f);
+      return reply({ id, ok: true, result: favState() });
+    }
+    if (method === 'library.deleteFavoriteFolder') {
+      const members = Object.keys(assignments).filter(m => assignments[m] === params.folderId);
+      favoriteIds = favoriteIds.filter(m => !members.includes(m)); members.forEach(m => delete assignments[m]);
+      folders = folders.filter(f => f.id !== params.folderId);
+      return reply({ id, ok: true, result: favState() });
     }
     if (method === 'library.importOptions') return reply({ id, ok: true, result: { options: [{ optionId: 'a'.repeat(64), label: 'model.max', relativePath: 'model.max', format: 'max' }] } });
     if (method === 'library.settings') return reply({ id, ok: true, result: { downloadDirectory, sceneDownloadDirectory } });
@@ -64,7 +90,7 @@ const originalFetch = globalThis.fetch;
 after(() => { globalThis.fetch = originalFetch; dom.window.close(); });
 
 function server() {
-  calls.length = 0; localModels = []; favoriteIds = []; failFavorite = false;
+  calls.length = 0; localModels = []; favoriteIds = []; failFavorite = false; folders = []; assignments = {}; folderSeq = 0;
   version = 1; rights = { allModels: true };
   cats = [{ id: id(1), parentId: null, name: 'Living', fullPath: 'Living', modelCount: 2 }, { id: id(2), parentId: null, name: 'Bedroom', fullPath: 'Bedroom', modelCount: 1 }];
   globalThis.fetch = async (url) => {
@@ -337,6 +363,60 @@ test('device popup: cancelling the confirmation returns to the update button; a 
   await done(root);
 });
 
+test('card: hovering the image shows an image-only popup beside it; the heart appears on hover only until chosen; Scenes fill the square', async () => {
+  const { PluginCard } = await import('./plugin-components.jsx');
+  const fav = new Set(); const toggles = [];
+  const ctx = () => ({ max: true, entitlements: { allModels: true }, offline: false, local: false, downloadedIds: new Set(), onBuy() {}, onDownloaded() {},
+    onFavorite: (pid) => toggles.push(pid), isFavorite: (pid) => fav.has(pid) });
+  const product = (over) => ({ id: id(201), name: 'Hover Me', subcategory: 'Chair', thumb: '/previews/small.webp', image: '/previews/large.webp',
+    info: { sizeMB: 1, renderers: [], formats: ['max'] }, contentDomain: '3dmodels', ...over });
+  const host = document.createElement('div'); document.body.appendChild(host);
+  const root = createRoot(host);
+  const render = async (p) => { await act(async () => { root.render(<PluginCard p={p} active={false} onOpen={() => {}} ctx={ctx()} />); await flush(); }); };
+  const imageButton = () => host.querySelector('button.aspect-square');
+  const fire = (el, type) => el.dispatchEvent(new dom.window.MouseEvent(type, { bubbles: true }));
+
+  await render(product());
+  assert.equal(document.querySelector('[data-testid="hover-preview"]'), null, 'no popup before hovering');
+  await act(async () => { fire(imageButton(), 'mouseover'); await flush(); });
+  const popup = document.querySelector('[data-testid="hover-preview"]');
+  assert.ok(popup, 'popup shows on hover');
+  assert.equal(popup.querySelectorAll('img').length, 1); assert.equal(popup.querySelector('img').getAttribute('src'), '/previews/large.webp', 'the large image, nothing else in it');
+  assert.equal(popup.textContent, '', 'the popup carries no text');
+  await act(async () => { fire(imageButton(), 'mouseout'); await flush(); });
+  assert.equal(document.querySelector('[data-testid="hover-preview"]'), null, 'popup closes when the pointer leaves');
+
+  const heart = () => host.querySelector('button[aria-label$="yêu thích"]');
+  assert.match(heart().className, /opacity-0/); assert.match(heart().className, /group-hover:opacity-100/, 'not yet favorite: heart only on hover');
+  fav.add(id(201)); await render(product());
+  assert.doesNotMatch(heart().className, /opacity-0/, 'a favorite heart stays visible');
+  assert.ok(heart().querySelector('svg path').getAttribute('d').startsWith('M19 14c1.49'), 'it is a heart icon');
+  await act(async () => { heart().click(); await flush(); });
+  assert.deepEqual(toggles, [id(201)]);
+
+  assert.match(host.querySelector('img').className, /object-contain/, 'Models keep contain');
+  await render(product({ contentDomain: '3dscenes' }));
+  assert.match(host.querySelector('img').className, /object-cover/, 'Scenes fill the square');
+  await render(product({ image: null, thumb: null }));
+  await act(async () => { fire(imageButton(), 'mouseover'); await flush(); });
+  assert.equal(document.querySelector('[data-testid="hover-preview"]'), null, 'no image, no popup');
+  await act(() => root.unmount()); host.remove();
+});
+
+test('a Scenes detail panel shows the image at its own proportions; Models keep the square', async () => {
+  const { PluginDetail } = await import('./plugin-components.jsx');
+  const host = document.createElement('div'); document.body.appendChild(host);
+  const root = createRoot(host);
+  const ctx = { max: false, entitlements: null, local: false, downloadedIds: new Set() };
+  const p = (domain) => ({ id: id(202), name: 'Wide', image: '/previews/wide.webp', thumb: '/previews/wide.webp', category: 'A', subcategory: 'B',
+    info: { sizeMB: 1, renderers: [], formats: [] }, contentDomain: domain });
+  for (const [domain, expected] of [['3dscenes', /h-auto w-full/], ['3dmodels', /aspect-square/]]) {
+    await act(async () => { root.render(<PluginDetail p={p(domain)} onClose={() => {}} ctx={ctx} />); await flush(); });
+    assert.match(host.querySelector('img').className, expected, domain);
+  }
+  await act(() => root.unmount()); host.remove();
+});
+
 test('first run with the VPS down: clear message + "Thử lại" loads the catalog; preview progress shows a bar', async () => {
   server(); const base = globalThis.fetch; let down = true;
   globalThis.fetch = async (url) => {
@@ -388,21 +468,98 @@ test('Scenes isolates the mixed online catalog, category tree and persisted down
   await done(root);
 });
 
-test('favorites: star on every card, a Yêu thích tab per Models/Scenes, persisted through the bridge with only a model id', async () => {
+test('favorites: a heart on every card opens the folder picker; Thêm puts the model in Default; the heart then removes it at once', async () => {
   server(); const root = await mount();
-  const star = (card) => card.querySelector('button[aria-label$="yêu thích"]');
+  const heart = (card) => card.querySelector('button[aria-label$="yêu thích"]');
   const groups = () => [...document.querySelectorAll('.group')];
-  assert.equal(groups().length, 3); assert.ok(groups().every((g) => star(g)), 'every card has a star');
+  assert.equal(groups().length, 3); assert.ok(groups().every((g) => heart(g)), 'every card has a heart');
   assert.equal(button('Yêu thích').textContent, 'Yêu thích', 'no count while empty');
-  await act(async () => { star(groups()[1]).click(); await flush(); });
-  assert.deepEqual(calls.filter((c) => c.method === 'library.setFavorite').map((c) => c.params), [{ modelId: id(101), favorite: true }]);
+  await act(async () => { heart(groups()[1]).click(); await flush(); });
+  assert.ok(document.querySelector('[role=dialog]'), 'an unfavorited heart opens the folder picker');
+  assert.equal(calls.filter((c) => c.method.startsWith('library.set')).length, 0, 'nothing is saved before confirming');
+  await act(async () => { button('Thêm').click(); await flush(); });
+  assert.deepEqual(calls.filter((c) => c.method === 'library.setFavoriteFolder').map((c) => c.params), [{ modelId: id(101), folderId: 'default' }]);
+  assert.equal(document.querySelector('[role=dialog]'), null, 'the picker closes');
   assert.equal(button('Yêu thích (1)').textContent, 'Yêu thích (1)');
-  assert.equal(star(groups()[1]).getAttribute('aria-pressed'), 'true');
+  assert.equal(heart(groups()[1]).getAttribute('aria-pressed'), 'true');
   await act(async () => { button('Yêu thích (1)').click(); await flush(); });
   assert.equal(groups().length, 1); assert.match(groups()[0].textContent, /Sofa One/);
-  await act(async () => { star(groups()[0]).click(); await flush(); });
+  await act(async () => { heart(groups()[0]).click(); await flush(); });
+  assert.equal(document.querySelector('[role=dialog]'), null, 'a favorited heart does not open the picker');
+  assert.deepEqual(calls.filter((c) => c.method === 'library.setFavorite').map((c) => c.params), [{ modelId: id(101), favorite: false }]);
   assert.deepEqual(favoriteIds, []); assert.equal(groups().length, 0); assert.match(text(), /Chưa có model yêu thích/);
   await done(root);
+});
+
+test('favorite folders: create from the picker, choose it, filter by chip, rename, delete un-favorites its models; Default is fixed', async () => {
+  server(); const root = await mount();
+  const groups = () => [...document.querySelectorAll('.group')];
+  const heart = (card) => card.querySelector('button[aria-label$="yêu thích"]');
+  const type = async (el, value) => { await act(async () => { Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value').set.call(el, value); el.dispatchEvent(new dom.window.Event('input', { bubbles: true })); await flush(); }); };
+  const dialog = () => document.querySelector('[role=dialog]');
+
+  // Sofa One -> new folder "Phòng khách" (created inside the picker, auto-selected).
+  await act(async () => { heart(groups()[1]).click(); await flush(); });
+  assert.deepEqual([...dialog().querySelectorAll('input[type=radio]')].map(r => r.parentElement.textContent), ['Default'], 'Default is always offered');
+  await act(async () => { [...dialog().querySelectorAll('button')].find(b => b.textContent.includes('Tạo thư mục mới')).click(); await flush(); });
+  await type(dialog().querySelector('input[aria-label="Tên thư mục"]'), '  Phòng khách ');
+  await act(async () => { [...dialog().querySelectorAll('button')].find(b => b.textContent === 'Tạo').click(); await flush(); });
+  assert.deepEqual(calls.find(c => c.method === 'library.createFavoriteFolder').params, { name: 'Phòng khách', contentDomain: '3dmodels' });
+  assert.equal(dialog().querySelector('input[type=radio]:checked').parentElement.textContent, 'Phòng khách', 'the new folder is selected');
+  await act(async () => { button('Thêm').click(); await flush(); });
+  assert.deepEqual(calls.filter(c => c.method === 'library.setFavoriteFolder').at(-1).params, { modelId: id(101), folderId: id_(500) });
+
+  // Sofa Two -> Default. The Yêu thích tab filters by chip.
+  await act(async () => { heart(groups()[2]).click(); await flush(); });
+  await act(async () => { button('Thêm').click(); await flush(); });
+  await act(async () => { button('Yêu thích (2)').click(); await flush(); });
+  const chips = () => [...document.querySelectorAll('[data-testid=favorite-folders] [aria-pressed]')].map(c => c.textContent);
+  assert.deepEqual(chips(), ['Tất cả (2)', 'Default (1)', 'Phòng khách (1)']);
+  assert.equal(groups().length, 2);
+  await act(async () => { button('Phòng khách (1)').click(); await flush(); });
+  assert.equal(groups().length, 1); assert.match(groups()[0].textContent, /Sofa One/);
+  await act(async () => { button('Default (1)').click(); await flush(); });
+  assert.equal(groups().length, 1); assert.match(groups()[0].textContent, /Sofa Two/);
+  assert.equal(button('Đổi tên'), undefined, 'Default cannot be renamed'); assert.equal(button('Xóa thư mục'), undefined, 'Default cannot be deleted');
+
+  // Rename, then delete: the folder's model leaves the favorites, the Default one stays.
+  await act(async () => { button('Phòng khách (1)').click(); await flush(); });
+  await act(async () => { button('Đổi tên').click(); await flush(); });
+  await type(document.querySelector('[data-testid=favorite-folders] input[aria-label="Tên thư mục"]'), 'Sảnh');
+  await act(async () => { button('Lưu').click(); await flush(); });
+  assert.deepEqual(calls.find(c => c.method === 'library.renameFavoriteFolder').params, { folderId: id_(500), name: 'Sảnh' });
+  assert.ok(button('Sảnh (1)'));
+  await act(async () => { button('Xóa thư mục').click(); await flush(); });
+  assert.match(document.querySelector('[role=alertdialog]').textContent, /1 model trong đó sẽ bị bỏ yêu thích/);
+  assert.equal(calls.some(c => c.method === 'library.deleteFavoriteFolder'), false, 'asks before deleting');
+  await act(async () => { button('Xóa').click(); await flush(); });
+  assert.deepEqual(favoriteIds, [id(102)], 'only the Default model stays a favorite');
+  assert.deepEqual(chips(), ['Tất cả (1)', 'Default (1)'], 'the filter falls back to the remaining chips');
+  assert.equal(groups().length, 1); assert.match(groups()[0].textContent, /Sofa Two/);
+  await done(root);
+});
+
+test('favorite folders: a refused name shows the native message and keeps the picker open; the picker offers search', async () => {
+  server(); const root = await mount();
+  folders = [{ id: id_(600), name: 'Ghế', contentDomain: '3dmodels' }];
+  const groups = () => [...document.querySelectorAll('.group')];
+  const type = async (el, value) => { await act(async () => { Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value').set.call(el, value); el.dispatchEvent(new dom.window.Event('input', { bubbles: true })); await flush(); }); };
+  // Reload so the hook reads the preset folder.
+  await act(() => root.unmount()); const second = await mount();
+  await act(async () => { groups()[0].querySelector('button[aria-label$="yêu thích"]').click(); await flush(); });
+  const dialog = () => document.querySelector('[role=dialog]');
+  assert.deepEqual([...dialog().querySelectorAll('input[type=radio]')].map(r => r.parentElement.textContent), ['Default', 'Ghế']);
+  await type(dialog().querySelector('input[type=search]'), 'gh');
+  assert.deepEqual([...dialog().querySelectorAll('input[type=radio]')].map(r => r.parentElement.textContent), ['Ghế'], 'search narrows the folders');
+  await act(async () => { [...dialog().querySelectorAll('button')].find(b => b.textContent.includes('Tạo thư mục mới')).click(); await flush(); });
+  await type(dialog().querySelector('input[aria-label="Tên thư mục"]'), 'GHẾ');
+  await act(async () => { [...dialog().querySelectorAll('button')].find(b => b.textContent === 'Tạo').click(); await flush(); });
+  assert.match(dialog().querySelector('[role=alert]').textContent, /Đã có thư mục tên này/);
+  assert.ok(dialog(), 'the picker stays open after a refusal');
+  await act(async () => { dialog().querySelector('button[aria-label="Đóng"]').click(); await flush(); });
+  assert.equal(dialog(), null, 'closes without saving');
+  assert.equal(calls.some(c => c.method === 'library.setFavoriteFolder'), false);
+  await done(second);
 });
 
 test('favorites survive remount, are scoped to the current Models/Scenes tab, and a failed save rolls back with a message', async () => {
@@ -412,7 +569,7 @@ test('favorites survive remount, are scoped to the current Models/Scenes tab, an
   assert.equal(button('Yêu thích').textContent, 'Yêu thích', 'a Model favorite is not counted in Scenes');
   await act(async () => { button('Models').click(); await flush(); });
   failFavorite = true;
-  const card = [...document.querySelectorAll('.group')][2];
+  const card = [...document.querySelectorAll('.group')][1]; // Sofa One, the favorite: un-favoriting fails and rolls back
   await act(async () => { card.querySelector('button[aria-label$="yêu thích"]').click(); await flush(); });
   await act(flush);
   assert.match(document.querySelector('[role="alert"]').textContent, /Không lưu được yêu thích/);

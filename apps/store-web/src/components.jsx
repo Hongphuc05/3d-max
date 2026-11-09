@@ -84,7 +84,8 @@ export function Filters({ categories, subs, setSubs, renderers, setRenderers, re
 
 // Nut Download trong 3ds Max: Download = tai goi ve may roi import vao scene (1 lan bam).
 // Tren trinh duyet khong co Download (O7) -> component nay khong render.
-export function Preview({ source, name, lazy = false }) {
+// fit='cover': phu kin o vuong (cat rim). natural: giu ti le goc cua anh (khong ep vuong). Mac dinh giu hanh vi cu (vuong, contain).
+export function Preview({ source, name, lazy = false, fit = 'contain', natural = false }) {
   // State is keyed by the source it describes, so a change of source needs no reset effect. A reset effect ran
   // after an already cached image fired its load event and left the preview invisible (blank cards after F5).
   const [loadedSource, setLoadedSource] = useState(null);
@@ -98,5 +99,5 @@ export function Preview({ source, name, lazy = false }) {
   if (!source || failed) return <div className="grid aspect-square w-full place-items-center bg-raised font-mono text-xs text-mute">Chưa có ảnh preview</div>;
   return <img ref={mark} src={source} alt={name} loading={lazy ? 'lazy' : undefined}
     onLoad={() => setLoadedSource(source)} onError={() => setFailedSource(source)}
-    className={`aspect-square size-full object-contain transition duration-300 group-hover:scale-105 ${loaded ? 'opacity-100' : 'opacity-0'}`} />;
+    className={`${natural ? 'h-auto w-full' : `aspect-square size-full ${fit === 'cover' ? 'object-cover' : 'object-contain'}`} transition duration-300 group-hover:scale-105 ${loaded ? 'opacity-100' : 'opacity-0'}`} />;
 }

@@ -66,7 +66,12 @@ export const getDownloadedModels = () => call('library.downloads', {}, 20000);
 export const getLibrarySettings = () => call('library.settings', {}, 20000);
 export const getFavorites = () => call('library.favorites', {}, 20000);
 export const setFavorite = (modelId, favorite) => call('library.setFavorite', { modelId, favorite }, 20000);
-export const chooseDownloadDirectory = (contentDomain = '3dmodels') => call('library.chooseDownloadDirectory', { contentDomain }, 10 * 60 * 1000);
+// Thu muc yeu thich: moi model nam trong dung 1 thu muc ("default" la thu muc co san). Moi ham tra ve toan bo trang thai {favorites, folders, assignments}.
+export const setFavoriteFolder = (modelId, folderId) => call('library.setFavoriteFolder', { modelId, folderId }, 20000);
+export const createFavoriteFolder = (name, contentDomain) => call('library.createFavoriteFolder', { name, contentDomain }, 20000);
+export const renameFavoriteFolder = (folderId, name) => call('library.renameFavoriteFolder', { folderId, name }, 20000);
+export const deleteFavoriteFolder = (folderId) => call('library.deleteFavoriteFolder', { folderId }, 20000);
+export const chooseDownloadDirectory =(contentDomain = '3dmodels') => call('library.chooseDownloadDirectory', { contentDomain }, 10 * 60 * 1000);
 
 export const getLibraryStatus = () => call('library.status', {}, 20000);
 export const refreshLibrary = () => call('library.refresh', {}, 60000);

@@ -8,6 +8,14 @@ export function installMockHost() {
   let downloadDirectory = localStorage.getItem('3dsmood.mock.directory') || 'D:\\3DS Mood';
   let sceneDownloadDirectory = localStorage.getItem('3dsmood.mock.sceneDirectory') || 'D:\\3DS Mood\\Scenes';
   let favorites = JSON.parse(localStorage.getItem('3dsmood.mock.favorites') || '[]');
+  let folders = JSON.parse(localStorage.getItem('3dsmood.mock.favoriteFolders') || '[]');
+  let assignments = JSON.parse(localStorage.getItem('3dsmood.mock.favoriteAssignments') || '{}');
+  const favoriteState = () => {
+    localStorage.setItem('3dsmood.mock.favorites', JSON.stringify(favorites));
+    localStorage.setItem('3dsmood.mock.favoriteFolders', JSON.stringify(folders));
+    localStorage.setItem('3dsmood.mock.favoriteAssignments', JSON.stringify(assignments));
+    return { favorites, folders, assignments };
+  };
   const send = (data, delay) => setTimeout(() => listeners.forEach((f) => f({ data })), delay);
 
   window.chrome = window.chrome || {};
@@ -29,11 +37,29 @@ export function installMockHost() {
         case 'library.importOptions':
           if (!models.some(m => m.modelId === params.modelId)) return fail('MODEL_NOT_DOWNLOADED', 'Model chưa có trên máy.');
           return ok({ options: [{ optionId: 'a'.repeat(64), label: 'model.max', relativePath: 'model.max', format: 'max' }] });
-        case 'library.favorites': return ok({ favorites });
+        case 'library.favorites': return ok({ favorites, folders, assignments });
         case 'library.setFavorite':
           favorites = [...favorites.filter(f => f !== params.modelId.toLowerCase()), ...(params.favorite ? [params.modelId.toLowerCase()] : [])];
-          localStorage.setItem('3dsmood.mock.favorites', JSON.stringify(favorites));
-          return ok({ favorites });
+          if (!params.favorite) delete assignments[params.modelId.toLowerCase()];
+          return ok(favoriteState());
+        case 'library.setFavoriteFolder': {
+          const model = params.modelId.toLowerCase();
+          if (!favorites.includes(model)) favorites = [...favorites, model];
+          if (params.folderId === 'default') delete assignments[model]; else assignments[model] = params.folderId;
+          return ok(favoriteState());
+        }
+        case 'library.createFavoriteFolder':
+          folders = [...folders, { id: crypto.randomUUID(), name: params.name.trim(), contentDomain: params.contentDomain }];
+          return ok(favoriteState());
+        case 'library.renameFavoriteFolder':
+          folders = folders.map(f => f.id === params.folderId ? { ...f, name: params.name.trim() } : f);
+          return ok(favoriteState());
+        case 'library.deleteFavoriteFolder': {
+          const members = Object.keys(assignments).filter(m => assignments[m] === params.folderId);
+          favorites = favorites.filter(m => !members.includes(m)); members.forEach(m => delete assignments[m]);
+          folders = folders.filter(f => f.id !== params.folderId);
+          return ok(favoriteState());
+        }
         case 'library.settings': return ok({ downloadDirectory, sceneDownloadDirectory });
         case 'library.chooseDownloadDirectory':
           if (params.contentDomain === '3dscenes') {
