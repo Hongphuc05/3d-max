@@ -1,4 +1,4 @@
-// In-panel update: version compare, verified download, zip-slip safe unpack, restart-script guard.
+// In-panel update: version compare, verified download, zip-slip safe unpack, restart-required state.
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -104,12 +104,17 @@ class PluginUpdateTests
             }
             Check(!File.Exists(Path.Combine(work, "evil.txt")) && !File.Exists(Path.Combine(Path.GetDirectoryName(work), "evil.txt")), "nothing written outside destination");
 
-            var refused = false;
-            try { service.WriteRestartScript(Path.Combine(install, "notmax.exe")); } catch (InvalidDataException) { refused = true; }
-            Check(refused, "restart script refuses non-3dsmax executable");
-            var fakeMax = Path.Combine(install, "3dsmax.exe"); File.WriteAllText(fakeMax, "x");
-            var script = File.ReadAllText(service.WriteRestartScript(fakeMax));
-            Check(script.Contains("Get-Process -Name 3dsmax") && script.Contains("Start-Process -FilePath $MaxExe") && script.All(c => c < 128), "restart script waits for all Max then starts one (ASCII)");
+            // Installed but Max not restarted yet: the loaded DLL still reports the old version, so the panel must not offer the update again.
+            fake.Reply = Server(Latest("1.5.0", pkg), pkg);
+            PluginUpdateService.ClearPendingRestart();
+            Check(!(await service.CheckAsync(CancellationToken.None)).RestartRequired, "nothing pending before an install");
+            PluginUpdateService.MarkInstalled("1.5.0");
+            var pending = await service.CheckAsync(CancellationToken.None);
+            Check(pending.RestartRequired && !pending.UpdateAvailable && pending.Current == "1.4.4", "after installing 1.5.0 the panel asks for a restart instead of offering the update again");
+            fake.Reply = Server(Latest("1.6.0", pkg), pkg);
+            var newer = await service.CheckAsync(CancellationToken.None);
+            Check(!newer.RestartRequired && newer.UpdateAvailable, "a release newer than the one installed offers an update again");
+            PluginUpdateService.ClearPendingRestart();
         }
         finally { Directory.Delete(work, true); Directory.Delete(install, true); }
         Console.WriteLine("All PluginUpdate tests passed.");

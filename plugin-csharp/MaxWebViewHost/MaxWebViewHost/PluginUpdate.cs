@@ -20,10 +20,12 @@ namespace MaxWebViewHost
         public string Sha256 { get; set; }
         public long Size { get; set; }
         public bool UpdateAvailable { get; set; }
+        /// <summary>This release (or a newer one) is already installed but the running Max still has the old DLL loaded.</summary>
+        public bool RestartRequired { get; set; }
     }
 
     /// <summary>Update check + verified download of the release MZP. No Max types here: the install itself is done by Max (install.ms),
-    /// this class only fetches, verifies and unpacks the package and builds the restart script.</summary>
+    /// this class only fetches, verifies and unpacks the package. Max is never closed or restarted from here.</summary>
     internal sealed class PluginUpdateService
     {
         internal const string PackagePath = "/download/3dsmood-library.mzp";
@@ -31,6 +33,10 @@ namespace MaxWebViewHost
         private const long MaxExtractedBytes = 2L * 1024 * 1024 * 1024;
         private static readonly Regex Version = new Regex(@"^\d+\.\d+\.\d+([-.][A-Za-z0-9.-]+)?$", RegexOptions.CultureInvariant);
         private static readonly Regex Hex64 = new Regex("^[0-9a-f]{64}$", RegexOptions.CultureInvariant);
+        // Static: survives closing and reopening the panel. The loaded DLL (and so InstalledVersion) stays old until Max restarts.
+        private static string pendingRestartVersion;
+        internal static void MarkInstalled(string version) { pendingRestartVersion = version; }
+        internal static void ClearPendingRestart() { pendingRestartVersion = null; }
         private readonly BackendApi api, bulkApi;
         private readonly string installDirectory, workRoot;
 
@@ -81,8 +87,9 @@ namespace MaxWebViewHost
                 || !body.TryGetValue("size", out size) || !(size is int || size is long))
                 throw ApiException.Unavailable();
             var current = InstalledVersion();
+            var installedAlready = pendingRestartVersion != null && !IsNewer(pendingRestartVersion, (string)version);
             return new UpdateStatus { Current = current, Latest = (string)version, Sha256 = ((string)sha).ToLowerInvariant(), Size = Convert.ToInt64(size),
-                UpdateAvailable = IsNewer(current, (string)version) };
+                RestartRequired = installedAlready, UpdateAvailable = !installedAlready && IsNewer(current, (string)version) };
         }
 
         /// <summary>Downloads the MZP, verifies size + SHA256 against the API, unpacks it into a fresh folder and returns that folder
@@ -155,31 +162,6 @@ namespace MaxWebViewHost
                     try { Directory.Delete(dir, true); } catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { }
             }
             catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { }
-        }
-
-        /// <summary>Writes the restart script and starts it detached: it waits until EVERY 3dsmax.exe has exited (up to 5 minutes, so a
-        /// "Save changes?" prompt can be answered) and then starts an empty Max. Does not close anything itself.</summary>
-        internal string WriteRestartScript(string maxExecutable)
-        {
-            if (!string.Equals(Path.GetFileName(maxExecutable), "3dsmax.exe", StringComparison.OrdinalIgnoreCase) || !File.Exists(maxExecutable))
-                throw new InvalidDataException("Không xác định được 3dsmax.exe.");
-            Directory.CreateDirectory(workRoot);
-            var script = Path.Combine(workRoot, "restart-max.ps1");
-            File.WriteAllText(script, string.Join("\r\n", new[] {
-                "param([string]$MaxExe)",
-                "# Wait for all 3ds Max processes to exit, then start an empty Max.",
-                "$deadline = (Get-Date).AddMinutes(5)",
-                "while ((Get-Process -Name 3dsmax -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }",
-                "if (Get-Process -Name 3dsmax -ErrorAction SilentlyContinue) { exit 1 }",
-                "Start-Process -FilePath $MaxExe", "" }), new System.Text.UTF8Encoding(false));
-            return script;
-        }
-
-        public static void StartDetached(string script, string maxExecutable)
-        {
-            Process.Start(new ProcessStartInfo("powershell.exe",
-                "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + script + "\" -MaxExe \"" + maxExecutable + "\"")
-            { UseShellExecute = false, CreateNoWindow = true }).Dispose();
         }
     }
 }

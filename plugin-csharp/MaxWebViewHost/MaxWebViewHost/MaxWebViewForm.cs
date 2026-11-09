@@ -38,8 +38,10 @@ namespace MaxWebViewHost
     // Native owner-drawn selector keeps the connection strip dark, including its popup.
     internal sealed class SceneTargetPicker : ComboBox
     {
-        private static readonly Color Surface = Color.FromArgb(16, 16, 20);
-        private static readonly Color Accent = Color.FromArgb(106, 190, 164);
+        // 3dsMood brand: near-black bar (#121214), logo red (#8f120d) for the outline and selection, lighter red (#e5484d) for text.
+        private static readonly Color Surface = Color.FromArgb(18, 18, 20);
+        private static readonly Color Accent = Color.FromArgb(229, 72, 77);
+        private static readonly Color Brand = Color.FromArgb(143, 18, 13);
 
         public SceneTargetPicker()
         {
@@ -83,7 +85,7 @@ namespace MaxWebViewHost
             var text = target == null ? Items[e.Index].ToString() : target.DisplayName
                 + (collapsed ? "" : " | PID " + target.ProcessId)
                 + (target.IsReady ? "" : " · chưa sẵn sàng");
-            using (var background = new SolidBrush(selected ? Color.FromArgb(28, 43, 41) : Surface))
+            using (var background = new SolidBrush(selected ? Color.FromArgb(44, 17, 16) : Surface))
                 e.Graphics.FillRectangle(background, e.Bounds);
             var bounds = new Rectangle(e.Bounds.X + 15, e.Bounds.Y, Math.Max(0, e.Bounds.Width - (collapsed ? 45 : 25)), e.Bounds.Height);
             TextRenderer.DrawText(e.Graphics, text, Font, bounds,
@@ -98,7 +100,7 @@ namespace MaxWebViewHost
             if ((m.Msg != 0x000F && !printing) || !IsHandleCreated) return;
             using (var graphics = printing && m.WParam != IntPtr.Zero ? Graphics.FromHdc(m.WParam) : Graphics.FromHwnd(Handle))
             using (var surface = new SolidBrush(Surface))
-            using (var border = new Pen(Accent))
+            using (var border = new Pen(Brand))
             using (var divider = new Pen(Color.FromArgb(44, 44, 48)))
             using (var arrow = new SolidBrush(ForeColor))
             {
@@ -141,7 +143,7 @@ namespace MaxWebViewHost
         public static string HostVersion = "unknown";
 
         private bool _updating;
-        private string _updateScript, _updateMaxExe;
+        private string _updateVersion;
 
         /// <summary>Method allowlist. Web gọi method ngoài danh sách này thì bị từ chối ngay tại native,
         /// không tới được MAXScript. MAXScript có thể .Add thêm khi implement handler mới.</summary>
@@ -173,7 +175,7 @@ namespace MaxWebViewHost
         private readonly Button _focusMaxButton = new Button
         {
             Text = "Focus 3ds Max", Dock = DockStyle.Fill, FlatStyle = FlatStyle.Flat,
-            BackColor = Color.FromArgb(21, 21, 23), ForeColor = Color.FromArgb(225, 225, 222),
+            BackColor = Color.FromArgb(18, 18, 20), ForeColor = Color.FromArgb(225, 225, 222),
             Font = new Font("Consolas", 12), Cursor = Cursors.Hand, Enabled = false
         };
         private Task _targetRefreshTask = Task.CompletedTask;
@@ -199,7 +201,7 @@ namespace MaxWebViewHost
         private readonly Timer _connectionTimer = new Timer { Interval = 15000 };
         private bool _checkingConnection;
         private bool _appLoaded;
-        private readonly Panel _connectionPanel = new Panel { Dock = DockStyle.Fill, BackColor = System.Drawing.Color.FromArgb(17, 21, 23) };
+        private readonly Panel _connectionPanel = new Panel { Dock = DockStyle.Fill, BackColor = System.Drawing.Color.FromArgb(12, 12, 12) };
         private readonly Label _connectionMessage = new Label { Dock = DockStyle.Fill, ForeColor = System.Drawing.Color.White,
             TextAlign = System.Drawing.ContentAlignment.MiddleCenter, Font = new System.Drawing.Font("Segoe UI", 12), Padding = new Padding(30) };
         private readonly Button _connectionRetry = new Button { Dock = DockStyle.Bottom, Height = 44, Text = "Thử lại kết nối" };
@@ -229,7 +231,7 @@ namespace MaxWebViewHost
             var toolbar = new TableLayoutPanel
             {
                 Name = "ConnectionToolbar", Dock = DockStyle.Top, Height = 64, ColumnCount = 3, RowCount = 1,
-                BackColor = Color.FromArgb(22, 22, 24), Padding = new Padding(12, 9, 12, 9)
+                BackColor = Color.FromArgb(18, 18, 20), Padding = new Padding(12, 9, 12, 9)
             };
             toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 37));
             toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 63));
@@ -238,8 +240,8 @@ namespace MaxWebViewHost
             _target.Margin = new Padding(0, 0, 12, 0);
             _targetPicker.Margin = new Padding(0, 0, 12, 0);
             _focusMaxButton.Margin = Padding.Empty;
-            _focusMaxButton.FlatAppearance.BorderColor = Color.FromArgb(55, 55, 59);
-            _focusMaxButton.FlatAppearance.MouseOverBackColor = Color.FromArgb(35, 41, 39);
+            _focusMaxButton.FlatAppearance.BorderColor = Color.FromArgb(143, 18, 13);
+            _focusMaxButton.FlatAppearance.MouseOverBackColor = Color.FromArgb(44, 17, 16);
             _focusMaxButton.Click += (s, e) =>
             {
                 if (!ImportTargetDiscovery.Focus(_targetSelection.Current))
@@ -691,7 +693,7 @@ namespace MaxWebViewHost
                 {
                     deadline.CancelAfter(TimeSpan.FromSeconds(15));
                     var status = await _v3.Update.CheckAsync(deadline.Token).ConfigureAwait(false);
-                    PostResponse(id, true, new { current = status.Current, latest = status.Latest, updateAvailable = status.UpdateAvailable }, null);
+                    PostResponse(id, true, new { current = status.Current, latest = status.Latest, updateAvailable = status.UpdateAvailable, restartRequired = status.RestartRequired }, null);
                 }
             }
             catch (ApiException e) { PostError(id, e.Code, e.Message); }
@@ -703,9 +705,8 @@ namespace MaxWebViewHost
             if (IsDisposed || Disposing || !_requestDocuments.ContainsKey(id)) return;
             if (_v3 == null) { PostError(id, "LIBRARY_NOT_CONFIGURED", "Thư viện chưa sẵn sàng. Mở lại panel rồi thử lại."); return; }
             if (_updating) { PostError(id, "UPDATE_BUSY", "Đang cập nhật."); return; }
-            int windows;
-            using (var self = Process.GetCurrentProcess()) windows = Process.GetProcessesByName(self.ProcessName).Length;
-            var yes = MessageBox.Show(this, "Cập nhật 3dsmood sẽ đóng TẤT CẢ cửa sổ 3ds Max đang mở (" + windows + ") rồi mở lại 3ds Max trống.\n\nHãy lưu scene trước khi tiếp tục. Tiếp tục cập nhật?",
+            // Nothing is closed for the user: after installing they must close and reopen Max themselves, so remind them to save first.
+            var yes = MessageBox.Show(this, "Sau khi cập nhật xong, bạn cần đóng và mở lại 3ds Max để dùng bản mới.\n\nHãy lưu lại công việc đang làm trước khi tiếp tục. Tiếp tục cập nhật?",
                 "3dsmood", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
             if (!yes) { PostError(id, "UPDATE_CANCELLED", "Đã hủy cập nhật."); return; }
             _updating = true;
@@ -723,6 +724,7 @@ namespace MaxWebViewHost
                 {
                     cancellation.CancelAfter(TimeSpan.FromMinutes(30));
                     var status = await _v3.Update.CheckAsync(cancellation.Token).ConfigureAwait(false);
+                    if (status.RestartRequired) { PostError(id, "UPDATE_RESTART_REQUIRED", "Đã cài bản mới. Hãy đóng và mở lại 3ds Max để dùng."); return; }
                     if (!status.UpdateAvailable) { PostError(id, "UPDATE_NOT_NEEDED", "Phiên bản hiện tại là mới nhất."); return; }
                     var clock = Stopwatch.StartNew();
                     var directory = await _v3.Update.PrepareAsync(status, (received, total) =>
@@ -730,10 +732,7 @@ namespace MaxWebViewHost
                         if (clock.ElapsedMilliseconds < 200 && received != total) return;
                         clock.Restart(); PostProgress(id, received, total);
                     }, cancellation.Token).ConfigureAwait(false);
-                    string maxExe;
-                    using (var self = Process.GetCurrentProcess()) maxExe = self.MainModule.FileName;
-                    _updateScript = _v3.Update.WriteRestartScript(maxExe);
-                    _updateMaxExe = maxExe;
+                    _updateVersion = status.Latest;
                     handedOver = true;
                     BeginInvoke(new Action(() =>
                     {
@@ -753,22 +752,21 @@ namespace MaxWebViewHost
             finally { if (!handedOver) _updating = false; }
         }
 
-        /// <summary>Called by MAXScript (update.install) AFTER install.ms succeeded: start the restart script, ask every 3ds Max to close
-        /// (each one can still show its own "Save changes?" prompt), then this one.</summary>
-        public void RestartMaxForUpdate()
+        /// <summary>Called by MAXScript (update.install) AFTER install.ms succeeded. Nothing is closed or restarted here: the new files only load
+        /// when Max starts, so remember that (the panel then reports "restart required") and ask the user to restart Max.</summary>
+        public void NotifyUpdateInstalled()
         {
-            if (_updateScript == null || _updateMaxExe == null) return;
+            if (_updateVersion == null) return;
+            var version = _updateVersion;
+            PluginUpdateService.MarkInstalled(version);
             try
             {
-                PluginUpdateService.StartDetached(_updateScript, _updateMaxExe);
-                using (var self = Process.GetCurrentProcess())
-                {
-                    foreach (var other in Process.GetProcessesByName(self.ProcessName))
-                        using (other) { if (other.Id != self.Id) try { other.CloseMainWindow(); } catch (Exception e) when (e is InvalidOperationException || e is System.ComponentModel.Win32Exception) { } }
-                    self.CloseMainWindow();
-                }
+                // Post it so the MAXScript handler that called us returns first; the dialog is modal.
+                BeginInvoke(new Action(() => MessageBox.Show(this,
+                    "Đã cập nhật 3dsmood lên bản " + version + ".\n\nHãy đóng và khởi động lại 3ds Max để dùng bản mới. Bản cũ vẫn chạy bình thường cho tới khi bạn khởi động lại.",
+                    "3dsmood", MessageBoxButtons.OK, MessageBoxIcon.Information)));
             }
-            catch (Exception e) { Debug.WriteLine("[update] restart: " + e.GetType().Name); }
+            catch (InvalidOperationException) { /* form already closing */ }
         }
 
         private async Task HandleLibraryMethodAsync(string id, string method, Dictionary<string, object> parameters)
