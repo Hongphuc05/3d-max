@@ -252,7 +252,7 @@ export default function PluginApp({ orderPollMs }) {
             </div>
           )}
 
-          <div className="min-h-0 flex-1 overflow-y-scroll pl-3 pr-5 pb-3">
+          <div className="min-h-0 flex-1 overflow-y-scroll pl-3 pr-7 pb-3">
             {tab === 'done' && downloads.error && <p role="alert" className="py-3 text-sm text-danger">{downloads.error}</p>}
             {favorites.error && <p role="alert" className="py-3 text-sm text-danger">{favorites.error}</p>}
             {tab !== 'done' && state === 'error' && (
