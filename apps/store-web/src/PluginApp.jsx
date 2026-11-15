@@ -6,7 +6,7 @@ import { matchesCategory } from './catalog-view.js';
 import { HostBar } from './HostBar.jsx';
 import { Icon } from './icons.jsx';
 import { applyPluginUpdate, checkPluginUpdate, getLibraryStatus, isMaxHost, refreshLibrary } from './integrations/3dsmax/bridge.js';
-import { BuyLibrary, PluginCard, PluginDetail } from './plugin-components.jsx';
+import { BuyLibrary, PluginCard } from './plugin-components.jsx';
 import OrderDialog from './OrderDialog.jsx';
 import { Queue } from './Queue.jsx';
 import { useJobs } from './queue.js';
@@ -157,7 +157,6 @@ export default function PluginApp({ orderPollMs }) {
     return counts;
   }, [liked, favorites.assignments]);
   const likedShown = useMemo(() => folder === 'all' ? liked : liked.filter(p => (favorites.assignments[p.id.toLowerCase()] ?? DEFAULT_FOLDER) === folder), [liked, folder, favorites.assignments]);
-  const active = useMemo(() => (tab === 'done' ? mine : tab === 'fav' ? likedShown : products).find(p => p.id === activeId) || null, [products, mine, likedShown, tab, activeId]);
   const listReady = tab === 'done' || state === 'ready';
   const rows = useMemo(() => {
     const needle = text.trim().toLowerCase();
@@ -245,7 +244,7 @@ export default function PluginApp({ orderPollMs }) {
             </select>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-auto px-3 pb-3">
+          <div className="min-h-0 flex-1 overflow-y-scroll pl-3 pr-5 pb-3">
             {tab === 'done' && downloads.error && <p role="alert" className="py-3 text-sm text-danger">{downloads.error}</p>}
             {favorites.error && <p role="alert" className="py-3 text-sm text-danger">{favorites.error}</p>}
             {tab !== 'done' && state === 'error' && (
@@ -262,7 +261,7 @@ export default function PluginApp({ orderPollMs }) {
               </p>
             )}
             {tab !== 'done' && state === 'loading' && max && <p role="status" className="py-2 text-center font-mono text-xs text-mute">Lần đầu mở: đang tải catalog từ máy chủ (cần Internet)…</p>}
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-2.5">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] min-[900px]:grid-cols-[repeat(10,minmax(0,1fr))] gap-2.5">
               {!listReady && state === 'loading'
                 ? Array.from({ length: 18 }, (_, i) => <div key={i} className="aspect-[3/4] animate-pulse rounded-lg bg-panel" />)
                 : view.map((p) => <PluginCard key={p.id} p={p} active={activeId === p.id} onOpen={(m) => setActiveId(m.id)} ctx={ctx} />)}
@@ -278,7 +277,6 @@ export default function PluginApp({ orderPollMs }) {
           )}
         </main>
 
-        <PluginDetail p={active} onClose={() => setActiveId(null)} ctx={ctx} />
       </div>
       {/* Thanh toan xong (chu xac nhan) -> tai lai catalog + quyen: nut chuyen sang Download khong can bam Lam moi. */}
       {buying && <OrderDialog pollMs={orderPollMs} onClose={() => setBuying(false)} onConfirmed={() => setReloadKey((k) => k + 1)} />}

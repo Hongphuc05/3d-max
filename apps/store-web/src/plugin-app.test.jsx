@@ -269,23 +269,6 @@ test('library.updated adds the new model while keeping the search text, the sele
   await act(flush); await act(flush);
   assert.equal(document.querySelectorAll('.group').length, 3, 'the new "Sofa Three" appeared');
   assert.equal(input.value, 'sofa', 'search text kept');
-  assert.match(document.querySelector('h2').textContent, /Sofa Two/, 'the selected model stays selected');
-  await done(root);
-});
-
-test('the open detail panel closes when its model disappears from the catalog', async () => {
-  server(); const root = await mount();
-  await act(async () => { [...document.querySelectorAll('.group')][0].querySelector('button').click(); await flush(); });
-  assert.match(document.querySelector('h2').textContent, /Bed One/);
-  const original = globalThis.fetch;
-  globalThis.fetch = async (url, init) => {
-    if (String(url) === '/api/v1/catalog') return json({ catalogVersion: 3, models: [{ id: id(101), name: 'Sofa One', categoryId: id(1), sizeBytes: 1048576, fileType: 'rar', status: 'PUBLISHED' }] });
-    return original(url, init);
-  };
-  await act(async () => { emit('library.updated', {}); await flush(); });
-  await act(flush);
-  assert.equal(document.querySelector('h2'), null);
-  globalThis.fetch = original;
   await done(root);
 });
 
@@ -369,7 +352,7 @@ test('device popup: cancelling the confirmation returns to the update button; a 
   await done(root);
 });
 
-test('card: hovering the image shows an image-only popup beside it; the heart appears on hover only until chosen; Scenes fill the square', async () => {
+test('card: hovering the image zooms it in place (no popup); the heart appears on hover only until chosen; Scenes fill the square', async () => {
   const { PluginCard } = await import('./plugin-components.jsx');
   const fav = new Set(); const toggles = [];
   const ctx = () => ({ max: true, entitlements: { allModels: true }, offline: false, local: false, downloadedIds: new Set(), onBuy() {}, onDownloaded() {},
@@ -379,18 +362,11 @@ test('card: hovering the image shows an image-only popup beside it; the heart ap
   const host = document.createElement('div'); document.body.appendChild(host);
   const root = createRoot(host);
   const render = async (p) => { await act(async () => { root.render(<PluginCard p={p} active={false} onOpen={() => {}} ctx={ctx()} />); await flush(); }); };
-  const imageButton = () => host.querySelector('button.aspect-square');
-  const fire = (el, type) => el.dispatchEvent(new dom.window.MouseEvent(type, { bubbles: true }));
+  const imageButton = () => host.querySelector('button.hover\\:scale-125');
 
   await render(product());
-  assert.equal(document.querySelector('[data-testid="hover-preview"]'), null, 'no popup before hovering');
-  await act(async () => { fire(imageButton(), 'mouseover'); await flush(); });
-  const popup = document.querySelector('[data-testid="hover-preview"]');
-  assert.ok(popup, 'popup shows on hover');
-  assert.equal(popup.querySelectorAll('img').length, 1); assert.equal(popup.querySelector('img').getAttribute('src'), '/previews/large.webp', 'the large image, nothing else in it');
-  assert.equal(popup.textContent, '', 'the popup carries no text');
-  await act(async () => { fire(imageButton(), 'mouseout'); await flush(); });
-  assert.equal(document.querySelector('[data-testid="hover-preview"]'), null, 'popup closes when the pointer leaves');
+  assert.equal(document.querySelector('[data-testid="hover-preview"]'), null, 'no side popup');
+  assert.match(imageButton().className, /hover:scale-125/, 'the image zooms in place');
 
   const heart = () => host.querySelector('button[aria-label$="yêu thích"]');
   assert.match(heart().className, /opacity-0/); assert.match(heart().className, /group-hover:opacity-100/, 'not yet favorite: heart only on hover');
@@ -403,23 +379,6 @@ test('card: hovering the image shows an image-only popup beside it; the heart ap
   assert.match(host.querySelector('img').className, /object-contain/, 'Models keep contain');
   await render(product({ contentDomain: '3dscenes' }));
   assert.match(host.querySelector('img').className, /object-cover/, 'Scenes fill the square');
-  await render(product({ image: null, thumb: null }));
-  await act(async () => { fire(imageButton(), 'mouseover'); await flush(); });
-  assert.equal(document.querySelector('[data-testid="hover-preview"]'), null, 'no image, no popup');
-  await act(() => root.unmount()); host.remove();
-});
-
-test('a Scenes detail panel shows the image at its own proportions; Models keep the square', async () => {
-  const { PluginDetail } = await import('./plugin-components.jsx');
-  const host = document.createElement('div'); document.body.appendChild(host);
-  const root = createRoot(host);
-  const ctx = { max: false, entitlements: null, local: false, downloadedIds: new Set() };
-  const p = (domain) => ({ id: id(202), name: 'Wide', image: '/previews/wide.webp', thumb: '/previews/wide.webp', category: 'A', subcategory: 'B',
-    info: { sizeMB: 1, renderers: [], formats: [] }, contentDomain: domain });
-  for (const [domain, expected] of [['3dscenes', /h-auto w-full/], ['3dmodels', /aspect-square/]]) {
-    await act(async () => { root.render(<PluginDetail p={p(domain)} onClose={() => {}} ctx={ctx} />); await flush(); });
-    assert.match(host.querySelector('img').className, expected, domain);
-  }
   await act(() => root.unmount()); host.remove();
 });
 
