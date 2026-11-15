@@ -365,3 +365,7 @@ Kiểm tra trực tiếp trên VPS (chỉ đọc): DB có **125 danh mục 3dmod
 ### 2026-11-15 — Lưới plugin co giãn theo cửa sổ, MZP 1.5.8 (chưa phát hành, chưa thử trong Max thật)
 
 Lỗi: từ 900px lưới bị ép đúng 10 cột nên cửa sổ nhỏ (~1089px) thẻ chỉ còn ~67px, nút Download tràn khỏi thẻ. Sửa trong `PluginApp.jsx`: lưới chỉ dùng `auto-fill` với thẻ tối thiểu 112px (số cột tự đổi theo cửa sổ), lề phải `pr-3` và chỉ giữ `pr-[100px]` từ 1500px trở lên (ngưỡng 1500px là ước lượng của tôi, quyết định 100px ban đầu thuộc nhánh ui/plugin-polish). Đo bằng Edge headless + vite + API thật (`?mockMax=1`): 560px = 4 cột, 1089px = 7 cột, 1887px = 13 cột, không tràn. Web 192/192. Chưa đo trong WebView2 của Max.
+
+### 2026-11-15 � L? ph?i 50px v� footer ph�n trang m?i (chua ph�t h�nh, chua th? trong Max th?t)
+
+(1) Kho?ng tr?ng b�n ph?i lu?i model l� `pr-[100px]` (+ thanh cu?n ~15px, kh?p ~105px trong ?nh); t? c?a s? >= 1500px gi? c�n `pr-[50px]`, du?i 1500px v?n `pr-3`. (2) `Pagination.jsx`: thanh ph�n trang can gi?a, d?i trang g?m 3 trang d?u, 3 trang cu?i v� trang hi?n t?i +-1 (v� d? `1 2 3 � 9 10 11`; n?u ch? ?n 1 trang th� hi?n lu�n trang d�), trang hi?n t?i c� vi?n tr?ng; � nh?p s? b�n ph?i d?i th�nh nh�n "Nh?p s? trang" + dropdown li?t k� m?i trang, ch?n l� nh?y t?i trang d� (b?n ch?n phuong �n n�y, ?nh m?u kh�ng n�i r�). Test m?i `pagination.test.jsx`; web 194/194. �� ch?p b?ng Edge headless ? 1600px, kh?p ?nh m?u.
