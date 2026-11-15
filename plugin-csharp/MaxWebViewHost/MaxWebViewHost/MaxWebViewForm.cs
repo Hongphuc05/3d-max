@@ -151,6 +151,13 @@ namespace MaxWebViewHost
             catch (Exception e) when (e is ArgumentException || e is IOException) { Debug.WriteLine("[icon] " + e.GetType().Name); }
         }
 
+        // Own taskbar button (icon M) instead of being grouped under 3dsmax.exe; set before the window is first shown.
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            if (!TaskbarIdentity.Apply(Handle, TaskbarIdentity.PanelId)) Debug.WriteLine("[taskbar] AppUserModelID not set; panel stays grouped with Max");
+        }
+
         private static ImportTarget CurrentOwnerProcess()
         {
             using (var process = Process.GetCurrentProcess())
