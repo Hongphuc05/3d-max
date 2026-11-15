@@ -16,6 +16,9 @@ export function installMockHost() {
     localStorage.setItem('3dsmood.mock.favoriteAssignments', JSON.stringify(assignments));
     return { favorites, folders, assignments };
   };
+  const targets = [{ id: 't1', label: 'Untitled | 3ds Max 2022', pid: 1001 }, { id: 't2', label: 'Living_room.max | 3ds Max 2022', pid: 1002 }];
+  let currentId = 't1';
+  const targetState = () => ({ targets, currentId, focusEnabled: currentId !== null });
   const send = (data, delay) => setTimeout(() => listeners.forEach((f) => f({ data })), delay);
 
   window.chrome = window.chrome || {};
@@ -70,6 +73,13 @@ export function installMockHost() {
             localStorage.setItem('3dsmood.mock.directory', downloadDirectory);
           }
           return ok({ downloadDirectory, sceneDownloadDirectory });
+        case 'host.listTargets': return ok(targetState());
+        case 'host.selectTarget':
+          if (!targets.some(t => t.id === params.id)) return fail('INVALID_PARAMS', 'Target không hợp lệ.');
+          currentId = params.id;
+          send({ event: 'host.targetsChanged', data: targetState() }, 200);
+          return ok(targetState());
+        case 'host.focusMax': return ok({ focused: currentId !== null });
         case 'host.checkUpdate':
           return ok({ current: '0.0.0-mock', latest: '0.0.1', updateAvailable: true });
         case 'host.applyUpdate':

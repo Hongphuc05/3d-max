@@ -5,7 +5,10 @@ import React, { act } from 'react';
 import { JSDOM } from 'jsdom';
 const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/' });
 Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });
-const listeners = new Set(); const calls = [];
+const listeners = new Set(); let current = 't1';
+const T = [{ id: 't1', label: 'Untitled | 3ds Max 2022', pid: 1 }, { id: 't2', label: 'Living_room.max | 3ds Max 2022', pid: 2 }];
+const targetState = () => ({ targets: T, currentId: current, focusEnabled: current !== null });
+const calls = [];
 let importOutcome = { ok: true };
 let localModels = [];
 let downloadDirectory = 'D:\\3DS Mood';
@@ -22,6 +25,9 @@ dom.window.chrome = { webview: {
     calls.push({ method, params });
     const reply = (data) => setTimeout(() => listeners.forEach((f) => f({ data })), 5);
     if (method === 'library.status') return reply({ id, ok: true, result: { machineCode: 'MAX-TESTCODE', offline: false } });
+    if (method === 'host.listTargets') return reply({ id, ok: true, result: targetState() });
+    if (method === 'host.selectTarget') { current = params.id; return reply({ id, ok: true, result: targetState() }); }
+    if (method === 'host.focusMax') return reply({ id, ok: true, result: { focused: true } });
     if (method === 'host.getInfo') return reply({ id, ok: true, result: { hostVersion: '3ds Max 2022' } });
     if (method === 'library.refresh') {
       const answer = () => reply(refreshFails ? { id, ok: false, error: { code: 'SERVER_UNAVAILABLE', message: 'offline' } } : { id, ok: true, result: { machineCode: 'MAX-TESTCODE', offline: false } });
@@ -95,7 +101,7 @@ const originalFetch = globalThis.fetch;
 after(() => { globalThis.fetch = originalFetch; dom.window.close(); });
 
 function server() {
-  calls.length = 0; localModels = []; favoriteIds = []; failFavorite = false; folders = []; assignments = {}; folderSeq = 0; modelDates = {};
+  calls.length = 0; current = 't1'; localModels = []; favoriteIds = []; failFavorite = false; folders = []; assignments = {}; folderSeq = 0; modelDates = {};
   version = 1; rights = { allModels: true };
   cats = [{ id: id(1), parentId: null, name: 'Living', fullPath: 'Living', modelCount: 2 }, { id: id(2), parentId: null, name: 'Bedroom', fullPath: 'Bedroom', modelCount: 1 }];
   globalThis.fetch = async (url) => {
@@ -302,6 +308,24 @@ test('changing the search goes back to page 1', async () => {
   await act(async () => { const set = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value').set; set.call(input, 'lamp'); input.dispatchEvent(new dom.window.Event('input', { bubbles: true })); await flush(); });
   assert.equal(document.querySelector('[aria-current=page]').textContent, '1', 'after searching, the grid is not stuck on page 2'); assert.match(text(), /Lamp 00/);
   globalThis.fetch = many;
+  await done(root);
+});
+
+test('header: target pill lists Max windows, selecting calls host.selectTarget, push updates the pill, Home calls host.focusMax', async () => {
+  server(); const root = await mount();
+  assert.match(text(), /Connected: Untitled \| 3ds Max 2022/);
+  await act(async () => { document.querySelector('[aria-label="Chọn cửa sổ 3ds Max"]').click(); await flush(); });
+  await act(async () => { [...document.querySelectorAll('[role=option]')].find((o) => /Living/.test(o.textContent)).click(); await flush(); });
+  assert.deepEqual(calls.filter((c) => c.method === 'host.selectTarget').at(-1).params, { id: 't2' });
+  assert.match(text(), /Connected: Living_room/);
+  current = null;
+  await act(async () => { listeners.forEach((f) => f({ data: { event: 'host.targetsChanged', data: targetState() } })); await flush(); });
+  assert.match(text(), /Not connected/);
+  assert.equal(document.querySelector('[aria-label="Focus 3ds Max"]').disabled, true);
+  current = 't1';
+  await act(async () => { listeners.forEach((f) => f({ data: { event: 'host.targetsChanged', data: targetState() } })); await flush(); });
+  await act(async () => { document.querySelector('[aria-label="Focus 3ds Max"]').click(); await flush(); });
+  assert.ok(calls.some((c) => c.method === 'host.focusMax'));
   await done(root);
 });
 
