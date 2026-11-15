@@ -18,9 +18,9 @@ Mẫu: ảnh Photoshop chủ dự án gửi 15/11/2026.
 | 8 | Nút **focus 3ds Max** (đã có chức năng): đổi giao diện thành nút **Home đỏ** góc phải, cạnh nút làm mới | Header | [ ] | [ ] |
 | 9 | Tab Models/Scenes: dạng **"3D" + chữ nhỏ Models/Scenes** như mẫu, chừa chỗ thay icon khách gửi sau | Header | [ ] | [ ] |
 | 10 | Nút **Thiết bị** mở **popup** (giống Cài đặt): mã máy, phiên bản plugin | Header | [ ] | [ ] |
-| 11 | Ô **tìm model + sắp xếp** lên cùng hàng với Online / Đã tải (n) / Yêu thích (n) | Thanh lọc | [ ] | [ ] |
-| 12 | Icon danh mục: ô vuông → **hình tròn** (đang chọn = tròn đỏ) | Thanh lọc | [ ] | [ ] |
-| 13 | Hàng đợi: bỏ dòng mô tả, gọn 1 dòng "⇩ Hàng đợi · 0 job" như mẫu | Thanh lọc | [ ] | [ ] |
-| 14 | Phân trang: nút số trang « ‹ 1 2 3 … 8 9 10 › » + ô **Nhảy tới trang** | Thanh lọc | [ ] | [ ] |
+| 11 | Ô **tìm model + sắp xếp** lên cùng hàng với Online / Đã tải (n) / Yêu thích (n) | Thanh lọc | [x] | [ ] |
+| 12 | Icon danh mục: ô vuông → **hình tròn** (đang chọn = tròn đỏ) | Thanh lọc | [x] | [ ] |
+| 13 | Hàng đợi: bỏ dòng mô tả, gọn 1 dòng "⇩ Hàng đợi · 0 job" như mẫu | Thanh lọc | [x] | [ ] |
+| 14 | Phân trang: nút số trang « ‹ 1 2 3 … 8 9 10 › » + ô **Nhảy tới trang** | Thanh lọc | [x] | [ ] |
 
 Câu trả lời đã chốt (15/11): hover = phóng ảnh thẻ 1.25x; "Nhập số trang" = nhảy tới trang; nút focus Max chỉ chỉnh giao diện (chức năng đã chạy).
