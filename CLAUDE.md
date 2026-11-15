@@ -186,7 +186,7 @@ Web/API: React 19 + Vite + Tailwind · Express 5 · PostgreSQL (`pg`, migration 
   (rủi ro conflict assembly trong AppDomain của Max — R2).
 - **Bridge không tham chiếu `Autodesk.Max`.** Mọi thứ Max-specific nằm sau interface ở tầng Adapter.
 - **Cấm** bridge method kiểu `executeScript(string)`, `shell(string)`, `readFile(path)`. Chỉ thêm
-  method trong allowlist (`BridgePolicy.Methods`): `host.ping`, `host.getInfo`, `scene.getInfo`,
+  method trong allowlist (`BridgePolicy.Methods`): `host.ping`, `host.getInfo`, `host.listTargets`, `host.selectTarget`, `host.focusMax`, `scene.getInfo`,
   `scene.getSelection`, `scene.createBox` (PoC), `design.create`, `asset.import` (chỉ `{modelId}` UUID),
   `device.getIdentity`, `device.signChallenge`, `library.status`, `library.refresh`.
 - Giao thức: envelope `{id, version:1, method, params}` → `{id, ok, result|error}`; version có kiểu, request ID duy nhất,

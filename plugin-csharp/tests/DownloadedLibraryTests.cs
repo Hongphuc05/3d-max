@@ -354,6 +354,14 @@ class DownloadedLibraryTests
         Check(BridgePolicy.TryParse(Fav("library.deleteFavoriteFolder", "{\"folderId\":\"" + Model + "\"}"), out parsed, out code)
             && !BridgePolicy.TryParse(Fav("library.deleteFavoriteFolder", "{\"folderId\":\"default\"}"), out parsed, out code)
             && !BridgePolicy.TryParse(Fav("library.deleteFavoriteFolder", "{}"), out parsed, out code), "the built-in default folder cannot be deleted through the bridge");
+        foreach (var noParams in new[] { "host.listTargets", "host.focusMax" })
+            Check(BridgePolicy.TryParse(Fav(noParams, "{}"), out parsed, out code) && !BridgePolicy.TryParse(Fav(noParams, "{\"pid\":1}"), out parsed, out code), noParams + " is allowlisted and takes no parameters");
+        Check(BridgePolicy.TryParse(Fav("host.selectTarget", "{\"id\":\"101:1001:aaaa\"}"), out parsed, out code)
+            && !BridgePolicy.TryParse(Fav("host.selectTarget", "{}"), out parsed, out code)
+            && !BridgePolicy.TryParse(Fav("host.selectTarget", "{\"id\":5}"), out parsed, out code)
+            && !BridgePolicy.TryParse(Fav("host.selectTarget", "{\"id\":\"\"}"), out parsed, out code)
+            && !BridgePolicy.TryParse(Fav("host.selectTarget", "{\"id\":\"" + new string('x', 129) + "\"}"), out parsed, out code)
+            && !BridgePolicy.TryParse(Fav("host.selectTarget", "{\"id\":\"1:1:a\",\"path\":\"C:/x\"}"), out parsed, out code), "host.selectTarget takes exactly one bounded string id");
         foreach (var update in new[] { "host.checkUpdate", "host.applyUpdate" })
             Check(BridgePolicy.TryParse(Fav(update, "{}"), out parsed, out code) && !BridgePolicy.TryParse(Fav(update, "{\"url\":\"https://evil.test/x.mzp\"}"), out parsed, out code), update + " takes no parameters (host picks the package, never the web)");
         Check(BridgePolicy.TryParse(Fav("library.setFavorite", "{\"modelId\":\"" + Model + "\",\"favorite\":true}"), out parsed, out code), "setFavorite accepts a model UUID and a boolean");
