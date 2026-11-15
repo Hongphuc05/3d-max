@@ -15,6 +15,8 @@ const styles = {
   ghost: 'border border-line text-mute',
   // Nut tren the model: den, vien trang bo tron (thiet ke thuong hieu). Nut hanh dong chinh khac van dung solid (do).
   outline: 'border border-white/40 bg-black text-white/80 hover:border-white/70 hover:text-white disabled:opacity-50',
+  // Nut Download tren the: toi hon outline de tuong phan voi nut "Đã tải · Xem" (luon sang).
+  download: 'border border-white/25 bg-black text-white/60 hover:border-white/60 hover:text-white',
 };
 
 export function ModelAction({ p, ctx, big }) {
@@ -37,7 +39,7 @@ export function ModelAction({ p, ctx, big }) {
   if (state.kind === 'view') return <div className="font-mono text-xs text-mute">{state.label}</div>;
   if (state.disabled) return <button disabled className={`${size} ${styles.ghost} ${state.kind === 'running' ? 'animate-pulse text-brand' : ''}`}>{state.label}</button>;
   if (state.kind === 'failed') return <button onClick={click} className={`${size} border border-danger/50 text-danger hover:bg-danger/10`}>{state.label}</button>;
-  return <button onClick={click} className={`${size} ${solid}`}>{big ? 'Download model' : state.label}</button>;
+  return <button onClick={click} className={`${size} ${big ? solid : styles.download}`}>{big ? 'Download model' : state.label}</button>;
 }
 
 /** Nut mua duy nhat (D28.1): license ca thu vien, khong co nut mua theo tung model. */
