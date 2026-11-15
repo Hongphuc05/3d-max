@@ -696,8 +696,24 @@ namespace MaxWebViewHost
                 PostResponse(id, true, new { started = true }, null);
                 var data = new DataObject();
                 data.SetData(DataFormats.FileDrop, new[] { path });
-                var effect = DoDragDrop(data, DragDropEffects.Copy);
-                log.Log("drag: finished, effect " + effect);
+                // Our own drop target over the working Max window (only while dragging): Max's built-in menu would replace the scene on Open File.
+                DragDropOverlay overlay = null;
+                try
+                {
+                    IntPtr maxWindow;
+                    using (var self = Process.GetCurrentProcess()) maxWindow = self.MainWindowHandle;
+                    var maxBounds = DragDropOverlay.WindowBounds(maxWindow);
+                    if (maxBounds.HasValue)
+                    {
+                        overlay = new DragDropOverlay(maxBounds.Value, Visible && WindowState != FormWindowState.Minimized ? (Rectangle?)Bounds : null, path);
+                        overlay.Show();
+                    }
+                    else log.Log("drag: no visible Max window to cover; Max's own drop handling applies");
+                    var effect = DoDragDrop(data, DragDropEffects.Copy);
+                    log.Log("drag: finished, effect " + effect + (overlay != null && overlay.Dropped ? ", dropped on the Max window" : ""));
+                    if (overlay != null && overlay.Dropped) { var at = overlay.DropPoint; overlay.Hide(); ShowDropMenu(path, at); }
+                }
+                finally { if (overlay != null) overlay.Dispose(); }
             }
             catch (ApiException e) { log.Log("drag: " + e.Code); PostError(id, e.Code, e.Message); }
             catch (Exception e) when (e is InvalidOperationException || e is System.Runtime.InteropServices.COMException)
@@ -705,6 +721,51 @@ namespace MaxWebViewHost
                 log.Log("drag: failed " + e.GetType().Name);
                 PostError(id, "DRAG_FAILED", "Không bắt đầu được thao tác kéo thả.");
             }
+        }
+
+        // Menu shown where the model was dropped on the Max window. Open File starts ANOTHER Max with the file (the scene being worked on is untouched);
+        // Merge/XRef run in this Max through MAXScript. Every action re-checks that the file is still one of the library's own downloaded files.
+        private void ShowDropMenu(string path, Point screenPoint)
+        {
+            var menu = new ContextMenuStrip { ShowImageMargin = false };
+            menu.Items.Add("Open File (cửa sổ Max mới)").Click += (s, e) => OpenInNewMax(path);
+            menu.Items.Add("Merge File").Click += (s, e) => RunDropAction(path, "merge");
+            menu.Items.Add("XRef File").Click += (s, e) => RunDropAction(path, "xref");
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add("Cancel");
+            menu.Closed += (s, e) => BeginInvoke(new Action(menu.Dispose));   // after the click handler has run
+            menu.Show(screenPoint);
+        }
+
+        private bool DropFileStillValid(string path)
+        {
+            return _v3 != null && path != null && path.EndsWith(".max", StringComparison.OrdinalIgnoreCase) && File.Exists(path) && _v3.Downloads.OwnsEntry(path);
+        }
+
+        private void OpenInNewMax(string path)
+        {
+            var log = _v3 == null ? null : _v3.Update;
+            try
+            {
+                if (!DropFileStillValid(path)) { MessageBox.Show(this, "File model không còn trong thư viện đã tải.", "3dsmood", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+                string maxExe;
+                using (var self = Process.GetCurrentProcess()) maxExe = self.MainModule.FileName;
+                if (!string.Equals(Path.GetFileName(maxExe), "3dsmax.exe", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("not 3dsmax.exe");
+                using (Process.Start(new ProcessStartInfo(maxExe, "\"" + path + "\"") { UseShellExecute = false })) { }
+                log.Log("drag: opened " + Path.GetFileName(path) + " in a new Max");
+            }
+            catch (Exception e) when (e is InvalidOperationException || e is System.ComponentModel.Win32Exception || e is IOException)
+            {
+                if (log != null) log.Log("drag: new Max failed " + e.GetType().Name);
+                MessageBox.Show(this, "Không mở được cửa sổ 3ds Max mới.", "3dsmood", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        private void RunDropAction(string path, string mode)
+        {
+            if (!DropFileStillValid(path)) { MessageBox.Show(this, "File model không còn trong thư viện đã tải.", "3dsmood", MessageBoxButtons.OK, MessageBoxIcon.Warning); return; }
+            _v3.Update.Log("drag: " + mode + " " + Path.GetFileName(path));
+            Dispatch("drop-" + Guid.NewGuid().ToString("N"), "asset.dropFile", new Dictionary<string, object> { { "path", path }, { "mode", mode } });
         }
 
         private async Task HandleLibraryMethodAsync(string id, string method, Dictionary<string, object> parameters)

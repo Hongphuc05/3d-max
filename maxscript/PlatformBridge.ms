@@ -277,6 +277,42 @@ fn pbHandleImportFile id args sink = (
         ",\"texturesResolved\":" + (textureReport[1] as string) + ",\"textureWarnings\":" + (textureReport[2].count as string) + "}")
 )
 
+-- Native-only (not in the web allowlist): the user dropped a downloaded model on the Max window and chose Merge File or XRef File in the plugin's menu.
+-- Open File does not come here: the host starts another 3dsmax.exe for it. The host already checked that the file is one of the library's own downloads.
+fn pbHandleDropFile id args sink = (
+    local p = args.Param "path"
+    local mode = args.Param "mode"
+    if p == undefined or mode == undefined or (toLower (getFilenameType p)) != ".max" or not (doesFileExist p) then (
+        messageBox "File model không tồn tại hoặc không phải .max." title:"3dsmood"
+        return undefined
+    )
+    if not (pbSceneScriptsProtected()) then (
+        messageBox "Bật Safe Scene Script Execution và các mục chặn MAXScript/Python/.NET trong Preferences > Security, rồi khởi động lại 3ds Max." title:"3dsmood"
+        return undefined
+    )
+    local failure = undefined
+    if mode == "merge" then (
+        local resolver = dotNetObject "MaxWebViewHost.TexturePathResolver" p
+        local before = for o in objects collect o
+        try (mergeMAXFile p #select #mergeDups #renameMtlDups) catch (failure = getCurrentException())
+        if failure == undefined then (
+            local added = for o in objects where (findItem before o) == 0 collect o
+            if added.count > 0 do (
+                local report = pbRelinkImportedTextures added resolver
+                for w in report[2] do format "[3dsmood texture] %\n" w
+                select added
+                forceCompleteRedraw()
+            )
+        )
+    ) else if mode == "xref" then (
+        try (xrefs.addNewXRefFile p) catch (failure = getCurrentException())
+    ) else failure = "unknown mode"
+    if failure != undefined then (
+        format "[bridge] dropFile % failed: %\n" mode failure
+        messageBox "Không thực hiện được thao tác với file model. Chi tiết trong MAXScript Listener." title:"3dsmood"
+    ) else sink.PostResultJson id "{}"
+)
+
 -- ---------- router ----------
 
 fn pbHandleDesign id args = (
@@ -382,6 +418,7 @@ fn pbOnRequest sender args = (
             )
             "design.create": pbHandleDesign id args
             "asset.importFile": pbHandleImportFile id args sender
+            "asset.dropFile": pbHandleDropFile id args sender
             -- Native-only (host dispatches it itself); not in the web allowlist.
             "update.install": pbHandleUpdateInstall id args sender
             default: sender.PostError id "UNKNOWN_METHOD" ("Unknown method: " + m)
