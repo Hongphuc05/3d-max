@@ -33,7 +33,7 @@ export function ModelAction({ p, ctx, big }) {
     const runImport = e => { e.stopPropagation(); importDownloaded(p.id); };
     return <div className="space-y-1"><button disabled={importing || blocked} onClick={runImport} className={`${size} ${solid}`}>{importing ? importLabel : blocked ? 'Cần license thư viện' : 'Import'}</button>{importError && <p role="alert" className="text-xs text-danger">{importError}</p>}</div>;
   }
-  if (downloaded || state.kind === 'done') return <button onClick={e => { e.stopPropagation(); ctx.onDownloaded?.(); }} className={`${size} border border-white/40 bg-black text-white/80 hover:border-white/70 hover:text-white`}>Đã tải · Xem</button>;
+  if (downloaded || state.kind === 'done') return <button onClick={e => { e.stopPropagation(); ctx.onDownloaded?.(); }} className={`${size} border border-white/70 bg-black text-white hover:border-white`}>Đã tải · Xem</button>;
   if (state.kind === 'view') return <div className="font-mono text-xs text-mute">{state.label}</div>;
   if (state.disabled) return <button disabled className={`${size} ${styles.ghost} ${state.kind === 'running' ? 'animate-pulse text-brand' : ''}`}>{state.label}</button>;
   if (state.kind === 'failed') return <button onClick={click} className={`${size} border border-danger/50 text-danger hover:bg-danger/10`}>{state.label}</button>;
