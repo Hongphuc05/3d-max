@@ -671,3 +671,30 @@ test('favorites survive remount, are scoped to the current Models/Scenes tab, an
   assert.equal(button('Yêu thích (1)').textContent, 'Yêu thích (1)', 'failed save is rolled back');
   await done(root);
 });
+
+test('update notice: a newer release is downloaded and installed by itself (no click, no URL/path) and the notice sits above the queue', async () => {
+  server(); calls.length = 0; updateCheck = { current: '1.4.4', latest: '1.5.0', updateAvailable: true }; applyOutcome = { ok: true };
+  const root = await mount(); await act(async () => { await flush(); await flush(); });
+  const apply = calls.filter(c => c.method === 'host.applyUpdate');
+  assert.equal(apply.length, 1, 'applied once without any click');
+  assert.deepEqual(apply[0].params, {});
+  const notice = document.querySelector('[data-testid=update-notice]');
+  assert.match(notice.textContent, /Đã cài bản mới 1\.5\.0/);
+  assert.equal(notice.nextElementSibling.textContent.includes('Hàng đợi'), true, 'notice is directly above the queue');
+  updateCheck = { current: '1.4.4', latest: '1.4.4', updateAvailable: false };
+  await done(root);
+});
+
+test('update notice: nothing is shown when up to date; a failed install shows the host message and does not crash', async () => {
+  server(); calls.length = 0; updateCheck = { current: '1.4.4', latest: '1.4.4', updateAvailable: false };
+  let root = await mount(); await act(async () => { await flush(); });
+  assert.equal(document.querySelector('[data-testid=update-notice]'), null);
+  assert.equal(calls.filter(c => c.method === 'host.applyUpdate').length, 0, 'no apply when already latest');
+  await done(root);
+  updateCheck = { current: '1.4.4', latest: '1.5.0', updateAvailable: true };
+  applyOutcome = { ok: false, code: 'UPDATE_INSTALL_FAILED', message: 'Cài bản cập nhật thất bại. Bản hiện tại vẫn dùng được.' };
+  root = await mount(); await act(async () => { await flush(); await flush(); });
+  assert.match(document.querySelector('[data-testid=update-notice][role=alert]').textContent, /Cài bản cập nhật thất bại/);
+  applyOutcome = { ok: true }; updateCheck = { current: '1.4.4', latest: '1.4.4', updateAvailable: false };
+  await done(root);
+});

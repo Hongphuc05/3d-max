@@ -6,6 +6,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Net.Http;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -151,6 +152,69 @@ namespace MaxWebViewHost
                     Directory.CreateDirectory(Path.GetDirectoryName(target));
                     entry.ExtractToFile(target, false);
                 }
+        }
+
+        // ---- restart after an update (Max saves via its own prompt, then quits; a detached script starts Max again) ----
+        internal const string ReopenPanelEnv = "MZP_REOPEN_PANEL";
+        internal string LogPath { get { return Path.Combine(workRoot, "update.log"); } }
+
+        /// <summary>Appends one line to the update log (the restart script writes to the same file). Never throws; no secrets, file names only.</summary>
+        internal void Log(string line)
+        {
+            try
+            {
+                Directory.CreateDirectory(workRoot);
+                var info = new FileInfo(LogPath);
+                if (info.Exists && info.Length > 512 * 1024) info.Delete();   // shortcut: whole log dropped when large, upgrade if history matters
+                File.AppendAllText(LogPath, DateTime.Now.ToString("o") + " [host pid " + Process.GetCurrentProcess().Id + "] " + line + "\r\n");
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { }
+        }
+
+        /// <summary>True once when this Max was started by the restart script (it sets the variable only for the one Max that restores the scene).</summary>
+        internal static bool ConsumeReopenPanel()
+        {
+            if (Environment.GetEnvironmentVariable(ReopenPanelEnv) != "1") return false;
+            Environment.SetEnvironmentVariable(ReopenPanelEnv, null);
+            return true;
+        }
+
+        /// <summary>Writes the restart script and returns how to start it. The script waits for the updating Max (selfPid) to exit, starts ONE Max
+        /// with the scene (blank when there is none) and the panel flag unless a new 3dsmax already appeared, then starts a blank Max for each
+        /// other Max once it has closed. The scene is passed only when it is an existing absolute .max file.</summary>
+        internal ProcessStartInfo PrepareRestart(string maxExecutable, int selfPid, IList<int> otherPids, string scene)
+        {
+            if (!string.Equals(Path.GetFileName(maxExecutable), "3dsmax.exe", StringComparison.OrdinalIgnoreCase) || !File.Exists(maxExecutable))
+                throw new InvalidDataException("Không xác định được 3dsmax.exe.");
+            var validScene = !string.IsNullOrEmpty(scene) && Path.IsPathRooted(scene) && scene.EndsWith(".max", StringComparison.OrdinalIgnoreCase) && File.Exists(scene);
+            Directory.CreateDirectory(workRoot);
+            var script = Path.Combine(workRoot, "restart-max.ps1");
+            // ASCII only on purpose: Windows PowerShell 5.1 reads a BOM-less script as ANSI. Non-ASCII paths travel as arguments instead.
+            File.WriteAllText(script, string.Join("\r\n", new[] {
+                "param([string]$MaxExe, [int]$SelfPid, [string]$OtherPids = '', [string]$Scene = '', [string]$Log)",
+                "function Log([string]$m) { try { Add-Content -LiteralPath $Log -Value ((Get-Date -Format 'o') + ' [restart-script] ' + $m) } catch {} }",
+                "function Alive([int]$p) { return [bool](Get-Process -Id $p -ErrorAction SilentlyContinue) }",
+                "function WaitGone([int]$p, $deadline) { while ((Alive $p) -and ((Get-Date) -lt $deadline)) { Start-Sleep -Milliseconds 300 }; return (-not (Alive $p)) }",
+                "$begin = Get-Date",
+                "$deadline = $begin.AddMinutes(5)",
+                "Log ('started; waiting for pid ' + $SelfPid + ', others=[' + $OtherPids + '], scene=' + [bool]$Scene)",
+                "if (-not (WaitGone $SelfPid $deadline)) { Log 'updating Max did not exit within 5 minutes; nothing started'; exit 1 }",
+                "Log 'updating Max exited'",
+                "$early = @(Get-Process -Name 3dsmax -ErrorAction SilentlyContinue | Where-Object { try { $_.StartTime -gt $begin } catch { $false } })",
+                "if ($early.Count -gt 0) { Log ('a new 3dsmax is already running (pid ' + (($early | ForEach-Object { $_.Id }) -join ',') + '); not starting another'); exit 0 }",
+                "$env:" + ReopenPanelEnv + " = '1'",
+                "try { if ($Scene) { $p = Start-Process -FilePath $MaxExe -ArgumentList ('\"' + $Scene + '\"') -PassThru } else { $p = Start-Process -FilePath $MaxExe -PassThru } }",
+                "catch { Log ('start failed: ' + $_.Exception.GetType().Name); exit 1 }",
+                "finally { Remove-Item ('Env:' + '" + ReopenPanelEnv + "') -ErrorAction SilentlyContinue }",
+                "Log ('started Max pid ' + $p.Id + ' withScene=' + [bool]$Scene)",
+                "foreach ($o in ($OtherPids -split ',' | Where-Object { $_ })) {",
+                "  if (WaitGone ([int]$o) $deadline) { $q = Start-Process -FilePath $MaxExe -PassThru; Log ('reopened blank Max pid ' + $q.Id + ' for closed pid ' + $o) }",
+                "  else { Log ('Max pid ' + $o + ' still open; not reopening it') }",
+                "}", "" }), new UTF8Encoding(false));
+            var args = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + script + "\" -MaxExe \"" + maxExecutable + "\" -SelfPid " + selfPid
+                + " -OtherPids \"" + string.Join(",", (otherPids ?? new int[0]).Select(p => p.ToString())) + "\" -Log \"" + LogPath + "\""
+                + (validScene ? " -Scene \"" + scene + "\"" : "");
+            return new ProcessStartInfo("powershell.exe", args) { UseShellExecute = false, CreateNoWindow = true };
         }
 
         private void CleanOld()

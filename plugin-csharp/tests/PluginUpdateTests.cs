@@ -35,6 +35,7 @@ class PluginUpdateTests
             return ms.ToArray();
         }
     }
+    static string ReadShared(string path) { try { using (var s = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete)) using (var r = new StreamReader(s)) return r.ReadToEnd(); } catch (IOException) { return ""; } }
     static string Temp() { var d = Path.Combine(Path.GetTempPath(), "upd-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(d); return d; }
     static HttpResponseMessage Json(string body) { return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") }; }
     static string Latest(string version, byte[] pkg, string sha = null)
@@ -115,6 +116,55 @@ class PluginUpdateTests
             var newer = await service.CheckAsync(CancellationToken.None);
             Check(!newer.RestartRequired && newer.UpdateAvailable, "a release newer than the one installed offers an update again");
             PluginUpdateService.ClearPendingRestart();
+
+            // ---- restart script: runs the real PowerShell script against a fake 3dsmax.exe ----
+            var fakeDir = Temp();
+            try
+            {
+                var ping = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "ping.exe");
+                var fakeMax = Path.Combine(fakeDir, "3dsmax.exe"); File.Copy(ping, fakeMax);
+                var scene = Path.Combine(fakeDir, "scene é.max"); File.WriteAllText(scene, "x");
+                var svc = Make(fake, install, work);
+                Func<int> exitedPid = () => { var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", "/c exit") { CreateNoWindow = true, UseShellExecute = false }); p.WaitForExit(); return p.Id; };
+                Func<System.Diagnostics.ProcessStartInfo, string> runScript = start =>
+                {
+                    File.Delete(svc.LogPath);
+                    using (var p = System.Diagnostics.Process.Start(start)) { if (!p.WaitForExit(60000)) { p.Kill(); throw new Exception("restart script timed out"); } }
+                    return File.Exists(svc.LogPath) ? ReadShared(svc.LogPath) : "";
+                };
+                var notMax = false; try { svc.PrepareRestart(Path.Combine(fakeDir, "notepad.exe"), 1, new int[0], null); } catch (InvalidDataException) { notMax = true; }
+                Check(notMax, "restart refuses an executable that is not 3dsmax.exe");
+                Check(!svc.PrepareRestart(fakeMax, 1, new int[0], Path.Combine(fakeDir, "missing.max")).Arguments.Contains("-Scene"), "a scene that does not exist is not passed");
+                Check(!svc.PrepareRestart(fakeMax, 1, new int[0], ping).Arguments.Contains("-Scene"), "only .max files are passed as the scene");
+                Check(svc.PrepareRestart(fakeMax, 1, new[] { 7, 8 }, scene).Arguments.Contains("-Scene \"" + scene + "\"") && File.ReadAllText(Path.Combine(work, "restart-max.ps1")).All(c => c < 128), "scene travels as an argument and the script stays ASCII");
+
+                var log = runScript(svc.PrepareRestart(fakeMax, exitedPid(), new[] { exitedPid() }, scene));
+                Check(log.Contains("updating Max exited") && log.Contains("started Max pid") && log.Contains("withScene=True"), "after the updating Max is gone one Max starts with the scene: " + log);
+                Check(log.Contains("reopened blank Max pid"), "another Max that already closed is reopened blank");
+                Check(log.Split(new[] { "started Max pid" }, StringSplitOptions.None).Length == 2, "exactly one Max is started for the scene");
+                log = runScript(svc.PrepareRestart(fakeMax, exitedPid(), new int[0], null));
+                Check(log.Contains("withScene=False") && !log.Contains("reopened blank"), "no scene -> blank Max, nothing else");
+
+                // Duplicate guard: a 3dsmax that appears while the script waits (the user opened Max by hand) must not get a second one.
+                using (var self = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(ping, "-n 30 127.0.0.1") { CreateNoWindow = true, UseShellExecute = false }))
+                {
+                    File.Delete(svc.LogPath);
+                    using (var script = System.Diagnostics.Process.Start(svc.PrepareRestart(fakeMax, self.Id, new int[0], scene)))
+                    {
+                        for (var i = 0; i < 200 && !(File.Exists(svc.LogPath) && ReadShared(svc.LogPath).Contains("started; waiting")); i++) System.Threading.Thread.Sleep(100);
+                        System.Threading.Thread.Sleep(300);   // the user's Max must be strictly newer than the script's timestamp
+                        using (var manual = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(fakeMax, "-n 30 127.0.0.1") { CreateNoWindow = true, UseShellExecute = false }))
+                        {
+                        self.Kill(); self.WaitForExit();
+                        if (!script.WaitForExit(60000)) { script.Kill(); throw new Exception("restart script timed out"); }
+                        manual.Kill(); manual.WaitForExit();
+                        }
+                    }
+                    log = ReadShared(svc.LogPath);
+                    Check(log.Contains("a new 3dsmax is already running") && !log.Contains("started Max pid"), "no second Max when the user already started one: " + log);
+                }
+            }
+            finally { try { Directory.Delete(fakeDir, true); } catch (IOException) { } }
         }
         finally { Directory.Delete(work, true); Directory.Delete(install, true); }
         Console.WriteLine("All PluginUpdate tests passed.");

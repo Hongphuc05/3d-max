@@ -309,8 +309,24 @@ fn pbHandleDesign id args = (
     )
 )
 
+-- After a successful update install: Max's own "Save changes?" prompt (Yes/No/Cancel), then quit and let the host's detached script start Max again.
+-- Cancel = stay open on the old version (the panel keeps saying a restart is needed). The scene is reopened only if it has a file on disk
+-- and was not left with discarded changes; Untitled / "No" restarts into a blank Max.
+fn pbRestartAfterUpdate sink = (
+    local dirty = getSaveRequired()
+    if not (checkForSave()) then (
+        format "[update] user cancelled the save prompt; Max stays open on the old version\n"
+        return false
+    )
+    local scene = ""
+    if maxFileName != "" and not (dirty and getSaveRequired()) then scene = maxFilePath + maxFileName
+    format "[update] restarting Max (scene: %)\n" (if scene == "" then "blank" else maxFileName)
+    if sink.RestartMaxForUpdate scene then quitMax #noPrompt
+    else messageBox "Không khởi động lại được 3ds Max tự động. Hãy đóng và mở lại 3ds Max để dùng bản mới. Chi tiết: %LOCALAPPDATA%\\3dMood\\Update\\update.log" title:"3dsmood"
+)
+
 -- Native-only: host downloaded + verified the new MZP and unpacked it into args.dir. Run its install.ms silently (side-by-side, the
--- running version stays active until install.ms swaps active.txt). Max is NOT closed: the host just tells the user to restart it.
+-- running version stays active until install.ms swaps active.txt), then save + restart Max (pbRestartAfterUpdate).
 global gPlatformSilentInstall = false
 fn pbHandleUpdateInstall id args sink = (
     local dir = args.Param "dir"
@@ -328,6 +344,7 @@ fn pbHandleUpdateInstall id args sink = (
     ) else (
         sink.PostResultJson id "{\"restartRequired\":true}"
         sink.NotifyUpdateInstalled()
+        pbRestartAfterUpdate sink
     )
 )
 

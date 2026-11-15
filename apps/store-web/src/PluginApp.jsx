@@ -9,6 +9,7 @@ import { applyPluginUpdate, checkPluginUpdate, getLibraryStatus, isMaxHost, refr
 import { BuyLibrary, PluginCard, PluginDetail } from './plugin-components.jsx';
 import OrderDialog from './OrderDialog.jsx';
 import { Queue } from './Queue.jsx';
+import { UpdateNotice } from './UpdateNotice.jsx';
 import { useJobs } from './queue.js';
 import { owns } from './v3-catalog.js';
 import { usePluginCatalog } from './usePluginCatalog.js';
@@ -213,6 +214,7 @@ export default function PluginApp({ orderPollMs }) {
             <div className="min-h-0 flex-1 overflow-auto">
               <Filters categories={tree} subs={subs} setSubs={setSubs} renderers={new Set()} setRenderers={() => {}} rendererOptions={[]} />
             </div>
+            {max && <UpdateNotice />}
             {max && <Queue />}
           </aside>
         </div>

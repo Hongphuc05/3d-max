@@ -652,8 +652,7 @@ namespace MaxWebViewHost
             }
 
             if (method == "host.checkUpdate") { _ = CheckUpdateAsync(id); return; }
-            // WebView2 forbids a modal dialog inside its synchronous COM event callback.
-            if (method == "host.applyUpdate") { BeginInvoke(new Action(() => ConfirmAndApplyUpdate(id))); return; }
+            if (method == "host.applyUpdate") { StartApplyUpdate(id); return; }
 
             if (method.StartsWith("host.", StringComparison.Ordinal))
             {
@@ -712,16 +711,13 @@ namespace MaxWebViewHost
             catch (OperationCanceledException) { PostError(id, "UPDATE_UNAVAILABLE", "Không kiểm tra được bản cập nhật. Thử lại sau."); }
         }
 
-        private void ConfirmAndApplyUpdate(string id)
+        // The panel updates by itself (no confirmation); Max's own "Save changes?" prompt appears only after the install, before it restarts.
+        private void StartApplyUpdate(string id)
         {
-            if (IsDisposed || Disposing || !_requestDocuments.ContainsKey(id)) return;
             if (_v3 == null) { PostError(id, "LIBRARY_NOT_CONFIGURED", "Thư viện chưa sẵn sàng. Mở lại panel rồi thử lại."); return; }
             if (_updating) { PostError(id, "UPDATE_BUSY", "Đang cập nhật."); return; }
-            // Nothing is closed for the user: after installing they must close and reopen Max themselves, so remind them to save first.
-            var yes = MessageBox.Show(this, "Sau khi cập nhật xong, bạn cần đóng và mở lại 3ds Max để dùng bản mới.\n\nHãy lưu lại công việc đang làm trước khi tiếp tục. Tiếp tục cập nhật?",
-                "3dsmood", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
-            if (!yes) { PostError(id, "UPDATE_CANCELLED", "Đã hủy cập nhật."); return; }
             _updating = true;
+            _v3.Update.Log("apply update requested");
             _ = Task.Run(() => ApplyUpdateAsync(id));
         }
 
@@ -745,6 +741,7 @@ namespace MaxWebViewHost
                         clock.Restart(); PostProgress(id, received, total);
                     }, cancellation.Token).ConfigureAwait(false);
                     _updateVersion = status.Latest;
+                    _v3.Update.Log("downloaded and verified " + status.Latest + "; handing over to install.ms");
                     handedOver = true;
                     BeginInvoke(new Action(() =>
                     {
@@ -754,32 +751,65 @@ namespace MaxWebViewHost
                 }
             }
             catch (ApiException e) { PostError(id, e.Code, e.Message); }
-            catch (InvalidDataException e) { PostError(id, "UPDATE_VERIFY_FAILED", e.Message); }
+            catch (InvalidDataException e) { _v3.Update.Log("verify failed: " + e.Message); PostError(id, "UPDATE_VERIFY_FAILED", e.Message); }
             catch (OperationCanceledException) { PostError(id, "UPDATE_UNAVAILABLE", "Hết thời gian tải bản cập nhật. Thử lại sau."); }
             catch (Exception e)
             {
-                Debug.WriteLine("[update] " + e.GetType().Name);
+                Debug.WriteLine("[update] " + e.GetType().Name); _v3.Update.Log("update failed: " + e.GetType().Name);
                 PostError(id, "UPDATE_UNAVAILABLE", "Không tải hoặc chuẩn bị được bản cập nhật. Kiểm tra dung lượng ổ đĩa và thử lại.");
             }
             finally { if (!handedOver) _updating = false; }
         }
 
-        /// <summary>Called by MAXScript (update.install) AFTER install.ms succeeded. Nothing is closed or restarted here: the new files only load
-        /// when Max starts, so remember that (the panel then reports "restart required") and ask the user to restart Max.</summary>
+        /// <summary>Called by MAXScript (update.install) AFTER install.ms succeeded. The new files only load when Max starts, so remember
+        /// that (the panel then reports "restart required"). MAXScript then asks Max's own save prompt and calls RestartMaxForUpdate.</summary>
         public void NotifyUpdateInstalled()
         {
             if (_updateVersion == null) return;
-            var version = _updateVersion;
-            PluginUpdateService.MarkInstalled(version);
+            PluginUpdateService.MarkInstalled(_updateVersion);
+            _v3.Update.Log("installed " + _updateVersion + "; asking Max to save before restarting");
+        }
+
+        /// <summary>Called by MAXScript after the user answered Max's save prompt (not cancelled). scenePath is the saved scene to reopen, or empty
+        /// for a blank Max. Starts the detached restart script and asks every OTHER Max to close (each shows its own save prompt); returns
+        /// true when MAXScript may now quit this Max. Nothing is closed here for this Max: MAXScript does that with quitMax.</summary>
+        public bool RestartMaxForUpdate(string scenePath)
+        {
+            if (_v3 == null) return false;
+            var update = _v3.Update;
             try
             {
-                // Post it so the MAXScript handler that called us returns first; the dialog is modal.
-                BeginInvoke(new Action(() => MessageBox.Show(this,
-                    "Đã cập nhật 3dsmood lên bản " + version + ".\n\nHãy đóng và khởi động lại 3ds Max để dùng bản mới. Bản cũ vẫn chạy bình thường cho tới khi bạn khởi động lại.",
-                    "3dsmood", MessageBoxButtons.OK, MessageBoxIcon.Information)));
+                string maxExe; int selfPid; var others = new List<Process>();
+                using (var self = Process.GetCurrentProcess())
+                {
+                    maxExe = self.MainModule.FileName; selfPid = self.Id;
+                    foreach (var other in Process.GetProcessesByName(self.ProcessName)) { if (other.Id == selfPid) other.Dispose(); else others.Add(other); }
+                }
+                try
+                {
+                    var start = update.PrepareRestart(maxExe, selfPid, others.Select(o => o.Id).ToList(), scenePath);
+                    update.Log("restart: self=" + selfPid + " others=" + others.Count + " scene=" + (string.IsNullOrEmpty(scenePath) ? "(blank)" : Path.GetFileName(scenePath)));
+                    using (var script = Process.Start(start)) update.Log("restart script started, pid " + (script == null ? -1 : script.Id));
+                    foreach (var other in others)
+                    {
+                        bool asked = false;
+                        try { asked = other.CloseMainWindow(); }
+                        catch (Exception e) when (e is InvalidOperationException || e is System.ComponentModel.Win32Exception) { }
+                        update.Log("asked Max pid " + other.Id + " to close: " + asked);
+                    }
+                    return true;
+                }
+                finally { foreach (var other in others) other.Dispose(); }
             }
-            catch (InvalidOperationException) { /* form already closing */ }
+            catch (Exception e)
+            {
+                update.Log("restart failed: " + e.GetType().Name + " " + e.Message);
+                return false;
+            }
         }
+
+        /// <summary>Called by the startup agent: true once if the restart script started this Max (reopen the 3dsMood panel).</summary>
+        public static bool ConsumeReopenPanel() { return PluginUpdateService.ConsumeReopenPanel(); }
 
         private async Task HandleLibraryMethodAsync(string id, string method, Dictionary<string, object> parameters)
         {
