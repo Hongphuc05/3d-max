@@ -352,7 +352,7 @@ test('device popup: cancelling the confirmation returns to the update button; a 
   await done(root);
 });
 
-test('card: hovering the image zooms it in place (no popup); the heart appears on hover only until chosen; Scenes fill the square', async () => {
+test('card: hovering the image shows a 550px side popup (25% larger than before); the heart appears on hover only until chosen; Scenes fill a 4:3 frame', async () => {
   const { PluginCard } = await import('./plugin-components.jsx');
   const fav = new Set(); const toggles = [];
   const ctx = () => ({ max: true, entitlements: { allModels: true }, offline: false, local: false, downloadedIds: new Set(), onBuy() {}, onDownloaded() {},
@@ -362,11 +362,19 @@ test('card: hovering the image zooms it in place (no popup); the heart appears o
   const host = document.createElement('div'); document.body.appendChild(host);
   const root = createRoot(host);
   const render = async (p) => { await act(async () => { root.render(<PluginCard p={p} active={false} onOpen={() => {}} ctx={ctx()} />); await flush(); }); };
-  const imageButton = () => host.querySelector('button.hover\\:scale-125');
+  const imageButton = () => host.querySelector('button.rounded-t-\\[7px\\]');
+  const fire = (el, type) => el.dispatchEvent(new dom.window.MouseEvent(type, { bubbles: true }));
 
   await render(product());
-  assert.equal(document.querySelector('[data-testid="hover-preview"]'), null, 'no side popup');
-  assert.match(imageButton().className, /hover:scale-125/, 'the image zooms in place');
+  assert.equal(document.querySelector('[data-testid="hover-preview"]'), null, 'no popup before hovering');
+  await act(async () => { fire(imageButton(), 'mouseover'); await flush(); });
+  const popup = document.querySelector('[data-testid="hover-preview"]');
+  assert.ok(popup, 'popup shows on hover');
+  assert.equal(popup.querySelector('img').getAttribute('src'), '/previews/large.webp', 'the large image');
+  assert.equal(popup.textContent, '', 'the popup carries no text');
+  assert.ok(parseFloat(popup.style.width) <= 550, 'at most 550px wide');
+  await act(async () => { fire(imageButton(), 'mouseout'); await flush(); });
+  assert.equal(document.querySelector('[data-testid="hover-preview"]'), null, 'popup closes when the pointer leaves');
 
   const heart = () => host.querySelector('button[aria-label$="yêu thích"]');
   assert.match(heart().className, /opacity-0/); assert.match(heart().className, /group-hover:opacity-100/, 'not yet favorite: heart only on hover');

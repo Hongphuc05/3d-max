@@ -1,5 +1,7 @@
 // P4.4: the model grid card, detail panel and action button of the plugin (UI-1 layout, v3 data). No account, no licence screen:
 // what a device may download is decided by the server (entitlements); the button only reflects it.
+import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { mb } from './api.js';
 import { importDownloaded, useImports } from './local-imports.js';
 import { Preview, rendererLabel } from './components.jsx';
@@ -58,15 +60,34 @@ export function FavoriteHeart({ p, ctx, className = '', reveal = false }) {
   );
 }
 
+// Popup anh lon khi re chuot vao anh the (nhu ban cu, to hon 25%: 440 -> 550px). Scene (anh ngang) dung khung ngang 4:3,
+// anh lap day khung nen khong con 2 dai trang. Dat canh the, lat trai/phai cho vua cua so, khong chan chuot.
+const POPUP = 550, SCENE_POPUP = 720;
+function HoverPreview({ p, anchor, scene }) {
+  const [failed, setFailed] = useState(false);
+  const src = p.image || p.thumb;
+  if (!anchor || !src || failed) return null;
+  const vw = window.innerWidth, vh = window.innerHeight, ratio = scene ? 3 / 4 : 1;
+  const width = Math.max(120, Math.min(scene ? SCENE_POPUP : POPUP, vw - 16, (vh - 16) / ratio));
+  const height = width * ratio;
+  const left = anchor.right + 8 + width <= vw - 8 ? anchor.right + 8 : Math.max(8, anchor.left - 8 - width);
+  const top = Math.min(Math.max(8, anchor.top + anchor.height / 2 - height / 2), Math.max(8, vh - height - 8));
+  return createPortal(
+    <div data-testid="hover-preview" className={`pointer-events-none fixed z-50 overflow-hidden rounded-lg border border-white/60 shadow-2xl ${scene ? 'bg-black' : 'bg-white'}`} style={{ left, top, width, height }}>
+      <img src={src} alt="" onError={() => setFailed(true)} className={`size-full ${scene ? 'object-cover' : 'object-contain'}`} />
+    </div>, document.body);
+}
+
 export function PluginCard({ p, active, onOpen, ctx }) {
   const scene = p.contentDomain === '3dscenes';
+  const [anchor, setAnchor] = useState(null);
   return (
     <div className={`group relative flex flex-col rounded-lg border bg-card transition ${active ? 'border-white' : 'border-white/20 hover:border-white/50'}`}>
-      <button onClick={() => onOpen(p)} className="relative z-0 rounded-t-lg bg-transparent transition duration-200 hover:z-20 hover:scale-125">
-        <div className="overflow-hidden rounded-t-[7px] bg-white">
-          <Preview source={p.thumb} name={p.name} lazy fit={scene ? 'cover' : 'contain'} aspect={scene ? 'aspect-[4/3]' : 'aspect-square'} zoom={false} />
-        </div>
+      <button onClick={() => onOpen(p)} onMouseEnter={(e) => setAnchor(e.currentTarget.getBoundingClientRect())} onMouseLeave={() => setAnchor(null)}
+        className="relative overflow-hidden rounded-t-[7px] bg-white">
+        <Preview source={p.thumb} name={p.name} lazy fit={scene ? 'cover' : 'contain'} aspect={scene ? 'aspect-[4/3]' : 'aspect-square'} zoom={false} />
       </button>
+      <HoverPreview p={p} anchor={anchor} scene={scene} />
       <button onClick={() => onOpen(p)} className="flex flex-1 flex-col px-2 pt-2 text-left">
         <div className="truncate text-[13px] font-bold" title={p.name}>{p.name}</div>
         <div className="mt-0.5 flex justify-between gap-2 font-mono text-[10px] text-mute">
