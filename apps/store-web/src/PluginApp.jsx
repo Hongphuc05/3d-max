@@ -199,6 +199,14 @@ export default function PluginApp({ orderPollMs }) {
         {[["3dmodels", "Models"], ["3dscenes", "Scenes"]].map(([domain, label]) => <NavButton key={domain} glyph={DOMAIN_GLYPH[domain]} label={label} active={contentDomain === domain} onClick={() => selectDomain(domain)} />)}
         {max && <NavButton icon="settings" label="Cài đặt" onClick={() => setSettingsOpen(true)} />}
         <NavButton icon="user" label="Thiết bị" active={deviceOpen} onClick={() => setDeviceOpen(true)} />
+      </>} center={<>
+        <label className="flex min-w-32 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-brand">
+          <Icon name="search" className="size-3.5 text-mute" />
+          <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Tìm model…" className="w-full bg-transparent py-1 text-sm outline-none placeholder:text-mute" />
+        </label>
+        <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sắp xếp" className="rounded-md border border-line bg-panel px-2 py-1 font-mono text-xs outline-none focus:border-brand">
+          {Object.entries(SORTS).map(([k, [label]]) => <option key={k} value={k}>{label}</option>)}
+        </select>
       </>} reloadKey={reloadKey} onRefresh={refresh} apiStatus={max ? (offline ? 'down' : 'ok') : null} />
       {offline && <div role="status" className="border-b border-warn/40 bg-warn/10 px-3 py-1 font-mono text-[11px] text-warn">Đang offline — hiển thị catalog đã lưu trên máy. Cần Internet để tải model.</div>}
       {max && entitlements && !licensed && !offline && (
@@ -230,13 +238,6 @@ export default function PluginApp({ orderPollMs }) {
             {tabBtn('online', 'Online')}
             {tabBtn('done', `Đã tải${mine.length ? ` (${mine.length})` : ''}`)}
             {max && tabBtn('fav', `Yêu thích${liked.length ? ` (${liked.length})` : ''}`, 'heart')}
-            <label className="flex min-w-32 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-brand">
-              <Icon name="search" className="size-3.5 text-mute" />
-              <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Tìm model…" className="w-full bg-transparent py-1.5 text-sm outline-none placeholder:text-mute" />
-            </label>
-            <select value={sort} onChange={(e) => setSort(e.target.value)} className="rounded-md border border-line bg-panel px-2 py-1.5 font-mono text-xs outline-none focus:border-brand">
-              {Object.entries(SORTS).map(([k, [label]]) => <option key={k} value={k}>{label}</option>)}
-            </select>
             <button onClick={() => setDrawer(true)} className="flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs text-mute hover:text-fg lg:hidden">
               <Icon name="filter" className="size-3.5" />Lọc{subs.size ? ` (${subs.size})` : ''}
               {max && activeJobs > 0 && <span className="text-brand">· {activeJobs} đang tải</span>}
