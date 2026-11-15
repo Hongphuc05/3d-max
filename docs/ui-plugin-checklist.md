@@ -18,7 +18,7 @@ Mẫu: ảnh Photoshop chủ dự án gửi 15/11/2026.
 | 8 | Nút **focus 3ds Max** chuyển vào web: nút **Home đỏ** góc phải, cạnh nút làm mới (đỏ). *Web + C# đã gộp; C# chưa build, phải kiểm trên Windows* | Header | [x] | [ ] |
 | 9 | Tab Models/Scenes: dạng **"3D" + chữ nhỏ Models/Scenes** như mẫu, chừa chỗ thay icon khách gửi sau | Header | [x] | [ ] |
 | 10 | Nút **Thiết bị** mở **popup** (giống Cài đặt): mã máy, phiên bản plugin | Header | [x] | [ ] |
-| 11 | Ô **tìm model + sắp xếp** lên cùng hàng với Online / Đã tải (n) / Yêu thích (n) | Thanh lọc | [x] | [ ] |
+| 11 | Ô **tìm model + sắp xếp** nằm cùng hàng, ngay sau Online / Đã tải (n) / Yêu thích (n) *(đã thử đưa lên header, trả về theo yêu cầu 15/11)* | Thanh lọc | [x] | [ ] |
 | 12 | Icon danh mục: ô vuông → **hình tròn** (đang chọn = tròn đỏ) | Thanh lọc | [x] | [ ] |
 | 13 | Hàng đợi: bỏ dòng mô tả, gọn 1 dòng "⇩ Hàng đợi · 0 job" như mẫu | Thanh lọc | [x] | [ ] |
 | 14 | Phân trang: nút số trang « ‹ 1 2 3 … 8 9 10 › » + ô **Nhảy tới trang** | Thanh lọc | [x] | [ ] |
