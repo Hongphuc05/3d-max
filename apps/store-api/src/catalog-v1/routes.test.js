@@ -98,7 +98,7 @@ test('version endpoint: shape, ETag, 304 on a matching If-None-Match, a new ETag
   } finally { await s.close(); }
 });
 
-test('catalog, categories and previews manifest: exact public shape, only PUBLISHED models, category counts include children, 304 on each', { skip }, async () => {
+test('catalog, categories and previews manifest: exact public shape, only PUBLISHED models, category counts include children, empty categories still listed, 304 on each', { skip }, async () => {
   const s = await startServer();
   try {
     await addModel('Desk A', 'Furniture / Desk'); await addModel('Chair', 'Furniture / Chair');
@@ -110,7 +110,7 @@ test('catalog, categories and previews manifest: exact public shape, only PUBLIS
     assert.deepEqual(Object.keys(cat.models[0]).sort(), ['categoryId', 'categoryIds', 'contentDomain', 'fileType', 'id', 'name', 'sizeBytes', 'status']);
     assert.deepEqual([cat.models[0].status, cat.models[0].sizeBytes, cat.models[0].fileType], ['PUBLISHED', 1234, 'rar']);
     const cats = await (await fetch(`${s.base}/api/v1/categories`)).json();
-    assert.deepEqual(Object.fromEntries(cats.map(c => [c.fullPath, c.modelCount])), { Furniture: 2, 'Furniture / Chair': 1, 'Furniture / Desk': 1 });
+    assert.deepEqual(Object.fromEntries(cats.map(c => [c.fullPath, c.modelCount])), { Furniture: 2, 'Furniture / Chair': 1, 'Furniture / Desk': 1, Lighting: 0 }); // Lighting only has a draft model: empty categories are still listed
     assert.deepEqual(Object.keys(cats[0]).sort(), ['contentDomain', 'fullPath', 'id', 'modelCount', 'name', 'parentId']);
     const prev = await (await fetch(`${s.base}/api/v1/previews/manifest`)).json();
     assert.deepEqual([prev.catalogVersion, prev.previews.length], [1, 4]);

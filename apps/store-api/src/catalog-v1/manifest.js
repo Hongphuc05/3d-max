@@ -35,7 +35,7 @@ export async function buildManifest(db) {
        from model_previews p join models m on m.id = p.model_id
       where m.status = 'PUBLISHED' and m.primary_file_id is not null and p.is_primary order by p.model_id, p.variant`)).rows;
 
-  // modelCount tinh ca danh muc con: danh muc cha hien so model cua ca nhanh.
+  // modelCount tinh ca danh muc con: danh muc cha hien so model cua ca nhanh. Danh muc rong (0 model) van tra ve de plugin hien du cay thu muc goc.
   const own = new Map();
   for (const m of models) for (const id of m.category_ids) (own.get(id) ?? own.set(id, new Set()).get(id)).add(m.id);
   const children = new Map();
@@ -45,7 +45,7 @@ export async function buildManifest(db) {
 
   const out = {
     categories: cats.map((c) => ({ id: c.id, contentDomain: c.content_domain, parentId: c.parent_id, name: c.name, fullPath: c.full_path, modelCount: total(c.id) }))
-      .filter((c) => c.modelCount > 0).sort((a, b) => (a.contentDomain.localeCompare(b.contentDomain) || a.fullPath.localeCompare(b.fullPath))),
+      .sort((a, b) => (a.contentDomain.localeCompare(b.contentDomain) || a.fullPath.localeCompare(b.fullPath))),
     models: models.map((m) => ({ id: m.id, name: m.name, contentDomain: m.content_domain, categoryId: m.category_id, categoryIds: m.category_ids, sizeBytes: Number(m.size_bytes), fileType: m.file_type, status: 'PUBLISHED',
       // Chi them khi co ngay, de manifest cua model chua quet ngay khong doi (checksum on dinh); client cu bo qua truong la.
       ...(m.modified_at ? { modifiedAt: new Date(m.modified_at).toISOString() } : {}) })),

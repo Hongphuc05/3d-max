@@ -353,3 +353,7 @@ Web: `UpdateNotice` (cuối cột bộ lọc, ngay trên Hàng đợi) kiểm tr
 ### 2026-11-15 — Bỏ sắp xếp "Nhẹ → nặng" / "Nặng → nhẹ", MZP 1.5.5 (chưa phát hành)
 
 Danh sách sắp xếp trong plugin chỉ còn Tên A→Z (mặc định), Mới nhất, Cũ nhất. Chỉ đổi web (`PluginApp.jsx`, test cập nhật). Web 193/193. MZP 1.5.5 build để thử tay tự đóng/tự cập nhật (xem mục trước).
+
+### 2026-11-15 — Danh mục rỗng vẫn hiện trong plugin (chưa deploy, test API chưa chạy)
+
+Kiểm tra: `GET /api/v1/categories` trên VPS trả 70 danh mục (6 gốc: Architecture, Childroom, Decoration, Furniture, Kitchen, Lighting), không có danh mục nào 0 model; cây thư mục gốc cục bộ `source/3DSMOOD` có 125 thư mục (11 gốc), thiếu 55 (Bathroom, Material, Other models, Plants, Technology và con của chúng). Nguyên nhân phía code: `buildManifest` lọc `modelCount > 0` nên danh mục chưa có model đủ ảnh + file nén bị ẩn. Đã bỏ bộ lọc đó (`catalog-v1/manifest.js`); worker FULL sync vốn đã tạo danh mục cho mọi thư mục Drive (`publish.js`). Checksum manifest đổi một lần khi deploy. **Chưa xác nhận:** cây Drive 3DMODELS thật trên VPS có đủ các thư mục này không (cần xem DB/Drive; nếu thiếu hoặc lần sync gần nhất không phải FULL thì phải chạy FULL sync). `routes.test.js` đã sửa kỳ vọng (thêm `Lighting: 0`) nhưng CHƯA chạy được vì máy dev không có Postgres. Web 192/192.
