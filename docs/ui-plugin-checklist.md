@@ -22,5 +22,6 @@ Mẫu: ảnh Photoshop chủ dự án gửi 15/11/2026.
 | 12 | Icon danh mục: ô vuông → **hình tròn** (đang chọn = tròn đỏ) | Thanh lọc | [x] | [ ] |
 | 13 | Hàng đợi: bỏ dòng mô tả, gọn 1 dòng "⇩ Hàng đợi · 0 job" như mẫu | Thanh lọc | [x] | [ ] |
 | 14 | Phân trang: nút số trang « ‹ 1 2 3 … 8 9 10 › » + ô **Nhảy tới trang** | Thanh lọc | [x] | [ ] |
+| 15 | Ô sắp xếp: bỏ **Nhẹ → nặng** và **Nặng → nhẹ**, còn Tên A → Z / Mới nhất / Cũ nhất | Thanh lọc | [x] | [ ] |
 
 Câu trả lời đã chốt (15/11): hover = popup ảnh lớn như bản cũ, to hơn 25%; "Nhập số trang" = nhảy tới trang; nút focus Max chỉ chỉnh giao diện (chức năng đã chạy).
