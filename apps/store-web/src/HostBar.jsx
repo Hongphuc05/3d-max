@@ -13,7 +13,7 @@ const Badge = ({ ok, children }) => (
 
 // Thanh tren cung: trang thai ket noi 3ds Max + API. Lam moi scene khi co job import xong.
 // nav: dieu huong chinh (Models/Scenes/Cai dat/Thiet bi) nam ngang canh logo, nhu thiet ke thuong hieu.
-export function HostBar({ reloadKey, onRefresh, apiStatus, nav = null, center = null }) {
+export function HostBar({ reloadKey, onRefresh, apiStatus, nav = null }) {
   const max = isMaxHost();
   const [api, setApi] = useState(null); // null | 'ok' | 'db' | 'down'
   const [refreshing, setRefreshing] = useState(false);
@@ -63,7 +63,6 @@ export function HostBar({ reloadKey, onRefresh, apiStatus, nav = null, center = 
             {targets.targets.map((t) => <li key={t.id}><button role="option" aria-selected={t.id === targets.currentId} onClick={() => pick(t.id)} className={'block w-full whitespace-nowrap px-3 py-1.5 text-left font-mono hover:bg-base ' + (t.id === targets.currentId ? 'text-brand' : '')}>{t.label}</button></li>)}
           </ul>}
         </div>
-        {center && <div className="flex min-w-0 flex-1 items-center gap-2">{center}</div>}
         <div className="flex shrink-0 items-center gap-2">
           {api && <Badge ok={api === 'ok'}>{api === 'ok' ? 'ONLINE' : api === 'db' ? 'DB LỖI' : 'OFFLINE'}</Badge>}
           <button onClick={refresh} disabled={refreshing} aria-busy={refreshing} aria-label="Làm mới" title={refreshing ? 'Đang làm mới…' : 'Làm mới'} className={square}>
