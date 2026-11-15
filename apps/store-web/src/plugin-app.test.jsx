@@ -296,11 +296,11 @@ test('changing the search goes back to page 1', async () => {
   server(); const many = globalThis.fetch;
   globalThis.fetch = async (url, init) => String(url) === '/api/v1/catalog' ? json({ catalogVersion: 1, models: Array.from({ length: 70 }, (_, i) => ({ id: id(500 + i), name: 'Lamp ' + String(i).padStart(2, '0'), categoryId: id(1), sizeBytes: 1048576, fileType: 'rar', status: 'PUBLISHED' })) }) : many(url, init);
   const root = await mount();
-  await act(async () => { button('Sau').click(); await flush(); });
-  assert.ok(text().includes("Trang 2 / 3"), "second page of 70 models");
+  await act(async () => { document.querySelector('[aria-label="Trang sau"]').click(); await flush(); });
+  assert.equal(document.querySelector('[aria-current=page]').textContent, '2', 'second page of 70 models');
   const input = document.querySelector('input[placeholder="Tìm model…"]');
   await act(async () => { const set = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value').set; set.call(input, 'lamp'); input.dispatchEvent(new dom.window.Event('input', { bubbles: true })); await flush(); });
-  assert.ok(!text().includes("Trang 2"), "after searching, the grid is not stuck on page 2"); assert.match(text(), /Lamp 00/);
+  assert.equal(document.querySelector('[aria-current=page]').textContent, '1', 'after searching, the grid is not stuck on page 2'); assert.match(text(), /Lamp 00/);
   globalThis.fetch = many;
   await done(root);
 });

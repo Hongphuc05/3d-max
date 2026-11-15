@@ -2,6 +2,7 @@
 // Khong co tai khoan, khong co man license: thiet bi + quyen do may chu quyet dinh (xem usePluginCatalog / v3-catalog).
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Filters } from './components.jsx';
+import { Pagination } from './Pagination.jsx';
 import { matchesCategory } from './catalog-view.js';
 import { HostBar } from './HostBar.jsx';
 import { Icon } from './icons.jsx';
@@ -221,6 +222,13 @@ export default function PluginApp({ orderPollMs }) {
             {tabBtn('online', 'Online')}
             {tabBtn('done', `Đã tải${mine.length ? ` (${mine.length})` : ''}`)}
             {max && tabBtn('fav', `Yêu thích${liked.length ? ` (${liked.length})` : ''}`, 'heart')}
+            <label className="flex min-w-32 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-brand">
+              <Icon name="search" className="size-3.5 text-mute" />
+              <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Tìm model…" className="w-full bg-transparent py-1.5 text-sm outline-none placeholder:text-mute" />
+            </label>
+            <select value={sort} onChange={(e) => setSort(e.target.value)} className="rounded-md border border-line bg-panel px-2 py-1.5 font-mono text-xs outline-none focus:border-brand">
+              {Object.entries(SORTS).map(([k, [label]]) => <option key={k} value={k}>{label}</option>)}
+            </select>
             <button onClick={() => setDrawer(true)} className="flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs text-mute hover:text-fg lg:hidden">
               <Icon name="filter" className="size-3.5" />Lọc{subs.size ? ` (${subs.size})` : ''}
               {max && activeJobs > 0 && <span className="text-brand">· {activeJobs} đang tải</span>}
@@ -233,16 +241,6 @@ export default function PluginApp({ orderPollMs }) {
                 onCreate={(name) => favorites.createFolder(name, contentDomain)} onRename={favorites.renameFolder} onDelete={favorites.deleteFolder} />
             </div>
           )}
-
-          <div className="flex flex-wrap items-center gap-2 px-3 py-2">
-            <label className="flex min-w-48 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-brand">
-              <Icon name="search" className="size-3.5 text-mute" />
-              <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Tìm model…" className="w-full bg-transparent py-1.5 text-sm outline-none placeholder:text-mute" />
-            </label>
-            <select value={sort} onChange={(e) => setSort(e.target.value)} className="rounded-md border border-line bg-panel px-2 py-1.5 font-mono text-xs outline-none focus:border-brand">
-              {Object.entries(SORTS).map(([k, [label]]) => <option key={k} value={k}>{label}</option>)}
-            </select>
-          </div>
 
           <div className="min-h-0 flex-1 overflow-y-scroll pl-3 pr-5 pb-3">
             {tab === 'done' && downloads.error && <p role="alert" className="py-3 text-sm text-danger">{downloads.error}</p>}
@@ -269,11 +267,7 @@ export default function PluginApp({ orderPollMs }) {
           </div>
 
           {listReady && rows.length > PAGE && (
-            <div className="flex items-center justify-between border-t border-line px-3 py-2 font-mono text-xs">
-              <button disabled={page === 1} onClick={() => setPage(page - 1)} className="rounded-md border border-line px-3 py-1 disabled:opacity-30">‹ Trước</button>
-              <span className="text-mute">Trang {page} / {pages} · {rows.length} model</span>
-              <button disabled={page === pages} onClick={() => setPage(page + 1)} className="rounded-md border border-line px-3 py-1 disabled:opacity-30">Sau ›</button>
-            </div>
+            <Pagination page={page} pages={pages} total={rows.length} onPage={setPage} />
           )}
         </main>
 

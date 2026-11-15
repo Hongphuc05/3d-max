@@ -8,7 +8,7 @@ export const subKey = (c, s) => `${c}/${s}`;
 
 // Checkbox 3 trang thai (indeterminate dat qua ref vi khong co thuoc tinh HTML).
 const Check = ({ checked, partial, onChange }) => (
-  <input type="checkbox" checked={checked} onChange={onChange} className="size-3.5 shrink-0 cursor-pointer"
+  <input type="checkbox" checked={checked} onChange={onChange} className="size-3.5 shrink-0 cursor-pointer appearance-none rounded-full bg-mute/40 checked:bg-brand indeterminate:bg-brand/60"
     ref={(el) => el && (el.indeterminate = partial)} />
 );
 
