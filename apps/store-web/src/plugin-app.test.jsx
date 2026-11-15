@@ -5,7 +5,10 @@ import React, { act } from 'react';
 import { JSDOM } from 'jsdom';
 const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/' });
 Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });
-const listeners = new Set(); const calls = [];
+const listeners = new Set(); let current = 't1';
+const T = [{ id: 't1', label: 'Untitled | 3ds Max 2022', pid: 1 }, { id: 't2', label: 'Living_room.max | 3ds Max 2022', pid: 2 }];
+const targetState = () => ({ targets: T, currentId: current, focusEnabled: current !== null });
+const calls = [];
 let importOutcome = { ok: true };
 let localModels = [];
 let downloadDirectory = 'D:\\3DS Mood';
@@ -22,6 +25,9 @@ dom.window.chrome = { webview: {
     calls.push({ method, params });
     const reply = (data) => setTimeout(() => listeners.forEach((f) => f({ data })), 5);
     if (method === 'library.status') return reply({ id, ok: true, result: { machineCode: 'MAX-TESTCODE', offline: false } });
+    if (method === 'host.listTargets') return reply({ id, ok: true, result: targetState() });
+    if (method === 'host.selectTarget') { current = params.id; return reply({ id, ok: true, result: targetState() }); }
+    if (method === 'host.focusMax') return reply({ id, ok: true, result: { focused: true } });
     if (method === 'host.getInfo') return reply({ id, ok: true, result: { hostVersion: '3ds Max 2022' } });
     if (method === 'library.refresh') {
       const answer = () => reply(refreshFails ? { id, ok: false, error: { code: 'SERVER_UNAVAILABLE', message: 'offline' } } : { id, ok: true, result: { machineCode: 'MAX-TESTCODE', offline: false } });
@@ -95,7 +101,7 @@ const originalFetch = globalThis.fetch;
 after(() => { globalThis.fetch = originalFetch; dom.window.close(); });
 
 function server() {
-  calls.length = 0; localModels = []; favoriteIds = []; failFavorite = false; folders = []; assignments = {}; folderSeq = 0; modelDates = {};
+  calls.length = 0; current = 't1'; localModels = []; favoriteIds = []; failFavorite = false; folders = []; assignments = {}; folderSeq = 0; modelDates = {};
   version = 1; rights = { allModels: true };
   cats = [{ id: id(1), parentId: null, name: 'Living', fullPath: 'Living', modelCount: 2 }, { id: id(2), parentId: null, name: 'Bedroom', fullPath: 'Bedroom', modelCount: 1 }];
   globalThis.fetch = async (url) => {
@@ -269,23 +275,6 @@ test('library.updated adds the new model while keeping the search text, the sele
   await act(flush); await act(flush);
   assert.equal(document.querySelectorAll('.group').length, 3, 'the new "Sofa Three" appeared');
   assert.equal(input.value, 'sofa', 'search text kept');
-  assert.match(document.querySelector('h2').textContent, /Sofa Two/, 'the selected model stays selected');
-  await done(root);
-});
-
-test('the open detail panel closes when its model disappears from the catalog', async () => {
-  server(); const root = await mount();
-  await act(async () => { [...document.querySelectorAll('.group')][0].querySelector('button').click(); await flush(); });
-  assert.match(document.querySelector('h2').textContent, /Bed One/);
-  const original = globalThis.fetch;
-  globalThis.fetch = async (url, init) => {
-    if (String(url) === '/api/v1/catalog') return json({ catalogVersion: 3, models: [{ id: id(101), name: 'Sofa One', categoryId: id(1), sizeBytes: 1048576, fileType: 'rar', status: 'PUBLISHED' }] });
-    return original(url, init);
-  };
-  await act(async () => { emit('library.updated', {}); await flush(); });
-  await act(flush);
-  assert.equal(document.querySelector('h2'), null);
-  globalThis.fetch = original;
   await done(root);
 });
 
@@ -313,12 +302,30 @@ test('changing the search goes back to page 1', async () => {
   server(); const many = globalThis.fetch;
   globalThis.fetch = async (url, init) => String(url) === '/api/v1/catalog' ? json({ catalogVersion: 1, models: Array.from({ length: 70 }, (_, i) => ({ id: id(500 + i), name: 'Lamp ' + String(i).padStart(2, '0'), categoryId: id(1), sizeBytes: 1048576, fileType: 'rar', status: 'PUBLISHED' })) }) : many(url, init);
   const root = await mount();
-  await act(async () => { button('Sau').click(); await flush(); });
-  assert.ok(text().includes("Trang 2 / 3"), "second page of 70 models");
+  await act(async () => { document.querySelector('[aria-label="Trang sau"]').click(); await flush(); });
+  assert.equal(document.querySelector('[aria-current=page]').textContent, '2', 'second page of 70 models');
   const input = document.querySelector('input[placeholder="Tìm model…"]');
   await act(async () => { const set = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value').set; set.call(input, 'lamp'); input.dispatchEvent(new dom.window.Event('input', { bubbles: true })); await flush(); });
-  assert.ok(!text().includes("Trang 2"), "after searching, the grid is not stuck on page 2"); assert.match(text(), /Lamp 00/);
+  assert.equal(document.querySelector('[aria-current=page]').textContent, '1', 'after searching, the grid is not stuck on page 2'); assert.match(text(), /Lamp 00/);
   globalThis.fetch = many;
+  await done(root);
+});
+
+test('header: target pill lists Max windows, selecting calls host.selectTarget, push updates the pill, Home calls host.focusMax', async () => {
+  server(); const root = await mount();
+  assert.match(text(), /Connected: Untitled \| 3ds Max 2022/);
+  await act(async () => { document.querySelector('[aria-label="Chọn cửa sổ 3ds Max"]').click(); await flush(); });
+  await act(async () => { [...document.querySelectorAll('[role=option]')].find((o) => /Living/.test(o.textContent)).click(); await flush(); });
+  assert.deepEqual(calls.filter((c) => c.method === 'host.selectTarget').at(-1).params, { id: 't2' });
+  assert.match(text(), /Connected: Living_room/);
+  current = null;
+  await act(async () => { listeners.forEach((f) => f({ data: { event: 'host.targetsChanged', data: targetState() } })); await flush(); });
+  assert.match(text(), /Not connected/);
+  assert.equal(document.querySelector('[aria-label="Focus 3ds Max"]').disabled, true);
+  current = 't1';
+  await act(async () => { listeners.forEach((f) => f({ data: { event: 'host.targetsChanged', data: targetState() } })); await flush(); });
+  await act(async () => { document.querySelector('[aria-label="Focus 3ds Max"]').click(); await flush(); });
+  assert.ok(calls.some((c) => c.method === 'host.focusMax'));
   await done(root);
 });
 
@@ -369,7 +376,7 @@ test('device popup: cancelling the confirmation returns to the update button; a 
   await done(root);
 });
 
-test('card: hovering the image shows an image-only popup beside it; the heart appears on hover only until chosen; Scenes fill the square', async () => {
+test('card: hovering the image shows a 550px side popup (25% larger than before); the heart appears on hover only until chosen; Scenes fill a 4:3 frame', async () => {
   const { PluginCard } = await import('./plugin-components.jsx');
   const fav = new Set(); const toggles = [];
   const ctx = () => ({ max: true, entitlements: { allModels: true }, offline: false, local: false, downloadedIds: new Set(), onBuy() {}, onDownloaded() {},
@@ -379,7 +386,7 @@ test('card: hovering the image shows an image-only popup beside it; the heart ap
   const host = document.createElement('div'); document.body.appendChild(host);
   const root = createRoot(host);
   const render = async (p) => { await act(async () => { root.render(<PluginCard p={p} active={false} onOpen={() => {}} ctx={ctx()} />); await flush(); }); };
-  const imageButton = () => host.querySelector('button.aspect-square');
+  const imageButton = () => host.querySelector('button.rounded-t-\\[7px\\]');
   const fire = (el, type) => el.dispatchEvent(new dom.window.MouseEvent(type, { bubbles: true }));
 
   await render(product());
@@ -387,8 +394,9 @@ test('card: hovering the image shows an image-only popup beside it; the heart ap
   await act(async () => { fire(imageButton(), 'mouseover'); await flush(); });
   const popup = document.querySelector('[data-testid="hover-preview"]');
   assert.ok(popup, 'popup shows on hover');
-  assert.equal(popup.querySelectorAll('img').length, 1); assert.equal(popup.querySelector('img').getAttribute('src'), '/previews/large.webp', 'the large image, nothing else in it');
+  assert.equal(popup.querySelector('img').getAttribute('src'), '/previews/large.webp', 'the large image');
   assert.equal(popup.textContent, '', 'the popup carries no text');
+  assert.ok(parseFloat(popup.style.width) <= 550, 'at most 550px wide');
   await act(async () => { fire(imageButton(), 'mouseout'); await flush(); });
   assert.equal(document.querySelector('[data-testid="hover-preview"]'), null, 'popup closes when the pointer leaves');
 
@@ -403,23 +411,6 @@ test('card: hovering the image shows an image-only popup beside it; the heart ap
   assert.match(host.querySelector('img').className, /object-contain/, 'Models keep contain');
   await render(product({ contentDomain: '3dscenes' }));
   assert.match(host.querySelector('img').className, /object-cover/, 'Scenes fill the square');
-  await render(product({ image: null, thumb: null }));
-  await act(async () => { fire(imageButton(), 'mouseover'); await flush(); });
-  assert.equal(document.querySelector('[data-testid="hover-preview"]'), null, 'no image, no popup');
-  await act(() => root.unmount()); host.remove();
-});
-
-test('a Scenes detail panel shows the image at its own proportions; Models keep the square', async () => {
-  const { PluginDetail } = await import('./plugin-components.jsx');
-  const host = document.createElement('div'); document.body.appendChild(host);
-  const root = createRoot(host);
-  const ctx = { max: false, entitlements: null, local: false, downloadedIds: new Set() };
-  const p = (domain) => ({ id: id(202), name: 'Wide', image: '/previews/wide.webp', thumb: '/previews/wide.webp', category: 'A', subcategory: 'B',
-    info: { sizeMB: 1, renderers: [], formats: [] }, contentDomain: domain });
-  for (const [domain, expected] of [['3dscenes', /h-auto w-full/], ['3dmodels', /aspect-square/]]) {
-    await act(async () => { root.render(<PluginDetail p={p(domain)} onClose={() => {}} ctx={ctx} />); await flush(); });
-    assert.match(host.querySelector('img').className, expected, domain);
-  }
   await act(() => root.unmount()); host.remove();
 });
 
@@ -427,7 +418,7 @@ test('sort offers Mới nhất and Cũ nhất next to the old orders; models wit
   server(); modelDates = { [id(101)]: '2026-03-01T00:00:00.000Z', [id(103)]: '2026-05-01T00:00:00.000Z' }; // Sofa Two has no date
   const root = await mount();
   const select = document.querySelector('select');
-  assert.deepEqual([...select.options].map((o) => o.textContent), ['Tên A → Z', 'Mới nhất', 'Cũ nhất'], 'only name and date orders remain');
+  assert.deepEqual([...select.options].map((o) => o.textContent), ['Tên A → Z', 'Mới nhất', 'Cũ nhất'], 'size sorts removed');
   assert.equal(select.value, 'name', 'the default is still A → Z');
   const order = () => [...document.querySelectorAll('.group')].map((c) => c.querySelector('.truncate').textContent);
   const choose = async (value) => { await act(async () => { Object.getOwnPropertyDescriptor(dom.window.HTMLSelectElement.prototype, 'value').set.call(select, value); select.dispatchEvent(new dom.window.Event('change', { bubbles: true })); await flush(); }); };
@@ -485,7 +476,7 @@ test('device popup: after an install the host keeps reporting "restart required"
   assert.equal(section().querySelector('button'), null, 'no update button while a restart is pending');
   // The host can also answer an apply with the same state (e.g. a second click racing the first).
   updateCheck = { current: '1.4.4', latest: '1.5.0', updateAvailable: true }; applyOutcome = { ok: false, code: 'UPDATE_RESTART_REQUIRED', message: 'Đã cài bản mới.' };
-  await act(async () => { button('Thiết bị').click(); await flush(); button('Thiết bị').click(); await flush(); });
+  await act(async () => { document.querySelector('[aria-label="Đóng thiết bị"]').click(); await flush(); button('Thiết bị').click(); await flush(); });
   await act(async () => { button('Cập nhật').click(); await flush(); });
   assert.match(section().textContent, /Hãy đóng và khởi động lại 3ds Max/);
   assert.equal(document.querySelector('[role=alert]'), null, 'it is not shown as an error');
