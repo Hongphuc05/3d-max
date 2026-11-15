@@ -689,3 +689,20 @@ test('update notice: nothing is shown when up to date; a failed install shows th
   applyOutcome = { ok: true }; updateCheck = { current: '1.4.4', latest: '1.4.4', updateAvailable: false };
   await done(root);
 });
+
+test('drag to Max: only a downloaded card is draggable; dragstart is cancelled and the host gets just the model id (never a path)', async () => {
+  server(); calls.length = 0; localModels = [{ modelId: id(101) }];
+  const root = await mount();
+  const all = [...document.querySelectorAll('.group')];
+  const downloaded = all.find(c => /Đã tải/.test(c.textContent));
+  const notDownloaded = all.find(c => !/Đã tải/.test(c.textContent));
+  assert.ok(downloaded && notDownloaded, 'one downloaded and one not downloaded card');
+  assert.equal(notDownloaded.getAttribute('draggable'), null, 'a card that is not downloaded cannot be dragged');
+  assert.equal(downloaded.getAttribute('draggable'), 'true');
+  const event = new dom.window.Event('dragstart', { bubbles: true, cancelable: true });
+  await act(async () => { downloaded.dispatchEvent(event); await flush(); });
+  assert.equal(event.defaultPrevented, true, 'the browser drag is cancelled (the host starts the real file drag)');
+  const drag = calls.filter(c => c.method === 'library.beginDrag');
+  assert.deepEqual(drag.map(c => c.params), [{ modelId: id(101) }]);
+  await done(root);
+});

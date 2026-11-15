@@ -395,6 +395,29 @@ namespace MaxWebViewHost
             return new { options = available, defaultOptionId = preferred == null ? null : preferred.optionId };
         }
 
+        /// <summary>The file to hand to 3ds Max when the user drags the model onto it: a valid .max of the package whose Max year is the highest
+        /// one not newer than <paramref name="maxYear"/> (Max cannot open newer files). Files with no known year rank last. shortcut: renderer is
+        /// not considered (same-year files tie-break on the package's default entry, then path) - upgrade if packages ship per-renderer files for one year.</summary>
+        public string DragFile(string modelId, int maxYear)
+        {
+            var model = OptionsModel(modelId);
+            var candidates = new List<KeyValuePair<ImportOption, string>>();
+            foreach (var option in model.importOptions)
+            {
+                string path;
+                if (string.Equals(Path.GetExtension(option.relativePath ?? ""), ".max", StringComparison.OrdinalIgnoreCase) && ValidOption(model, option, out path))
+                    candidates.Add(new KeyValuePair<ImportOption, string>(option, path));
+            }
+            if (candidates.Count == 0) throw new ApiException("DRAG_NO_MAX_FILE", 422, "Gói này không có file .max để kéo thả. Hãy dùng nút Import.");
+            var compatible = candidates.Where(c => c.Key.maxVersion == null || c.Key.maxVersion <= maxYear).ToList();
+            if (compatible.Count == 0) throw new ApiException("DRAG_NO_COMPATIBLE_FILE", 422, "Gói này không có file .max tương thích với phiên bản 3ds Max đang mở.");
+            return compatible
+                .OrderByDescending(c => c.Key.maxVersion ?? int.MinValue)
+                .ThenByDescending(c => string.Equals((c.Key.relativePath ?? "").Replace('/', Path.DirectorySeparatorChar), model.entryFile, StringComparison.OrdinalIgnoreCase))
+                .ThenBy(c => c.Key.relativePath, StringComparer.Ordinal)
+                .First().Value;
+        }
+
         public DownloadedModel Find(string modelId)
         {
             return Locked(s => { var m = s.models.FirstOrDefault(x => string.Equals(x.modelId, modelId, StringComparison.OrdinalIgnoreCase)); return HasEntry(m) ? m : null; });

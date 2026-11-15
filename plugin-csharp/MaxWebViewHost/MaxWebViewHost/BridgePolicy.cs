@@ -17,7 +17,7 @@ namespace MaxWebViewHost
             "host.ping", "host.getInfo", "host.checkUpdate", "host.applyUpdate", "host.listTargets", "host.selectTarget", "host.focusMax", "scene.getInfo", "scene.getSelection", "scene.createBox",
             "design.create", "asset.download", "asset.import", "device.getIdentity", "device.signChallenge",
             "library.status", "library.refresh", "library.downloads", "library.importOptions", "library.settings", "library.chooseDownloadDirectory",
-            "library.favorites", "library.setFavorite", "library.setFavoriteFolder", "library.createFavoriteFolder", "library.renameFavoriteFolder", "library.deleteFavoriteFolder"
+            "library.favorites", "library.setFavorite", "library.setFavoriteFolder", "library.createFavoriteFolder", "library.renameFavoriteFolder", "library.deleteFavoriteFolder", "library.beginDrag"
         };
 
         internal static bool IsTrusted(string value, Uri[] origins, string diagnosticUri)
@@ -104,6 +104,7 @@ namespace MaxWebViewHost
                         && Text(p, "challengeId", 36) && Text(p, "message", 512);
                 case "asset.download":
                 case "library.importOptions":
+                case "library.beginDrag":
                     return p.Count == 1 && HasOnly(p, "modelId") && Text(p, "modelId", 36) && ModelUuid.IsMatch((string)p["modelId"]);
                 case "asset.import":
                     return HasOnly(p, "modelId", "optionId") && Text(p, "modelId", 36) && ModelUuid.IsMatch((string)p["modelId"])

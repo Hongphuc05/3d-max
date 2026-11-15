@@ -37,6 +37,8 @@ export function installMockHost() {
           return ok({ items: [{ id: 'demo-chair', name: 'Ghế minh họa (DEV)', category: 'Demo' }], offline: false,
             message: 'Dữ liệu minh họa DEV; không phải model thật từ Drive.' });
         case 'library.downloads': return ok({ models });
+        case 'library.beginDrag':
+          return models.some(m => m.modelId === params.modelId) ? ok({ started: true }) : fail('MODEL_NOT_DOWNLOADED', 'Model chưa có trên máy.');
         case 'library.importOptions':
           if (!models.some(m => m.modelId === params.modelId)) return fail('MODEL_NOT_DOWNLOADED', 'Model chưa có trên máy.');
           return ok({ options: [{ optionId: 'a'.repeat(64), label: 'model.max', relativePath: 'model.max', format: 'max' }] });

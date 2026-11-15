@@ -178,9 +178,49 @@ class DownloadedLibraryTests
         Check(!BridgePolicy.TryParse(downloadRequest, out parsed, out code), "download bridge remains model-only and cannot smuggle import options");
     }
 
+    // Drag to Max: which .max file is handed over (highest Max year not newer than the running Max), and nothing else.
+    static string AddPackage(DownloadedLibrary store, string directory, string name, string[] files, string entry)
+    {
+        var id = Guid.NewGuid().ToString(); var dir = Path.Combine(directory, name); Directory.CreateDirectory(dir);
+        foreach (var f in files) { Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(dir, f))); File.WriteAllText(Path.Combine(dir, f), "x"); }
+        store.Add(new DownloadedModel { modelId = id, directory = dir, entryFile = entry.Replace('/', Path.DirectorySeparatorChar), importOptions = DownloadedLibrary.BuildOptions(id, dir, files.Select(f => Path.Combine(dir, f))) });
+        return id;
+    }
+    static void ExpectCode(Action action, string code, string name)
+    {
+        try { action(); throw new Exception("Expected " + code + ": " + name); }
+        catch (ApiException e) { Check(e.Code == code, name + " (" + e.Code + ")"); }
+    }
+    static void DragFileSelection(string root)
+    {
+        var directory = Path.Combine(root, "drag"); Directory.CreateDirectory(directory);
+        var store = new DownloadedLibrary(Path.Combine(directory, "state"), Path.Combine(directory, "models"));
+        var multi = AddPackage(store, directory, "multi", new[] { "chair_2018.max", "chair_2020.max", "chair_2024.max", "chair.fbx" }, "chair_2018.max");
+        Check(Path.GetFileName(store.DragFile(multi, 2022)) == "chair_2020.max", "drag picks the highest Max year that is not newer than the running Max (2024 file skipped)");
+        Check(Path.GetFileName(store.DragFile(multi, 2019)) == "chair_2018.max", "an older running Max gets the older file");
+        ExpectCode(() => store.DragFile(multi, 2017), "DRAG_NO_COMPATIBLE_FILE", "no file old enough for the running Max");
+        var undated = AddPackage(store, directory, "undated", new[] { "scene.max", "scene_2020.max" }, "scene.max");
+        Check(Path.GetFileName(store.DragFile(undated, 2022)) == "scene_2020.max", "a file with a known year ranks above one without");
+        var scene = AddPackage(store, directory, "scene", new[] { "Apartment.max" }, "Apartment.max");
+        Check(Path.GetFileName(store.DragFile(scene, 2017)) == "Apartment.max", "a single undated .max is always offered");
+        var tie = AddPackage(store, directory, "tie", new[] { "A/sofa_2020.max", "B/sofa_2020.max" }, "B/sofa_2020.max");
+        Check(store.DragFile(tie, 2022).Replace('\\', '/').EndsWith("/B/sofa_2020.max"), "same year: the package's default entry wins");
+        var exchange = AddPackage(store, directory, "exchange", new[] { "a.fbx", "b.obj" }, "a.fbx");
+        ExpectCode(() => store.DragFile(exchange, 2022), "DRAG_NO_MAX_FILE", "a package with only fbx/obj cannot be dragged");
+        ExpectCode(() => store.DragFile(Guid.NewGuid().ToString(), 2022), "MODEL_NOT_DOWNLOADED", "unknown model id");
+        File.Delete(Path.Combine(directory, "multi", "chair_2020.max"));
+        Check(Path.GetFileName(store.DragFile(multi, 2022)) == "chair_2018.max", "a file deleted from disk is never offered; the next compatible one is used");
+        Dictionary<string, object> parsed; string code;
+        Func<string, string, string> request = (m, p) => "{\"id\":\"drag-1\",\"version\":1,\"method\":\"" + m + "\",\"params\":" + p + "}";
+        Check(BridgePolicy.TryParse(request("library.beginDrag", "{\"modelId\":\"" + Model + "\"}"), out parsed, out code), "beginDrag accepts a model UUID");
+        Check(!BridgePolicy.TryParse(request("library.beginDrag", "{\"modelId\":\"C:/x/chair.max\"}"), out parsed, out code)
+            && !BridgePolicy.TryParse(request("library.beginDrag", "{\"modelId\":\"" + Model + "\",\"path\":\"C:/x\"}"), out parsed, out code)
+            && !BridgePolicy.TryParse(request("library.beginDrag", "{}"), out parsed, out code), "beginDrag rejects paths, extra keys and a missing id");
+    }
     static async Task Run(string root)
     {
         await MultiOptions(root);
+        DragFileSelection(root);
         Check(V3Library.DownloadFolderName("1106880206.rar", root) == "1106880206", "download folder preserves the Drive archive stem");
         Check(V3Library.DownloadFolderName("Phòng khách & Sofa.zip", root) == "Phòng khách & Sofa", "readable Unicode names and spaces are retained");
         Check(V3Library.DownloadFolderName("Bad:Name?.rar", root) == "Bad_Name_" && V3Library.DownloadFolderName("CON.zip", root) == "_CON", "Windows-invalid characters and reserved device names are made safe");

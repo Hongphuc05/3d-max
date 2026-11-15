@@ -72,6 +72,8 @@ export const createFavoriteFolder = (name, contentDomain) => call('library.creat
 export const renameFavoriteFolder = (folderId, name) => call('library.renameFavoriteFolder', { folderId, name }, 20000);
 export const deleteFavoriteFolder = (folderId) => call('library.deleteFavoriteFolder', { folderId }, 20000);
 export const chooseDownloadDirectory =(contentDomain = '3dmodels') => call('library.chooseDownloadDirectory', { contentDomain }, 10 * 60 * 1000);
+// Keo tha model da tai vao Max: host tu chon file .max theo phien ban Max va bat dau keo file that; web chi gui model ID, khong bao gio thay duong dan.
+export const beginDragModel = (modelId) => call('library.beginDrag', { modelId }, 10000);
 
 export const getLibraryStatus = () => call('library.status', {}, 20000);
 export const refreshLibrary = () => call('library.refresh', {}, 60000);

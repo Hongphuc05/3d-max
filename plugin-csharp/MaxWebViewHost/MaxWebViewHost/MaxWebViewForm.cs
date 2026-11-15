@@ -61,7 +61,7 @@ namespace MaxWebViewHost
             "design.create",
             "asset.download", "asset.import", "device.getIdentity", "device.signChallenge",
             "library.status", "library.refresh", "library.downloads", "library.importOptions", "library.settings", "library.chooseDownloadDirectory",
-            "library.favorites", "library.setFavorite", "library.setFavoriteFolder", "library.createFavoriteFolder", "library.renameFavoriteFolder", "library.deleteFavoriteFolder"
+            "library.favorites", "library.setFavorite", "library.setFavoriteFolder", "library.createFavoriteFolder", "library.renameFavoriteFolder", "library.deleteFavoriteFolder", "library.beginDrag"
         };
 
         /// <summary>Origin của backend 3dsmood, nơi host tải asset. Phải nằm trong TrustedOrigins.
@@ -661,12 +661,60 @@ namespace MaxWebViewHost
         /// <summary>Called by the startup agent: true once if the restart script started this Max (reopen the 3dsMood panel).</summary>
         public static bool ConsumeReopenPanel() { return PluginUpdateService.ConsumeReopenPanel(); }
 
+        // Max year of this process (3ds Max 2022 = file major 24, so year = major + 1998); falls back to the locked target when unreadable.
+        private static int RunningMaxYear()
+        {
+            try
+            {
+                using (var self = Process.GetCurrentProcess())
+                {
+                    var year = FileVersionInfo.GetVersionInfo(self.MainModule.FileName).FileMajorPart + 1998;
+                    if (year >= 2015 && year <= 2100) return year;
+                }
+            }
+            catch (Exception e) when (e is InvalidOperationException || e is System.ComponentModel.Win32Exception || e is NotSupportedException) { }
+            return 2022;
+        }
+
+        // Starts a real Windows file drag (CF_HDROP, like Explorer) of the model's .max so 3ds Max shows its own Open/Merge/XRef menu on drop.
+        // The path never reaches the web: it only sent the model id.
+        private void BeginModelDrag(string id, string modelId)
+        {
+            if (IsDisposed || Disposing || _v3 == null) return;
+            var log = _v3.Update;
+            try
+            {
+                if ((MouseButtons & MouseButtons.Left) == 0)
+                {
+                    log.Log("drag: left button already released, not started");
+                    PostError(id, "DRAG_NOT_STARTED", "Hãy giữ chuột trái trên thẻ model rồi kéo ra cửa sổ 3ds Max.");
+                    return;
+                }
+                var year = RunningMaxYear();
+                var path = _v3.Downloads.DragFile(modelId, year);
+                log.Log("drag: start " + Path.GetFileName(path) + " (Max " + year + ")");
+                PostResponse(id, true, new { started = true }, null);
+                var data = new DataObject();
+                data.SetData(DataFormats.FileDrop, new[] { path });
+                var effect = DoDragDrop(data, DragDropEffects.Copy);
+                log.Log("drag: finished, effect " + effect);
+            }
+            catch (ApiException e) { log.Log("drag: " + e.Code); PostError(id, e.Code, e.Message); }
+            catch (Exception e) when (e is InvalidOperationException || e is System.Runtime.InteropServices.COMException)
+            {
+                log.Log("drag: failed " + e.GetType().Name);
+                PostError(id, "DRAG_FAILED", "Không bắt đầu được thao tác kéo thả.");
+            }
+        }
+
         private async Task HandleLibraryMethodAsync(string id, string method, Dictionary<string, object> parameters)
         {
             try
             {
                 if (_v3 == null) { PostError(id, "LIBRARY_NOT_CONFIGURED", "Thư viện chưa sẵn sàng. Mở lại panel rồi thử lại."); return; }
                 if (method == "library.downloads") { PostResponse(id, true, new { models = _v3.Downloads.List() }, null); return; }
+                // DoDragDrop is a modal loop: WebView2 forbids that inside its synchronous message callback, so post it to the UI queue.
+                if (method == "library.beginDrag") { var drag = (string)parameters["modelId"]; BeginInvoke(new Action(() => BeginModelDrag(id, drag))); return; }
                 if (method == "library.importOptions")
                 {
                     var options = await Task.Run(() => _v3.Downloads.ImportOptions((string)parameters["modelId"]));

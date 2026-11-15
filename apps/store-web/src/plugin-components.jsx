@@ -6,6 +6,7 @@ import { mb } from './api.js';
 import { importDownloaded, useImports } from './local-imports.js';
 import { Preview, rendererLabel } from './components.jsx';
 import { Icon } from './icons.jsx';
+import { beginDragModel } from './integrations/3dsmax/bridge.js';
 import { enqueue, useJob } from './queue.js';
 import { actionState, owns } from './v3-catalog.js';
 
@@ -83,8 +84,17 @@ function HoverPreview({ p, anchor, scene }) {
 export function PluginCard({ p, active, onOpen, ctx }) {
   const scene = p.contentDomain === '3dscenes';
   const [anchor, setAnchor] = useState(null);
+  const [dragError, setDragError] = useState('');
+  // Model da tai: keo the vao cua so 3ds Max -> Max tu hien menu Open/Merge/XRef (host bat dau keo file .max that).
+  const canDrag = Boolean(ctx.max && ctx.downloadedIds?.has(p.id));
+  const onDragStart = (e) => {
+    e.preventDefault(); // huy keo HTML cua trinh duyet; host lam keo that
+    setDragError('');
+    beginDragModel(p.id).catch((err) => setDragError(err?.message || 'Không kéo thả được model này.'));
+  };
   return (
-    <div className={`group relative flex flex-col rounded-lg border bg-card transition ${active ? 'border-white' : 'border-white/20 hover:border-white/50'}`}>
+    <div draggable={canDrag || undefined} onDragStart={canDrag ? onDragStart : undefined} onMouseLeave={() => setDragError('')}
+      className={`group relative flex flex-col rounded-lg border bg-card transition ${canDrag ? 'cursor-grab ' : ''}${active ? 'border-white' : 'border-white/20 hover:border-white/50'}`}>
       <button onClick={() => onOpen(p)} onMouseEnter={(e) => setAnchor(e.currentTarget.getBoundingClientRect())} onMouseLeave={() => setAnchor(null)}
         className="relative overflow-hidden rounded-t-[7px] bg-white">
         <Preview source={p.thumb} name={p.name} lazy fit={scene ? 'cover' : 'contain'} aspect={scene ? 'aspect-[4/3]' : 'aspect-square'} zoom={false} />
@@ -97,6 +107,7 @@ export function PluginCard({ p, active, onOpen, ctx }) {
         </div>
       </button>
       <div className="p-2"><ModelAction p={p} ctx={ctx} /></div>
+      {dragError && <p role="alert" className="px-2 pb-2 text-[10px] text-danger">{dragError}</p>}
       <FavoriteHeart p={p} ctx={ctx} reveal className="absolute top-1.5 right-1.5 z-10" />
     </div>
   );
