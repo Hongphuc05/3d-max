@@ -427,7 +427,7 @@ test('sort offers Mới nhất and Cũ nhất next to the old orders; models wit
   server(); modelDates = { [id(101)]: '2026-03-01T00:00:00.000Z', [id(103)]: '2026-05-01T00:00:00.000Z' }; // Sofa Two has no date
   const root = await mount();
   const select = document.querySelector('select');
-  assert.deepEqual([...select.options].map((o) => o.textContent), ['Tên A → Z', 'Mới nhất', 'Cũ nhất', 'Nhẹ → nặng', 'Nặng → nhẹ'], 'the three old orders stay');
+  assert.deepEqual([...select.options].map((o) => o.textContent), ['Tên A → Z', 'Mới nhất', 'Cũ nhất'], 'only name and date orders remain');
   assert.equal(select.value, 'name', 'the default is still A → Z');
   const order = () => [...document.querySelectorAll('.group')].map((c) => c.querySelector('.truncate').textContent);
   const choose = async (value) => { await act(async () => { Object.getOwnPropertyDescriptor(dom.window.HTMLSelectElement.prototype, 'value').set.call(select, value); select.dispatchEvent(new dom.window.Event('change', { bubbles: true })); await flush(); }); };

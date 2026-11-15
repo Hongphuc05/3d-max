@@ -31,8 +31,6 @@ const SORTS = {
   name: ['Tên A → Z', (a, b) => a.name.localeCompare(b.name)],
   newest: ['Mới nhất', byDate(1)],
   oldest: ['Cũ nhất', byDate(-1)],
-  small: ['Nhẹ → nặng', (a, b) => (a.info.sizeMB ?? 0) - (b.info.sizeMB ?? 0)],
-  big: ['Nặng → nhẹ', (a, b) => (b.info.sizeMB ?? 0) - (a.info.sizeMB ?? 0)],
 };
 
 // phase: checking | latest | available | applying | installed (cai xong, cho nguoi dung tu khoi dong lai Max) | error | failed. Kiem tra moi lan mo popup (tru luc dang cap nhat).
