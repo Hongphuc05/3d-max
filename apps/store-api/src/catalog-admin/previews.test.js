@@ -17,7 +17,9 @@ let dispose, pool, server, base, adminId, userId, sourceId, dir, manifest;
 let seq = 0;
 
 const jpeg = (seed = ++seq, ext = 'jpeg') => sharp({ create: { width: 700 + seed, height: 500, channels: 3, background: { r: seed * 11 % 255, g: 90, b: 40 } } })[ext]().toBuffer();
-const up = async (category, filename, body, { replace, user = 'admin', type = 'image/jpeg', contentDomain = '3dmodels' } = {}) => {
+// `standard`: the folder tree is owned by the Drive sync, so the test seeds the category first (like a FULL sync would); standard:false uploads into an unknown path.
+const up = async (category, filename, body, { replace, user = 'admin', type = 'image/jpeg', contentDomain = '3dmodels', standard = true } = {}) => {
+  if (standard && category && !category.includes('..')) await createCategoryResolver(pool, contentDomain).resolve(category.split('/'));
   body ??= await jpeg();
   return fetch(`${base}/api/admin/previews?contentDomain=${contentDomain}&category=${encodeURIComponent(category)}&filename=${encodeURIComponent(filename)}${replace ? '&replace=1' : ''}`,
     { method: 'POST', headers: { 'content-type': type, ...(user ? { 'x-test-user': user } : {}) }, body });
@@ -77,7 +79,7 @@ test('auth: no session is 401, a non-admin 403; nothing is written', { skip }, a
   assert.equal((await pool.query('select count(*)::int n from models')).rows[0].n, 0);
 });
 
-test('upload without an archive: model is PREVIEW_ONLY ("Thieu zip"), categories are created from the path, files are sm+lg webp on disk, NOT public', { skip }, async () => {
+test('upload without an archive: model is PREVIEW_ONLY ("Thieu zip"), the standard categories are reused, files are sm+lg webp on disk, NOT public', { skip }, async () => {
   const r = await up('Furniture/Desk', 'Chair One .JPG');
   assert.equal(r.status, 201);
   const out = await r.json();
@@ -221,4 +223,14 @@ test('legacy preview relocation copies and verifies blobs, preserves old files a
     await access(path.join(dir, `${row.sha256}.webp`));
     assert.deepEqual(await readFile(path.join(dir, row.local_path)), await readFile(path.join(dir, `${row.sha256}.webp`)));
   }
+});
+
+test('standard tree: an upload into a category that is not in the server tree is rejected (422) and creates nothing; empty standard categories accept uploads', { skip }, async () => {
+  await createCategoryResolver(pool, '3dmodels').resolve(['Plants', 'Tree']); // empty category from the standard tree
+  const unknown = await up('Plants/Made Up', 'Oak.jpg', undefined, { standard: false });
+  assert.equal(unknown.status, 422);
+  assert.equal((await unknown.json()).error.code, 'CATEGORY_NOT_IN_STANDARD');
+  assert.deepEqual((await pool.query('select full_path from categories order by full_path')).rows.map((x) => x.full_path), ['Plants', 'Plants / Tree'], 'no category was created');
+  assert.equal((await pool.query('select count(*)::int n from models')).rows[0].n, 0);
+  assert.equal((await up('Plants/Tree', 'Oak.jpg', undefined, { standard: false })).status, 201, 'a category without models still works');
 });

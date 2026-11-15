@@ -9,7 +9,6 @@ import path from 'node:path';
 import { apiError } from '../drive/errors.js';
 import { refreshCatalogState } from '../catalog-v1/manifest.js';
 import { checkMagic, makeVariants } from '../worker/previews.js';
-import { createCategoryResolver } from '../worker/categories.js';
 import { displayName, IMAGE, normalizeStem, parseCategoryPath } from '../worker/stem.js';
 import { audit, bad, inTransaction, UUID } from './shared.js';
 
@@ -56,7 +55,9 @@ export function addPreviewRoutes(router, { pool, pre, previewDir }) {
 
       const out = await inTransaction(pool, async (c) => {
         await c.query('select 1 from catalog_state where id = 1 for update'); // tuan tu hoa voi publish cua worker
-        const categoryId = await createCategoryResolver(c, domain).resolve(parts);
+        // Cay danh muc chuan = cay thu muc Drive tren VPS (worker FULL sync); admin/plugin khong tu tao danh muc moi.
+        const categoryId = (await c.query('select id from categories where content_domain = $1 and full_path = $2', [domain, parts.join(' / ')])).rows[0]?.id;
+        if (!categoryId) throw apiError('CATEGORY_NOT_IN_STANDARD');
         const model = (await c.query(
           `select m.*, exists(select 1 from model_previews p where p.model_id = m.id and p.is_primary) as has_preview
              from models m where m.stem = $1 and m.content_domain = $2 for update`, [stem, domain])).rows[0];
