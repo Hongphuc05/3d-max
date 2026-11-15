@@ -2,11 +2,12 @@
 // Khong co tai khoan, khong co man license: thiet bi + quyen do may chu quyet dinh (xem usePluginCatalog / v3-catalog).
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Filters } from './components.jsx';
+import { Pagination } from './Pagination.jsx';
 import { matchesCategory } from './catalog-view.js';
 import { HostBar } from './HostBar.jsx';
 import { Icon } from './icons.jsx';
-import { applyPluginUpdate, checkPluginUpdate, getLibraryStatus, isMaxHost, refreshLibrary } from './integrations/3dsmax/bridge.js';
-import { BuyLibrary, PluginCard, PluginDetail } from './plugin-components.jsx';
+import { applyPluginUpdate, checkPluginUpdate, getHostInfo, getLibraryStatus, isMaxHost, refreshLibrary } from './integrations/3dsmax/bridge.js';
+import { BuyLibrary, PluginCard } from './plugin-components.jsx';
 import OrderDialog from './OrderDialog.jsx';
 import { Queue } from './Queue.jsx';
 import { UpdateNotice } from './UpdateNotice.jsx';
@@ -82,31 +83,40 @@ function UpdateSection() {
   );
 }
 
-// Mot muc dieu huong tren header: icon + nhan nho, muc dang chon to mau thuong hieu.
-function NavButton({ icon, label, active = false, onClick }) {
+// Mot muc dieu huong tren header: glyph/icon + nhan nho, muc dang chon to mau thuong hieu.
+// glyph: slot thay the duoc (ReactNode); khong truyen thi dung icon SVG theo ten.
+function NavButton({ icon, glyph, label, active = false, onClick }) {
   return (
     <button onClick={onClick} aria-pressed={active} title={label}
-      className={'flex flex-col items-center gap-1 rounded-md px-3 py-1.5 text-[10px] transition ' + (active ? 'text-brand' : 'text-mute hover:bg-raised hover:text-fg')}>
-      <Icon name={icon} className="size-5" />{label}
+      className={'flex flex-col items-center gap-0.5 rounded-md px-3 py-1 text-[10px] transition ' + (active ? 'text-brand' : 'text-mute hover:bg-raised hover:text-fg')}>
+      {glyph ?? <Icon name={icon} className="size-5" />}{label}
     </button>
   );
 }
 
-function Device({ max }) {
+// Slot icon cho tab Models/Scenes: thay bang <img src=...> khi khach gui icon rieng.
+const BigGlyph = ({ children = '3D' }) => <span className="text-2xl font-black leading-none">{children}</span>;
+const DOMAIN_GLYPH = { '3dmodels': <BigGlyph />, '3dscenes': <BigGlyph /> };
+
+// Popup thong tin thiet bi (cung kieu popup Cai dat).
+function DeviceDialog({ max, onClose }) {
   const [machineCode, setMachineCode] = useState(null);
-  const [open, setOpen] = useState(false);
-  useEffect(() => { if (max) getLibraryStatus().then((s) => setMachineCode(s?.machineCode ?? null), () => setMachineCode(null)); }, [max]);
+  const [version, setVersion] = useState(null);
+  useEffect(() => {
+    if (!max) return;
+    getLibraryStatus().then((s) => setMachineCode(s?.machineCode ?? null), () => setMachineCode(null));
+    getHostInfo().then((i) => setVersion(i?.pluginVersion ?? null), () => setVersion(null));
+  }, [max]);
   return (
-    <div className="relative">
-      <NavButton icon="user" label="Thiết bị" active={open} onClick={() => setOpen(!open)} />
-      {open && (
-        <div className="absolute left-0 top-full z-50 mt-2 w-72 rounded-md border border-line bg-raised p-3 text-sm shadow-xl">
-          <div className="font-mono text-[10px] tracking-wider text-mute">MÃ MÁY</div>
-          <div className="mt-1 break-all font-mono text-xs">{machineCode || (max ? 'Đang đọc…' : 'Chỉ có trong plugin 3ds Max')}</div>
-          <p className="mt-2 font-mono text-[10px] text-mute">Quyền tải gắn với thiết bị này. Không cần tài khoản.</p>
-          {max && <UpdateSection />}
-        </div>
-      )}
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4" onClick={onClose}>
+      <section role="dialog" aria-modal="true" aria-labelledby="device-title" className="max-h-[90vh] w-full max-w-lg space-y-3 overflow-y-auto rounded-lg border border-line bg-panel p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between gap-3"><h2 id="device-title" className="text-lg font-bold">Thiết bị</h2><button onClick={onClose} aria-label="Đóng thiết bị" className="rounded border border-line px-3 py-1">Đóng</button></div>
+        <div className="font-mono text-[10px] tracking-wider text-mute">MÃ MÁY</div>
+        <p className="break-all rounded border border-line bg-base p-3 font-mono text-xs">{machineCode || (max ? 'Đang đọc…' : 'Chỉ có trong plugin 3ds Max')}</p>
+        {max && <div><div className="font-mono text-[10px] tracking-wider text-mute">PHIÊN BẢN PLUGIN</div><p className="mt-1 font-mono text-xs">{version || 'Đang đọc…'}</p></div>}
+        <p className="font-mono text-[10px] text-mute">Quyền tải gắn với thiết bị này. Không cần tài khoản.</p>
+        {max && <UpdateSection />}
+      </section>
     </div>
   );
 }
@@ -123,6 +133,7 @@ export default function PluginApp({ orderPollMs }) {
   const [reloadKey, setReloadKey] = useState(0);
   const [buying, setBuying] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [deviceOpen, setDeviceOpen] = useState(false);
   const [folderFilter, setFolderFilter] = useState('all');
   const [picking, setPicking] = useState(null);
   const { products: allProducts, tree: allTree, state, error, offline, progress, entitlements } = usePluginCatalog(reloadKey);
@@ -156,7 +167,6 @@ export default function PluginApp({ orderPollMs }) {
     return counts;
   }, [liked, favorites.assignments]);
   const likedShown = useMemo(() => folder === 'all' ? liked : liked.filter(p => (favorites.assignments[p.id.toLowerCase()] ?? DEFAULT_FOLDER) === folder), [liked, folder, favorites.assignments]);
-  const active = useMemo(() => (tab === 'done' ? mine : tab === 'fav' ? likedShown : products).find(p => p.id === activeId) || null, [products, mine, likedShown, tab, activeId]);
   const listReady = tab === 'done' || state === 'ready';
   const rows = useMemo(() => {
     const needle = text.trim().toLowerCase();
@@ -187,9 +197,17 @@ export default function PluginApp({ orderPollMs }) {
   return (
     <div className="flex h-screen flex-col">
       <HostBar nav={<>
-        {[["3dmodels", "Models"], ["3dscenes", "Scenes"]].map(([domain, label]) => <NavButton key={domain} icon="cube" label={label} active={contentDomain === domain} onClick={() => selectDomain(domain)} />)}
+        {[["3dmodels", "Models"], ["3dscenes", "Scenes"]].map(([domain, label]) => <NavButton key={domain} glyph={DOMAIN_GLYPH[domain]} label={label} active={contentDomain === domain} onClick={() => selectDomain(domain)} />)}
         {max && <NavButton icon="settings" label="Cài đặt" onClick={() => setSettingsOpen(true)} />}
-        <Device max={max} />
+        <NavButton icon="user" label="Thiết bị" active={deviceOpen} onClick={() => setDeviceOpen(true)} />
+      </>} center={<>
+        <label className="flex min-w-32 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-brand">
+          <Icon name="search" className="size-3.5 text-mute" />
+          <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Tìm model…" className="w-full bg-transparent py-1 text-sm outline-none placeholder:text-mute" />
+        </label>
+        <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sắp xếp" className="rounded-md border border-line bg-panel px-2 py-1 font-mono text-xs outline-none focus:border-brand">
+          {Object.entries(SORTS).map(([k, [label]]) => <option key={k} value={k}>{label}</option>)}
+        </select>
       </>} reloadKey={reloadKey} onRefresh={refresh} apiStatus={max ? (offline ? 'down' : 'ok') : null} />
       {offline && <div role="status" className="border-b border-warn/40 bg-warn/10 px-3 py-1 font-mono text-[11px] text-warn">Đang offline — hiển thị catalog đã lưu trên máy. Cần Internet để tải model.</div>}
       {max && entitlements && !licensed && !offline && (
@@ -235,17 +253,7 @@ export default function PluginApp({ orderPollMs }) {
             </div>
           )}
 
-          <div className="flex flex-wrap items-center gap-2 px-3 py-2">
-            <label className="flex min-w-48 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-brand">
-              <Icon name="search" className="size-3.5 text-mute" />
-              <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Tìm model…" className="w-full bg-transparent py-1.5 text-sm outline-none placeholder:text-mute" />
-            </label>
-            <select value={sort} onChange={(e) => setSort(e.target.value)} className="rounded-md border border-line bg-panel px-2 py-1.5 font-mono text-xs outline-none focus:border-brand">
-              {Object.entries(SORTS).map(([k, [label]]) => <option key={k} value={k}>{label}</option>)}
-            </select>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-auto px-3 pb-3">
+          <div className="min-h-0 flex-1 overflow-y-scroll pl-3 pr-[100px] pb-3">
             {tab === 'done' && downloads.error && <p role="alert" className="py-3 text-sm text-danger">{downloads.error}</p>}
             {favorites.error && <p role="alert" className="py-3 text-sm text-danger">{favorites.error}</p>}
             {tab !== 'done' && state === 'error' && (
@@ -262,7 +270,7 @@ export default function PluginApp({ orderPollMs }) {
               </p>
             )}
             {tab !== 'done' && state === 'loading' && max && <p role="status" className="py-2 text-center font-mono text-xs text-mute">Lần đầu mở: đang tải catalog từ máy chủ (cần Internet)…</p>}
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-2.5">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] min-[900px]:grid-cols-[repeat(10,minmax(0,1fr))] gap-2.5">
               {!listReady && state === 'loading'
                 ? Array.from({ length: 18 }, (_, i) => <div key={i} className="aspect-[3/4] animate-pulse rounded-lg bg-panel" />)
                 : view.map((p) => <PluginCard key={p.id} p={p} active={activeId === p.id} onOpen={(m) => setActiveId(m.id)} ctx={ctx} />)}
@@ -270,18 +278,14 @@ export default function PluginApp({ orderPollMs }) {
           </div>
 
           {listReady && rows.length > PAGE && (
-            <div className="flex items-center justify-between border-t border-line px-3 py-2 font-mono text-xs">
-              <button disabled={page === 1} onClick={() => setPage(page - 1)} className="rounded-md border border-line px-3 py-1 disabled:opacity-30">‹ Trước</button>
-              <span className="text-mute">Trang {page} / {pages} · {rows.length} model</span>
-              <button disabled={page === pages} onClick={() => setPage(page + 1)} className="rounded-md border border-line px-3 py-1 disabled:opacity-30">Sau ›</button>
-            </div>
+            <Pagination page={page} pages={pages} total={rows.length} onPage={setPage} />
           )}
         </main>
 
-        <PluginDetail p={active} onClose={() => setActiveId(null)} ctx={ctx} />
       </div>
       {/* Thanh toan xong (chu xac nhan) -> tai lai catalog + quyen: nut chuyen sang Download khong can bam Lam moi. */}
       {buying && <OrderDialog pollMs={orderPollMs} onClose={() => setBuying(false)} onConfirmed={() => setReloadKey((k) => k + 1)} />}
+      {deviceOpen && <DeviceDialog max={max} onClose={() => setDeviceOpen(false)} />}
       {settingsOpen && <PluginSettings onClose={() => setSettingsOpen(false)} />}
       <ImportOptionsDialog />
       {picking && <FavoriteFolderDialog product={picking} folders={domainFolders.filter(f => f.contentDomain === (picking.contentDomain || '3dmodels'))}

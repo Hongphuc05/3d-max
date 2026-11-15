@@ -82,6 +82,10 @@ export const importAsset = (assetId, ticket, onProgress) => call("asset.import",
 export const checkPluginUpdate = () => call('host.checkUpdate', {}, 20000);
 export const applyPluginUpdate = (onProgress) => call('host.applyUpdate', {}, 31 * 60 * 1000, onProgress);
 
+// Chon cua so 3ds Max dich + focus Max (thanh nay truoc day ve native). Push: onHostEvent('host.targetsChanged', fn) -> cung dang {targets,currentId,focusEnabled}.
+export const listTargets = () => call('host.listTargets', {}, 5000);
+export const selectTarget = (id) => call('host.selectTarget', { id }, 5000);
+export const focusMax = () => call('host.focusMax', {}, 5000);
 export const getHostInfo = () => call("host.getInfo", {}, 5000);
 export const getSceneInfo = () => call("scene.getInfo", {}, 5000);
 

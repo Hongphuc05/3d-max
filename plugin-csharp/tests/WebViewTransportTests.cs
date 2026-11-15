@@ -34,7 +34,7 @@ internal static class WebViewTransportTests
         Assert(!MaxWebViewForm.IsArchiveDependencyFailure(new FileNotFoundException("package", "package.bin")), "missing model package is not misreported as missing dependency");
         AgentRejectsUnselectedTargets();
         ImportWaitsForPendingTargetRefresh();
-        TargetPickerIsNotRebuiltWhenNothingChanged();
+        TargetSnapshotTracksDiscoveredWindows();
         DeviceOperationsDoNotInheritCallerExecutionContext();
         AssetImportFormatPriority();
 
@@ -231,10 +231,9 @@ internal static class WebViewTransportTests
         }, first))
         {
             Assert(Pump(form.CaptureImportTargetAsync()) == null, "three Max windows require an explicit target choice");
-            var picker = (ComboBox)typeof(MaxWebViewForm).GetField("_targetPicker", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(form);
-            Assert(picker.Items.Count == 4, "dropdown lists all three Max windows and a placeholder");
-            picker.SelectedItem = third;
-            typeof(ComboBox).GetMethod("OnSelectionChangeCommitted", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(picker, new object[] { EventArgs.Empty });
+            Assert(((Array)form.TargetsSnapshot()["targets"]).Length == 3, "host.listTargets lists all three Max windows");
+            Assert(!form.SelectTargetById("999:1:nope"), "host.selectTarget rejects an unknown id");
+            Assert(form.SelectTargetById(MaxWebViewForm.TargetId(third)), "host.selectTarget accepts a listed id");
             Assert(Pump(form.CaptureImportTargetAsync()).IsSameScene(third) && form.Text.Contains("303"), "choosing max_c updates import destination and plugin title");
             block = true;
             var before = resolutions;
@@ -242,15 +241,13 @@ internal static class WebViewTransportTests
             visible = new[] { third, second, first };
             var importing = form.CaptureImportTargetAsync();
             Assert(!importing.IsCompleted, "import awaits pending metadata refresh");
-            picker.SelectedItem = Array.Find(picker.Items.Cast<object>().OfType<ImportTarget>().ToArray(), target => target.IsSameScene(second));
-            typeof(ComboBox).GetMethod("OnSelectionChangeCommitted", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(picker, new object[] { EventArgs.Empty });
+            Assert(form.SelectTargetById(MaxWebViewForm.TargetId(second)), "selecting max_b during refresh");
             pending.SetResult(third);
             Assert(Pump(importing).IsSameScene(third), "dropdown changes during metadata refresh cannot reroute an import captured for max_c");
             Assert(resolutions == before + 3 && timerRefresh.IsCompleted, "concurrent refresh callers share one metadata query per process");
             block = false;
             Assert(Pump(form.CaptureImportTargetAsync()).IsSameScene(second), "next import uses the new explicit selection");
-            picker.SelectedItem = Array.Find(picker.Items.Cast<object>().OfType<ImportTarget>().ToArray(), target => target.IsSameScene(third));
-            typeof(ComboBox).GetMethod("OnSelectionChangeCommitted", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(picker, new object[] { EventArgs.Empty });
+            Assert(form.SelectTargetById(MaxWebViewForm.TargetId(third)), "selecting max_c again");
             Assert(Pump(form.CaptureImportTargetAsync()).IsSameScene(third), "reordering or focusing another Max preserves selected max_c");
             var validate = typeof(MaxWebViewForm).GetMethod("ValidateSelectedTargetAsync", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert(Pump((Task<bool>)validate.Invoke(form, new object[] { "remote-scene", third })), "selected non-owner scene passes validation");
@@ -263,47 +260,30 @@ internal static class WebViewTransportTests
             Assert(Pump(form.CaptureImportTargetAsync()) == null, "reused PID cannot inherit the selected process");
             visible = new[] { first, second, third }; wrongMetadata = true;
             Assert(Pump(form.CaptureImportTargetAsync()) == null, "metadata for another process cannot redirect the selected target");
-            var toolbar = (TableLayoutPanel)form.Controls.Find("ConnectionToolbar", false)[0];
-            foreach (var width in new[] { 1100, 600, 420, 1100 })
-            {
-                form.ClientSize = new System.Drawing.Size(width, 700);
-                form.PerformLayout();
-                toolbar.PerformLayout();
-                Assert(picker.DropDownWidth == picker.Width && picker.Right <= toolbar.ClientSize.Width
-                    && toolbar.Controls.Cast<Control>().All(control => control.Right <= toolbar.ClientSize.Width
-                        && control.Bottom <= toolbar.ClientSize.Height),
-                    "connection controls and popup stay within resized window width " + width);
-            }
-            Assert(toolbar.Height == 64 && toolbar.RowCount == 1, "widening restores the single-row connection toolbar");
+            var snapshot = form.TargetsSnapshot();
+            Assert(snapshot["currentId"] == null && !(bool)snapshot["focusEnabled"], "no current target disables focus");
         }
     }
 
-    // The window selector must not be rebuilt (it repaints and flashes) on every 1 s poll, nor scan windows when its list opens.
-    private static void TargetPickerIsNotRebuiltWhenNothingChanged()
+    // host.listTargets mirrors the discovered windows: same label text, closed windows disappear, a rename shows up.
+    private static void TargetSnapshotTracksDiscoveredWindows()
     {
         var first = new ImportTarget(101, 1001, "max_a.max", @"D:\First\max_a.max", new string('a', 32));
         var second = new ImportTarget(202, 2002, "max_b.max", @"D:\Second\max_b.max", new string('b', 32));
         var visible = new[] { first, second };
-        var discoveries = 0;
-        // Every metadata read returns a NEW object, so a rebuilt list holds different instances than the previous one.
-        Func<ImportTarget, ImportTarget> copy = t => t == null ? null : new ImportTarget(t.ProcessId, t.StartedTicks, t.SceneTitle, t.ScenePath, t.DocumentToken);
-        using (var form = new MaxWebViewForm(() => { discoveries++; return visible; }, target => Task.FromResult(copy(Array.Find(visible, item => item.IsSameProcess(target)))), first))
+        using (var form = new MaxWebViewForm(() => visible, target => Task.FromResult(Array.Find(visible, item => item.IsSameProcess(target))), first))
         {
-            var picker = (ComboBox)typeof(MaxWebViewForm).GetField("_targetPicker", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(form);
             Pump(form.RefreshTargetsAsync());
-            Assert(picker.Items.Count == 3, "placeholder plus two Max windows");
-            var shown = picker.Items[1];
-            for (var poll = 0; poll < 3; poll++) Pump(form.RefreshTargetsAsync());
-            Assert(ReferenceEquals(picker.Items[1], shown), "polling an unchanged set of windows does not rebuild the selector");
-            var before = discoveries;
-            typeof(ComboBox).GetMethod("OnDropDown", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(picker, new object[] { EventArgs.Empty });
-            Assert(discoveries == before, "opening the list does not scan windows on the UI thread");
+            var list = (Dictionary<string, object>[])form.TargetsSnapshot()["targets"];
+            Assert(list.Length == 2 && (string)list[0]["label"] == first.DisplayName && (int)list[0]["pid"] == 101, "snapshot uses DisplayName as label and pid");
+            Assert(form.SelectTargetById((string)list[1]["id"]) && (string)form.TargetsSnapshot()["currentId"] == MaxWebViewForm.TargetId(second)
+                && (bool)form.TargetsSnapshot()["focusEnabled"], "selected id becomes currentId and enables focus");
             visible = new[] { first, new ImportTarget(202, 2002, "renamed.max", @"D:\Second\renamed.max", new string('c', 32)) };
             Pump(form.RefreshTargetsAsync());
-            Assert(!ReferenceEquals(picker.Items[1], shown) && picker.Items.Cast<object>().OfType<ImportTarget>().Any(t => t.DisplayName.Contains("renamed")), "a real change (renamed scene) still refreshes the list");
+            Assert(((Dictionary<string, object>[])form.TargetsSnapshot()["targets"]).Any(t => ((string)t["label"]).Contains("renamed")), "a renamed scene shows in the list");
             visible = new[] { first };
             Pump(form.RefreshTargetsAsync());
-            Assert(picker.Items.Count == 2, "a closed Max window disappears from the list");
+            Assert(((Dictionary<string, object>[])form.TargetsSnapshot()["targets"]).Length == 1 && form.TargetsSnapshot()["currentId"] == null, "a closed Max window disappears and clears the explicit selection");
         }
     }
 

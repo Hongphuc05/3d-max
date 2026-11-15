@@ -35,99 +35,6 @@ namespace MaxWebViewHost
         }
     }
 
-    // Native owner-drawn selector keeps the connection strip dark, including its popup.
-    internal sealed class SceneTargetPicker : ComboBox
-    {
-        // 3dsMood brand: near-black bar (#121214), logo red (#8f120d) for the outline and selection, lighter red (#e5484d) for text.
-        private static readonly Color Surface = Color.FromArgb(18, 18, 20);
-        private static readonly Color Accent = Color.FromArgb(229, 72, 77);
-        private static readonly Color Brand = Color.FromArgb(143, 18, 13);
-
-        public SceneTargetPicker()
-        {
-            DropDownStyle = ComboBoxStyle.DropDownList;
-            DrawMode = DrawMode.OwnerDrawFixed;
-            FlatStyle = FlatStyle.Flat;
-            BackColor = Surface;
-            ForeColor = Color.FromArgb(235, 235, 229);
-            Font = new Font("Consolas", 12);
-            ItemHeight = 38;
-            IntegralHeight = false;
-            MaxDropDownItems = 8;
-            DropDownHeight = 304;
-            AccessibleName = "Cửa sổ 3ds Max đích";
-            Cursor = Cursors.Hand;
-        }
-
-        protected override void OnSizeChanged(EventArgs e)
-        {
-            base.OnSizeChanged(e);
-            DropDownWidth = Math.Max(1, Width);
-        }
-
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
-
-        // The managed setter skips the native message when the stored value is unchanged, but the native list
-        // width can still be stale after the toolbar switches layout; send it every time the list opens.
-        protected override void OnDropDown(EventArgs e)
-        {
-            base.OnDropDown(e);
-            if (IsHandleCreated) SendMessage(Handle, 0x0160, (IntPtr)Math.Max(1, Width), IntPtr.Zero); // CB_SETDROPPEDWIDTH
-        }
-
-        protected override void OnDrawItem(DrawItemEventArgs e)
-        {
-            if (e.Index < 0 || e.Index >= Items.Count) return;
-            var collapsed = (e.State & DrawItemState.ComboBoxEdit) != 0;
-            var selected = !collapsed && (e.State & DrawItemState.Selected) != 0;
-            var target = Items[e.Index] as ImportTarget;
-            var text = target == null ? Items[e.Index].ToString() : target.DisplayName
-                + (collapsed ? "" : " | PID " + target.ProcessId)
-                + (target.IsReady ? "" : " · chưa sẵn sàng");
-            using (var background = new SolidBrush(selected ? Color.FromArgb(44, 17, 16) : Surface))
-                e.Graphics.FillRectangle(background, e.Bounds);
-            var bounds = new Rectangle(e.Bounds.X + 15, e.Bounds.Y, Math.Max(0, e.Bounds.Width - (collapsed ? 45 : 25)), e.Bounds.Height);
-            TextRenderer.DrawText(e.Graphics, text, Font, bounds,
-                target != null && !target.IsReady ? Color.FromArgb(135, 135, 135) : selected ? Accent : ForeColor,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-        }
-
-        protected override void WndProc(ref Message m)
-        {
-            base.WndProc(ref m);
-            var printing = m.Msg == 0x0317 || m.Msg == 0x0318; // WM_PRINT / WM_PRINTCLIENT
-            if ((m.Msg != 0x000F && !printing) || !IsHandleCreated) return;
-            using (var graphics = printing && m.WParam != IntPtr.Zero ? Graphics.FromHdc(m.WParam) : Graphics.FromHwnd(Handle))
-            using (var surface = new SolidBrush(Surface))
-            using (var border = new Pen(Brand))
-            using (var divider = new Pen(Color.FromArgb(44, 44, 48)))
-            using (var arrow = new SolidBrush(ForeColor))
-            {
-                graphics.FillRectangle(surface, ClientRectangle);
-                if (SelectedIndex >= 0)
-                    OnDrawItem(new DrawItemEventArgs(graphics, Font, ClientRectangle, SelectedIndex, DrawItemState.ComboBoxEdit));
-                var arrowWidth = Math.Max(28, (int)(32 * graphics.DpiX / 96));
-                var x = Width - arrowWidth;
-                graphics.FillRectangle(surface, x, 1, arrowWidth - 1, Height - 2);
-                graphics.DrawLine(divider, x, 1, x, Height - 2);
-                var cx = x + arrowWidth / 2;
-                var cy = Height / 2;
-                graphics.FillPolygon(arrow, new[] { new Point(cx - 5, cy - 2), new Point(cx + 5, cy - 2), new Point(cx, cy + 3) });
-                graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                using (var outline = new System.Drawing.Drawing2D.GraphicsPath())
-                {
-                    outline.AddArc(0, 0, 8, 8, 180, 90);
-                    outline.AddArc(Width - 9, 0, 8, 8, 270, 90);
-                    outline.AddArc(Width - 9, Height - 9, 8, 8, 0, 90);
-                    outline.AddArc(0, Height - 9, 8, 8, 90, 90);
-                    outline.CloseFigure();
-                    graphics.DrawPath(border, outline);
-                }
-            }
-        }
-    }
-
     public class MaxWebViewForm : Form
     {
         // Phase 4: host nạp website thật qua URL, không còn nạp file HTML cố định.
@@ -149,7 +56,7 @@ namespace MaxWebViewHost
         /// không tới được MAXScript. MAXScript có thể .Add thêm khi implement handler mới.</summary>
         public static readonly List<string> AllowedMethods = new List<string>
         {
-            "host.ping", "host.getInfo", "host.checkUpdate", "host.applyUpdate",
+            "host.ping", "host.getInfo", "host.checkUpdate", "host.applyUpdate", "host.listTargets", "host.selectTarget", "host.focusMax",
             "scene.getInfo", "scene.getSelection", "scene.createBox",
             "design.create",
             "asset.download", "asset.import", "device.getIdentity", "device.signChallenge",
@@ -171,24 +78,10 @@ namespace MaxWebViewHost
 
         private readonly ImportTargetSelection _targetSelection = new ImportTargetSelection();
         private readonly ImportTarget _ownerProcess;
-        private readonly ComboBox _targetPicker = new SceneTargetPicker { Dock = DockStyle.Fill };
-        private readonly Button _focusMaxButton = new Button
-        {
-            Text = "Focus 3ds Max", Dock = DockStyle.Fill, FlatStyle = FlatStyle.Flat,
-            BackColor = Color.FromArgb(18, 18, 20), ForeColor = Color.FromArgb(225, 225, 222),
-            Font = new Font("Consolas", 12), Cursor = Cursors.Hand, Enabled = false
-        };
         private Task _targetRefreshTask = Task.CompletedTask;
         private readonly Func<ImportTarget[]> _discoverTargets;
         private readonly Func<ImportTarget, Task<ImportTarget>> _readTarget;
         private readonly Timer _focusTimer = new Timer { Interval = 1000 };
-        private readonly Label _target = new Label
-        {
-            Dock = DockStyle.Fill, Text = "Not connected", AutoEllipsis = true,
-            ForeColor = Color.FromArgb(221, 221, 215), Font = new Font("Consolas", 12),
-            TextAlign = ContentAlignment.MiddleLeft
-        };
-
         private Uri[] _trustedOrigins;
         private bool _navigating = true;
         private ulong _allowedNavigationId;
@@ -229,45 +122,6 @@ namespace MaxWebViewHost
             Width = 1100;
             Height = 800;
 
-            var toolbar = new TableLayoutPanel
-            {
-                Name = "ConnectionToolbar", Dock = DockStyle.Top, Height = 64, ColumnCount = 3, RowCount = 1,
-                BackColor = Color.FromArgb(18, 18, 20), Padding = new Padding(12, 9, 12, 9)
-            };
-            toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 37));
-            toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 63));
-            toolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 172));
-            toolbar.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            _target.Margin = new Padding(0, 0, 12, 0);
-            _targetPicker.Margin = new Padding(0, 0, 12, 0);
-            _focusMaxButton.Margin = Padding.Empty;
-            _focusMaxButton.FlatAppearance.BorderColor = Color.FromArgb(143, 18, 13);
-            _focusMaxButton.FlatAppearance.MouseOverBackColor = Color.FromArgb(44, 17, 16);
-            _focusMaxButton.Click += (s, e) =>
-            {
-                if (!ImportTargetDiscovery.Focus(_targetSelection.Current))
-                {
-                    _status.Text = "Không thể focus Max đã chọn. Kiểm tra cửa sổ Max còn mở và cùng mức quyền Windows.";
-                    _status.Visible = true;
-                }
-                else _status.Visible = false;
-            };
-            toolbar.Controls.Add(_target, 0, 0);
-            toolbar.Controls.Add(_targetPicker, 1, 0);
-            toolbar.Controls.Add(_focusMaxButton, 2, 0);
-            toolbar.SizeChanged += (s, e) => LayoutConnectionToolbar(toolbar);
-            LayoutConnectionToolbar(toolbar);
-            _targetPicker.DropDown += (s, e) =>
-            {
-                // No refresh here: the 1 s timer keeps the list current, and a synchronous window scan on the UI thread
-                // at the exact moment the list opens is what made opening it stutter.
-                _targetPicker.DropDownWidth = Math.Max(1, _targetPicker.Width);
-            };
-            _targetPicker.SelectionChangeCommitted += (s, e) =>
-            {
-                _targetSelection.Select(_targetPicker.SelectedItem as ImportTarget);
-                UpdateOwnerDisplay(_targetSelection.Current);
-            };
             // Nobody is choosing a window while the panel is minimized or hidden, so skip the scan then.
             _focusTimer.Tick += (s, e) => { if (Visible && WindowState != FormWindowState.Minimized) RefreshTargets(); };
             _focusTimer.Start();
@@ -280,7 +134,6 @@ namespace MaxWebViewHost
             _connectionPanel.Visible = UsePackagedApp;
             _connectionRetry.Click += async (s, e) => await LoadPackagedAppAsync();
             Controls.Add(_connectionPanel);
-            Controls.Add(toolbar);
             Controls.Add(_status);
             _connectionTimer.Tick += async (s, e) => await MonitorConnectionAsync();
             FormClosed += (s, e) => { _connectionTimer.Dispose(); _packagedApp?.Dispose(); _v3?.Dispose(); };
@@ -304,59 +157,49 @@ namespace MaxWebViewHost
                 return new ImportTarget(process.Id, process.StartTime.ToUniversalTime().Ticks, process.MainWindowTitle);
         }
 
-        private void LayoutConnectionToolbar(TableLayoutPanel toolbar)
-        {
-            var compact = toolbar.ClientSize.Width < 800;
-            if (toolbar.Tag is bool && (bool)toolbar.Tag == compact) return;
-            toolbar.Tag = compact;
-            toolbar.SuspendLayout();
-            try
-            {
-                toolbar.SetColumnSpan(_target, 1);
-                toolbar.SetColumnSpan(_targetPicker, 1);
-                toolbar.RowCount = compact ? 2 : 1;
-                toolbar.RowStyles.Clear();
-                if (compact) toolbar.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
-                toolbar.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-                toolbar.ColumnStyles[0].Width = compact ? 0 : 37;
-                toolbar.ColumnStyles[1].Width = compact ? 100 : 63;
-                toolbar.ColumnStyles[2].Width = compact ? 150 : 172;
-                toolbar.SetCellPosition(_target, new TableLayoutPanelCellPosition(0, 0));
-                toolbar.SetCellPosition(_targetPicker, new TableLayoutPanelCellPosition(compact ? 0 : 1, compact ? 1 : 0));
-                toolbar.SetCellPosition(_focusMaxButton, new TableLayoutPanelCellPosition(2, compact ? 1 : 0));
-                toolbar.SetColumnSpan(_target, compact ? 3 : 1);
-                toolbar.SetColumnSpan(_targetPicker, compact ? 2 : 1);
-                toolbar.Height = compact ? 96 : 64;
-            }
-            finally { toolbar.ResumeLayout(true); }
-        }
-
         private void UpdateOwnerDisplay(ImportTarget current)
         {
             Text = current == null ? "3dsmood | Chọn cửa sổ 3ds Max" : "3dsmood | "
                 + (string.IsNullOrEmpty(current.ScenePath) ? "Untitled" : Path.GetFileName(current.ScenePath))
                 + " | Max PID " + current.ProcessId;
-            _target.Text = current == null ? "Not connected · Chọn 3ds Max" : "Connected: " + current.DisplayName;
-            _focusMaxButton.Enabled = current != null;
-            // Polling must not move items underneath an open dropdown.
-            if (_targetPicker.DroppedDown) return;
-            // Rebuilding the list repaints the whole selector, so do it only when what it shows actually changed;
-            // doing it on every 1 s poll made the text flash.
-            var targets = _targetSelection.Targets;
-            var signature = PickerSignature(current, targets);
-            if (signature == _pickerSignature && _targetPicker.Items.Count == targets.Length + 1) return;
+            // Push only when what the web list shows actually changed; the 1 s poll must not spam events.
+            var signature = PickerSignature(current, _targetSelection.Targets);
+            if (signature == _pickerSignature) return;
             _pickerSignature = signature;
-            _targetPicker.BeginUpdate();
-            try
+            PostHostEvent("host.targetsChanged", TargetsSnapshot());
+        }
+
+        /// <summary>Opaque stable id of one Max scene: process + start time + document token.</summary>
+        internal static string TargetId(ImportTarget target)
+        {
+            return target.ProcessId.ToString(CultureInfo.InvariantCulture) + ":" + target.StartedTicks.ToString(CultureInfo.InvariantCulture) + ":" + target.DocumentToken;
+        }
+
+        /// <summary>Shape shared by host.listTargets, host.selectTarget and the host.targetsChanged event.</summary>
+        internal Dictionary<string, object> TargetsSnapshot()
+        {
+            var current = _targetSelection.Current;
+            return new Dictionary<string, object>
             {
-                _targetPicker.Items.Clear();
-                _targetPicker.Items.Add(_targetSelection.SelectedUnavailable
-                    ? "Scene đã chọn không còn sẵn sàng — chọn lại cửa sổ Max"
-                    : "Chọn cửa sổ 3ds Max để import…");
-                foreach (var target in targets) _targetPicker.Items.Add(target);
-                _targetPicker.SelectedIndex = current == null ? 0 : Array.FindIndex(targets, t => t.IsSameScene(current)) + 1;
-            }
-            finally { _targetPicker.EndUpdate(); }
+                { "targets", _targetSelection.Targets.Select(t => new Dictionary<string, object>
+                    {
+                        { "id", TargetId(t) },
+                        { "label", t.DisplayName + (t.IsReady ? "" : " · chưa sẵn sàng") },
+                        { "pid", t.ProcessId }
+                    }).ToArray() },
+                { "currentId", current == null ? null : TargetId(current) },
+                { "focusEnabled", current != null }
+            };
+        }
+
+        /// <summary>Same as choosing an entry in the old native picker; false for an unknown id.</summary>
+        internal bool SelectTargetById(string id)
+        {
+            var target = _targetSelection.Targets.FirstOrDefault(t => TargetId(t) == id);
+            if (target == null) return false;
+            _targetSelection.Select(target);
+            UpdateOwnerDisplay(_targetSelection.Current);
+            return true;
         }
 
         private string _pickerSignature;
@@ -656,7 +499,7 @@ namespace MaxWebViewHost
 
             if (method.StartsWith("host.", StringComparison.Ordinal))
             {
-                HandleHostMethod(id, method);
+                HandleHostMethod(id, method, paramsObj as Dictionary<string, object>);
                 return;
             }
 
@@ -1051,7 +894,7 @@ namespace MaxWebViewHost
             _web.CoreWebView2.PostWebMessageAsJson(_json.Serialize(new { id, type = "asset.progress", receivedBytes, totalBytes }));
         }
 
-        private void HandleHostMethod(string id, string method)
+        private void HandleHostMethod(string id, string method, Dictionary<string, object> parameters)
         {
             switch (method)
             {
@@ -1079,6 +922,32 @@ namespace MaxWebViewHost
                         { "webview2Version", webviewVersion },
                         { "protocolVersion", 1 }
                     }, null);
+                    break;
+
+                case "host.listTargets":
+                case "host.selectTarget":
+                case "host.focusMax":
+                    try
+                    {
+                        if (method == "host.listTargets") PostResponse(id, true, TargetsSnapshot(), null);
+                        else if (method == "host.selectTarget")
+                        {
+                            if (SelectTargetById((string)parameters["id"])) PostResponse(id, true, TargetsSnapshot(), null);
+                            else PostError(id, "INVALID_PARAMS", "Cửa sổ 3ds Max không còn trong danh sách.");
+                        }
+                        else
+                        {
+                            var focused = ImportTargetDiscovery.Focus(_targetSelection.Current);
+                            if (!focused) _status.Text = "Không thể focus Max đã chọn. Kiểm tra cửa sổ Max còn mở và cùng mức quyền Windows.";
+                            _status.Visible = !focused;
+                            PostResponse(id, true, new Dictionary<string, object> { { "focused", focused } }, null);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine("[targets] " + ex.GetType().Name);
+                        PostError(id, "HOST_NOT_READY", "Không đọc được danh sách cửa sổ 3ds Max.");
+                    }
                     break;
 
                 default:

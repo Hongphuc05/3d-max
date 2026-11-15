@@ -14,7 +14,7 @@ const styles = {
   solid: 'bg-accent text-accent-ink hover:brightness-110',
   ghost: 'border border-line text-mute',
   // Nut tren the model: den, vien trang bo tron (thiet ke thuong hieu). Nut hanh dong chinh khac van dung solid (do).
-  outline: 'border border-white/80 bg-black text-fg hover:bg-white/10 disabled:opacity-50',
+  outline: 'border border-white/40 bg-black text-white/80 hover:border-white/70 hover:text-white disabled:opacity-50',
 };
 
 export function ModelAction({ p, ctx, big }) {
@@ -33,7 +33,7 @@ export function ModelAction({ p, ctx, big }) {
     const runImport = e => { e.stopPropagation(); importDownloaded(p.id); };
     return <div className="space-y-1"><button disabled={importing || blocked} onClick={runImport} className={`${size} ${solid}`}>{importing ? importLabel : blocked ? 'Cần license thư viện' : 'Import'}</button>{importError && <p role="alert" className="text-xs text-danger">{importError}</p>}</div>;
   }
-  if (downloaded || state.kind === 'done') return <button onClick={e => { e.stopPropagation(); ctx.onDownloaded?.(); }} className={`${size} border border-brand/50 text-brand hover:bg-accent/10`}>Đã tải · Xem</button>;
+  if (downloaded || state.kind === 'done') return <button onClick={e => { e.stopPropagation(); ctx.onDownloaded?.(); }} className={`${size} border border-white/40 bg-black text-white/80 hover:border-white/70 hover:text-white`}>Đã tải · Xem</button>;
   if (state.kind === 'view') return <div className="font-mono text-xs text-mute">{state.label}</div>;
   if (state.disabled) return <button disabled className={`${size} ${styles.ghost} ${state.kind === 'running' ? 'animate-pulse text-brand' : ''}`}>{state.label}</button>;
   if (state.kind === 'failed') return <button onClick={click} className={`${size} border border-danger/50 text-danger hover:bg-danger/10`}>{state.label}</button>;
@@ -60,31 +60,34 @@ export function FavoriteHeart({ p, ctx, className = '', reveal = false }) {
   );
 }
 
-// Popup anh lon khi re chuot vao anh the: chi co anh, dat canh the (lat trai/phai cho vua cua so), khong chan chuot.
-const POPUP = 440;
-function HoverPreview({ p, anchor }) {
+// Popup anh lon khi re chuot vao anh the (nhu ban cu, to hon 25%: 440 -> 550px). Scene (anh ngang) dung khung ngang 4:3,
+// anh lap day khung nen khong con 2 dai trang. Dat canh the, lat trai/phai cho vua cua so, khong chan chuot.
+const POPUP = 550, SCENE_POPUP = 720;
+function HoverPreview({ p, anchor, scene }) {
   const [failed, setFailed] = useState(false);
   const src = p.image || p.thumb;
   if (!anchor || !src || failed) return null;
-  const vw = window.innerWidth, vh = window.innerHeight;
-  const size = Math.max(120, Math.min(POPUP, vw - 16, vh - 16));
-  const left = anchor.right + 8 + size <= vw - 8 ? anchor.right + 8 : Math.max(8, anchor.left - 8 - size);
-  const top = Math.min(Math.max(8, anchor.top + anchor.height / 2 - size / 2), Math.max(8, vh - size - 8));
+  const vw = window.innerWidth, vh = window.innerHeight, ratio = scene ? 3 / 4 : 1;
+  const width = Math.max(120, Math.min(scene ? SCENE_POPUP : POPUP, vw - 16, (vh - 16) / ratio));
+  const height = width * ratio;
+  const left = anchor.right + 8 + width <= vw - 8 ? anchor.right + 8 : Math.max(8, anchor.left - 8 - width);
+  const top = Math.min(Math.max(8, anchor.top + anchor.height / 2 - height / 2), Math.max(8, vh - height - 8));
   return createPortal(
-    <div data-testid="hover-preview" className="pointer-events-none fixed z-50 overflow-hidden rounded-lg border border-brand/60 bg-white shadow-2xl" style={{ left, top, width: size, height: size }}>
-      <img src={src} alt="" onError={() => setFailed(true)} className="size-full object-contain" />
+    <div data-testid="hover-preview" className={`pointer-events-none fixed z-50 overflow-hidden rounded-lg border border-white/60 shadow-2xl ${scene ? 'bg-black' : 'bg-white'}`} style={{ left, top, width, height }}>
+      <img src={src} alt="" onError={() => setFailed(true)} className={`size-full ${scene ? 'object-cover' : 'object-contain'}`} />
     </div>, document.body);
 }
 
 export function PluginCard({ p, active, onOpen, ctx }) {
+  const scene = p.contentDomain === '3dscenes';
   const [anchor, setAnchor] = useState(null);
   return (
-    <div className={`group relative flex flex-col overflow-hidden rounded-lg border bg-card transition ${active ? 'border-brand' : 'border-line hover:border-mute/60'}`}>
+    <div className={`group relative flex flex-col rounded-lg border bg-card transition ${active ? 'border-white' : 'border-white/20 hover:border-white/50'}`}>
       <button onClick={() => onOpen(p)} onMouseEnter={(e) => setAnchor(e.currentTarget.getBoundingClientRect())} onMouseLeave={() => setAnchor(null)}
-        className="relative aspect-square overflow-hidden bg-white">
-        <Preview source={p.thumb} name={p.name} lazy fit={p.contentDomain === '3dscenes' ? 'cover' : 'contain'} />
+        className="relative overflow-hidden rounded-t-[7px] bg-white">
+        <Preview source={p.thumb} name={p.name} lazy fit={scene ? 'cover' : 'contain'} aspect={scene ? 'aspect-[4/3]' : 'aspect-square'} zoom={false} />
       </button>
-      <HoverPreview p={p} anchor={anchor} />
+      <HoverPreview p={p} anchor={anchor} scene={scene} />
       <button onClick={() => onOpen(p)} className="flex flex-1 flex-col px-2 pt-2 text-left">
         <div className="truncate text-[13px] font-bold" title={p.name}>{p.name}</div>
         <div className="mt-0.5 flex justify-between gap-2 font-mono text-[10px] text-mute">
@@ -92,58 +95,7 @@ export function PluginCard({ p, active, onOpen, ctx }) {
         </div>
       </button>
       <div className="p-2"><ModelAction p={p} ctx={ctx} /></div>
-      <FavoriteHeart p={p} ctx={ctx} reveal className="absolute top-1.5 right-1.5" />
-    </div>
-  );
-}
-
-const Row = ({ k, v }) => (
-  <div className="border-b border-line py-2">
-    <div className="font-mono text-[10px] tracking-wider text-mute">{k}</div>
-    <div className="mt-0.5 text-sm">{v}</div>
-  </div>
-);
-
-export function PluginDetail({ p, onClose, ctx }) {
-  if (!p) {
-    return (
-      <aside className="hidden w-[340px] shrink-0 place-items-center border-l border-line bg-panel p-6 text-center font-mono text-xs text-mute xl:grid">
-        Chọn một model để xem chi tiết
-      </aside>
-    );
-  }
-  const owned = owns(ctx.entitlements);
-  return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-black/60 xl:static xl:z-auto xl:bg-transparent" onClick={onClose}>
-      <aside className="flex h-full w-full max-w-[380px] flex-col overflow-auto border-l border-line bg-panel xl:w-[340px]" onClick={(e) => e.stopPropagation()}>
-        <div className="relative bg-white">
-          <Preview source={p.image} name={p.name} natural={p.contentDomain === '3dscenes'} />
-          <FavoriteHeart p={p} ctx={ctx} className="absolute top-2 left-2" />
-          <button onClick={onClose} aria-label="Đóng" className="absolute top-2 right-2 rounded-md bg-black/70 p-1.5 text-fg hover:bg-black"><Icon name="close" /></button>
-        </div>
-        <div className="flex flex-1 flex-col gap-3 p-4">
-          <div className="flex flex-wrap gap-1.5 font-mono text-[10px] uppercase">
-            {p.info.renderers.map((r) => <span key={r} className="rounded border border-warn/40 px-1.5 py-0.5 text-warn">{rendererLabel(r)}</span>)}
-            {p.info.formats.map((f) => <span key={f} className="rounded border border-line px-1.5 py-0.5 text-mute">.{f}</span>)}
-          </div>
-          <div>
-            <h2 className="text-lg leading-snug font-bold">{p.name}</h2>
-            <div className="font-mono text-[11px] text-mute">{p.folderPath || `${p.category} › ${p.subcategory}`}</div>
-          </div>
-          <div className="grid grid-cols-2 gap-x-4">
-            <Row k="QUYỀN DÙNG" v={ctx.entitlements ? (owned ? <span className="font-mono font-bold text-brand">License thư viện</span> : <span className="font-mono">Chưa có license</span>) : <span className="font-mono text-mute">—</span>} />
-            <Row k="DUNG LƯỢNG" v={<span className="font-mono">{mb(p.info.sizeMB)}</span>} />
-            <Row k="ĐỊNH DẠNG" v={p.info.formats.map((f) => '.' + f).join(' ') || '—'} />
-          </div>
-          <div className="mt-auto space-y-2 pt-2">
-            <ModelAction p={p} ctx={ctx} big />
-            {ctx.max && ctx.entitlements && !owned && <BuyLibrary ctx={ctx} />}
-            {ctx.max
-              ? <p className="font-mono text-[10px] text-mute">{ctx.local ? 'Import trực tiếp từ model đã lưu trên máy. Không tải hoặc giải nén lại.' : 'Download lưu model trên máy. Vào Đã tải để chọn model và import khi cần.'}</p>
-              : <p className="font-mono text-[10px] text-mute">Download và import chỉ có trong plugin 3ds Max. Trên trình duyệt chỉ xem catalog.</p>}
-          </div>
-        </div>
-      </aside>
+      <FavoriteHeart p={p} ctx={ctx} reveal className="absolute top-1.5 right-1.5 z-10" />
     </div>
   );
 }

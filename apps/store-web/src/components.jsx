@@ -8,7 +8,7 @@ export const subKey = (c, s) => `${c}/${s}`;
 
 // Checkbox 3 trang thai (indeterminate dat qua ref vi khong co thuoc tinh HTML).
 const Check = ({ checked, partial, onChange }) => (
-  <input type="checkbox" checked={checked} onChange={onChange} className="size-3.5 shrink-0 cursor-pointer"
+  <input type="checkbox" checked={checked} onChange={onChange} className="size-3.5 shrink-0 cursor-pointer appearance-none rounded-full bg-mute/40 checked:bg-brand indeterminate:bg-brand/60"
     ref={(el) => el && (el.indeterminate = partial)} />
 );
 
@@ -89,7 +89,7 @@ export function Logo({ className = 'h-9' }) {
   return <img src="/logo.svg" alt="3dsMood Curated Models" className={`w-auto ${className}`} />;
 }
 
-export function Preview({ source, name, lazy = false, fit = 'contain', natural = false }) {
+export function Preview({ source, name, lazy = false, fit = 'contain', natural = false, aspect = 'aspect-square', zoom = true }) {
   // State is keyed by the source it describes, so a change of source needs no reset effect. A reset effect ran
   // after an already cached image fired its load event and left the preview invisible (blank cards after F5).
   const [loadedSource, setLoadedSource] = useState(null);
@@ -103,5 +103,5 @@ export function Preview({ source, name, lazy = false, fit = 'contain', natural =
   if (!source || failed) return <div className="grid aspect-square w-full place-items-center bg-raised font-mono text-xs text-mute">Chưa có ảnh preview</div>;
   return <img ref={mark} src={source} alt={name} loading={lazy ? 'lazy' : undefined}
     onLoad={() => setLoadedSource(source)} onError={() => setFailedSource(source)}
-    className={`${natural ? 'h-auto w-full' : `aspect-square size-full ${fit === 'cover' ? 'object-cover' : 'object-contain'}`} transition duration-300 group-hover:scale-105 ${loaded ? 'opacity-100' : 'opacity-0'}`} />;
+    className={`${natural ? 'h-auto w-full' : `${aspect} size-full ${fit === 'cover' ? 'object-cover' : 'object-contain'}`} transition duration-300 ${zoom ? 'group-hover:scale-105' : ''} ${loaded ? 'opacity-100' : 'opacity-0'}`} />;
 }
