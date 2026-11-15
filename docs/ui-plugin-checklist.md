@@ -14,8 +14,8 @@ Mẫu: ảnh Photoshop chủ dự án gửi 15/11/2026.
 | 4 | Viền thẻ + nút Download / "Đã tải · Xem": chưa chọn = **trắng mờ**, đang chọn = **trắng**; bỏ viền đỏ | Lưới | [x] | [ ] |
 | 5 | Khoảng trống **28px ở mép phải cùng** của plugin để đặt chuột cuộn (không chạm ảnh nên không bật popup) | Lưới | [x] | [ ] |
 | 6 | Ảnh **Scene**: hết 2 dải trắng, ảnh to hơn (thẻ 4:3; popup Scene khung ngang 720px, ảnh lấp đầy) | Lưới | [x] | [ ] |
-| 7 | Thanh kết nối chuyển từ WinForms **vào web**: ô "Connected: <cửa sổ Max> ▾" bên trái hàng trên cùng, bấm để chọn cửa sổ Max. *Web + host giả xong; phần C# đang làm, chỉ kiểm thật trên Windows* | Header | [x] | [ ] |
-| 8 | Nút **focus 3ds Max** chuyển vào web: nút **Home đỏ** góc phải, cạnh nút làm mới (đỏ). *Web + host giả xong; phần C# đang làm* | Header | [x] | [ ] |
+| 7 | Thanh kết nối chuyển từ WinForms **vào web**: ô "Connected: <cửa sổ Max> ▾" bên trái hàng trên cùng, bấm để chọn cửa sổ Max. *Web + C# đã gộp; C# chưa build, phải kiểm trên Windows* | Header | [x] | [ ] |
+| 8 | Nút **focus 3ds Max** chuyển vào web: nút **Home đỏ** góc phải, cạnh nút làm mới (đỏ). *Web + C# đã gộp; C# chưa build, phải kiểm trên Windows* | Header | [x] | [ ] |
 | 9 | Tab Models/Scenes: dạng **"3D" + chữ nhỏ Models/Scenes** như mẫu, chừa chỗ thay icon khách gửi sau | Header | [x] | [ ] |
 | 10 | Nút **Thiết bị** mở **popup** (giống Cài đặt): mã máy, phiên bản plugin | Header | [x] | [ ] |
 | 11 | Ô **tìm model + sắp xếp** lên cùng hàng với Online / Đã tải (n) / Yêu thích (n) | Thanh lọc | [x] | [ ] |
