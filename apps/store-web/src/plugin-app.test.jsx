@@ -452,7 +452,7 @@ test('device popup: after an install the host keeps reporting "restart required"
   assert.equal(section().querySelector('button'), null, 'no update button while a restart is pending');
   // The host can also answer an apply with the same state (e.g. a second click racing the first).
   updateCheck = { current: '1.4.4', latest: '1.5.0', updateAvailable: true }; applyOutcome = { ok: false, code: 'UPDATE_RESTART_REQUIRED', message: 'Đã cài bản mới.' };
-  await act(async () => { button('Thiết bị').click(); await flush(); button('Thiết bị').click(); await flush(); });
+  await act(async () => { document.querySelector('[aria-label="Đóng thiết bị"]').click(); await flush(); button('Thiết bị').click(); await flush(); });
   await act(async () => { button('Cập nhật').click(); await flush(); });
   assert.match(section().textContent, /Hãy đóng và khởi động lại 3ds Max/);
   assert.equal(document.querySelector('[role=alert]'), null, 'it is not shown as an error');

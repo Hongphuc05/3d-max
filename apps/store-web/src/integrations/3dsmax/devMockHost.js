@@ -77,7 +77,7 @@ export function installMockHost() {
         case 'host.getInfo':
           return ok({ host: '3dsmax', hostVersion: '3ds Max (mock)', pluginVersion: '0.0.0-mock', protocolVersion: 1 });
         case 'scene.getInfo':
-          return ok({ objects, selected: 0, units: 'cm', renderer: 'Corona (mock)' });
+          return ok({ name: 'Untitled', objects, selected: 0, units: 'cm', renderer: 'Corona (mock)' });
         case 'asset.download': {
           const record = { modelId: params.modelId, name: 'Model minh họa (DEV)', downloadedAt: new Date().toISOString() };
           models = [...models.filter(m => m.modelId !== record.modelId), record];

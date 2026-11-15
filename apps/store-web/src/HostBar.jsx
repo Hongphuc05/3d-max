@@ -38,27 +38,34 @@ export function HostBar({ reloadKey, onRefresh, apiStatus, nav = null }) {
     try { await onRefresh(); } finally { setRefreshing(false); }
   };
 
+  // Pill trai: trang thai ket noi + ten scene + phien ban Max. (Chon cua so Max / focus Max nam o thanh native WinForms, khong co trong web.)
   let status;
   if (!max) status = <span className="text-mute">Trình duyệt · chỉ xem catalog. Download &amp; import có trong plugin 3ds Max</span>;
   else if (!host) status = <span className="text-mute">Đang kết nối 3ds Max…</span>;
   else if (host.error) status = <span className="text-danger">Mất kết nối 3ds Max: {host.error}</span>;
   else status = (
     <span className="truncate">
-      <span className="text-ok">Connected</span>
-      <span className="text-mute"> · {host.info.hostVersion} · {host.scene.objects} object · {host.scene.renderer}</span>
+      <span className="text-ok">Connected</span>: {host.scene.name || 'Untitled'}
+      <span className="text-mute"> | {host.info.hostVersion}</span>
     </span>
   );
+  const square = 'grid size-7 place-items-center rounded-md bg-accent text-accent-ink hover:brightness-110 disabled:cursor-progress';
 
   return (
-    <header className="flex min-h-16 shrink-0 flex-wrap items-center gap-2 py-2 sm:gap-4 border-b border-line bg-bar px-4">
-      <div className="flex shrink-0 items-center"><Logo className="h-11" /></div>
-      {nav && <nav aria-label="Điều hướng" className="flex shrink-0 items-center gap-1">{nav}</nav>}
-      <div className="order-last w-full min-w-0 truncate font-mono text-xs sm:order-none sm:w-auto sm:flex-1">{host?.info?.importTarget === 'selected' ? null : status}</div>
-      {api && <Badge ok={api === 'ok'}>{api === 'ok' ? 'ONLINE' : api === 'db' ? 'DB LỖI' : 'OFFLINE'}</Badge>}
-      <button onClick={refresh} disabled={refreshing} aria-busy={refreshing} aria-label="Làm mới" title={refreshing ? 'Đang làm mới…' : 'Làm mới'}
-        className="rounded-md border border-line p-1.5 text-mute hover:bg-raised hover:text-fg disabled:cursor-progress disabled:text-brand">
-        <Icon name="refresh" className={refreshing ? 'size-4 animate-spin' : 'size-4'} />
-      </button>
+    <header className="shrink-0 border-b border-line bg-bar px-4 py-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 truncate rounded-md border border-line px-2.5 py-0.5 font-mono text-[11px]">{status}</div>
+        <div className="flex shrink-0 items-center gap-2">
+          {api && <Badge ok={api === 'ok'}>{api === 'ok' ? 'ONLINE' : api === 'db' ? 'DB LỖI' : 'OFFLINE'}</Badge>}
+          <button onClick={refresh} disabled={refreshing} aria-busy={refreshing} aria-label="Làm mới" title={refreshing ? 'Đang làm mới…' : 'Làm mới'} className={square}>
+            <Icon name="refresh" className={refreshing ? 'size-4 animate-spin' : 'size-4'} />
+          </button>
+        </div>
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-2 sm:gap-4">
+        <div className="flex shrink-0 items-center"><Logo className="h-11" /></div>
+        {nav && <nav aria-label="Điều hướng" className="flex shrink-0 items-center gap-1">{nav}</nav>}
+      </div>
     </header>
   );
 }
