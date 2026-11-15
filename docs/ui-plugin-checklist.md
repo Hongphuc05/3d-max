@@ -14,10 +14,10 @@ Mẫu: ảnh Photoshop chủ dự án gửi 15/11/2026.
 | 4 | Viền thẻ + nút Download / "Đã tải · Xem": chưa chọn = **trắng mờ**, đang chọn = **trắng**; bỏ viền đỏ | Lưới | [x] | [ ] |
 | 5 | Thanh cuộn riêng ở **mép phải** lưới (kéo ở khoảng trống, không phải lướt qua ảnh) | Lưới | [x] | [ ] |
 | 6 | Ảnh **Scene**: hết 2 dải trắng, ảnh to hơn (thẻ 4:3; popup Scene khung ngang 720px, ảnh lấp đầy) | Lưới | [x] | [ ] |
-| 7 | Thông tin kết nối (Connected · tên cửa sổ Max / Untitled · 3ds Max 2022) gom gọn thành **1 ô bên trái hàng trên cùng** như ảnh mẫu | Header | [ ] | [ ] |
-| 8 | Nút **focus 3ds Max** (đã có chức năng): đổi giao diện thành nút **Home đỏ** góc phải, cạnh nút làm mới | Header | [ ] | [ ] |
-| 9 | Tab Models/Scenes: dạng **"3D" + chữ nhỏ Models/Scenes** như mẫu, chừa chỗ thay icon khách gửi sau | Header | [ ] | [ ] |
-| 10 | Nút **Thiết bị** mở **popup** (giống Cài đặt): mã máy, phiên bản plugin | Header | [ ] | [ ] |
+| 7 | Thanh kết nối: chuyển thanh WinForms (Connected · chọn cửa sổ Max) **vào web**, gom thành 1 ô bên trái hàng trên cùng như mẫu. *Đã có ô Connected; đang làm ô chọn cửa sổ ▾ (web + C#)* | Header | [ ] | [ ] |
+| 8 | Nút **focus 3ds Max** chuyển từ WinForms vào web: nút **Home đỏ** góc phải cạnh nút làm mới (đỏ). *Nút làm mới đỏ đã xong; nút Home đang làm (web + C#)* | Header | [ ] | [ ] |
+| 9 | Tab Models/Scenes: dạng **"3D" + chữ nhỏ Models/Scenes** như mẫu, chừa chỗ thay icon khách gửi sau | Header | [x] | [ ] |
+| 10 | Nút **Thiết bị** mở **popup** (giống Cài đặt): mã máy, phiên bản plugin | Header | [x] | [ ] |
 | 11 | Ô **tìm model + sắp xếp** lên cùng hàng với Online / Đã tải (n) / Yêu thích (n) | Thanh lọc | [x] | [ ] |
 | 12 | Icon danh mục: ô vuông → **hình tròn** (đang chọn = tròn đỏ) | Thanh lọc | [x] | [ ] |
 | 13 | Hàng đợi: bỏ dòng mô tả, gọn 1 dòng "⇩ Hàng đợi · 0 job" như mẫu | Thanh lọc | [x] | [ ] |
