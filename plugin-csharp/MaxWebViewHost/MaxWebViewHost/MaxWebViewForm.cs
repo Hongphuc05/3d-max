@@ -678,7 +678,7 @@ namespace MaxWebViewHost
 
         // Starts a real Windows file drag (CF_HDROP, like Explorer) of the model's .max so 3ds Max shows its own Open/Merge/XRef menu on drop.
         // The path never reaches the web: it only sent the model id.
-        private void BeginModelDrag(string id, string modelId)
+        private void BeginModelDrag(string id, string modelId, string thumbnailDataUrl)
         {
             if (IsDisposed || Disposing || _v3 == null) return;
             var log = _v3.Update;
@@ -698,6 +698,10 @@ namespace MaxWebViewHost
                 data.SetData(DataFormats.FileDrop, new[] { path });
                 // Our own drop target over the working Max window (only while dragging): Max's built-in menu would replace the scene on Open File.
                 DragDropOverlay overlay = null;
+                var model = _v3.Downloads.Find(modelId);
+                // Card with thumbnail + name that follows the pointer for the whole drag (click-through, so it never takes the drop).
+                var ghost = new DragGhost(model == null ? null : model.name, "3DSMOOD / " + Path.GetExtension(path).TrimStart('.').ToUpperInvariant(), DragGhost.DecodeThumbnail(thumbnailDataUrl));
+                GiveFeedbackEventHandler follow = (s, e) => ghost.Follow(Cursor.Position);
                 try
                 {
                     IntPtr maxWindow;
@@ -709,11 +713,16 @@ namespace MaxWebViewHost
                         overlay.Show();
                     }
                     else log.Log("drag: no visible Max window to cover; Max's own drop handling applies");
+                    ghost.Follow(Cursor.Position);
+                    ghost.Show();
+                    GiveFeedback += follow;
                     var effect = DoDragDrop(data, DragDropEffects.Copy);
+                    GiveFeedback -= follow;
+                    ghost.Hide();
                     log.Log("drag: finished, effect " + effect + (overlay != null && overlay.Dropped ? ", dropped on the Max window" : ""));
                     if (overlay != null && overlay.Dropped) { var at = overlay.DropPoint; overlay.Hide(); ShowDropMenu(path, at); }
                 }
-                finally { if (overlay != null) overlay.Dispose(); }
+                finally { GiveFeedback -= follow; ghost.Dispose(); if (overlay != null) overlay.Dispose(); }
             }
             catch (ApiException e) { log.Log("drag: " + e.Code); PostError(id, e.Code, e.Message); }
             catch (Exception e) when (e is InvalidOperationException || e is System.Runtime.InteropServices.COMException)
@@ -775,7 +784,12 @@ namespace MaxWebViewHost
                 if (_v3 == null) { PostError(id, "LIBRARY_NOT_CONFIGURED", "Thư viện chưa sẵn sàng. Mở lại panel rồi thử lại."); return; }
                 if (method == "library.downloads") { PostResponse(id, true, new { models = _v3.Downloads.List() }, null); return; }
                 // DoDragDrop is a modal loop: WebView2 forbids that inside its synchronous message callback, so post it to the UI queue.
-                if (method == "library.beginDrag") { var drag = (string)parameters["modelId"]; BeginInvoke(new Action(() => BeginModelDrag(id, drag))); return; }
+                if (method == "library.beginDrag")
+                {
+                    var drag = (string)parameters["modelId"];
+                    object image; parameters.TryGetValue("image", out image);
+                    BeginInvoke(new Action(() => BeginModelDrag(id, drag, image as string))); return;
+                }
                 if (method == "library.importOptions")
                 {
                     var options = await Task.Run(() => _v3.Downloads.ImportOptions((string)parameters["modelId"]));

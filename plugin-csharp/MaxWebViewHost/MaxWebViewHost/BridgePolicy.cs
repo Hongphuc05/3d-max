@@ -103,8 +103,11 @@ namespace MaxWebViewHost
                     return p.Count == 2 && HasOnly(p, "challengeId", "message")
                         && Text(p, "challengeId", 36) && Text(p, "message", 512);
                 case "asset.download":
-                case "library.importOptions":
                 case "library.beginDrag":
+                    // Optional thumbnail for the drag card: a small JPEG data URL only (never a path or URL); the host re-validates and decodes it.
+                    return HasOnly(p, "modelId", "image") && Text(p, "modelId", 36) && ModelUuid.IsMatch((string)p["modelId"])
+                        && (!p.ContainsKey("image") || (Text(p, "image", 12000) && ((string)p["image"]).StartsWith("data:image/jpeg;base64,", StringComparison.Ordinal)));
+                case "library.importOptions":
                     return p.Count == 1 && HasOnly(p, "modelId") && Text(p, "modelId", 36) && ModelUuid.IsMatch((string)p["modelId"]);
                 case "asset.import":
                     return HasOnly(p, "modelId", "optionId") && Text(p, "modelId", 36) && ModelUuid.IsMatch((string)p["modelId"])

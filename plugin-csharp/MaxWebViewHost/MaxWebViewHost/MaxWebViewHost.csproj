@@ -70,6 +70,7 @@
     <Compile Include="MaxWebViewForm.cs" />
     <Compile Include="TaskbarIdentity.cs" />
     <Compile Include="DragDropOverlay.cs" />
+    <Compile Include="DragGhost.cs" />
     <Compile Include="ImportTargetSelection.cs" />
     <Compile Include="ArchivePackage.cs" />
     <Compile Include="BridgePolicy.cs" />

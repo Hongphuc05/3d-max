@@ -216,6 +216,13 @@ class DownloadedLibraryTests
         Check(!BridgePolicy.TryParse(request("library.beginDrag", "{\"modelId\":\"C:/x/chair.max\"}"), out parsed, out code)
             && !BridgePolicy.TryParse(request("library.beginDrag", "{\"modelId\":\"" + Model + "\",\"path\":\"C:/x\"}"), out parsed, out code)
             && !BridgePolicy.TryParse(request("library.beginDrag", "{}"), out parsed, out code), "beginDrag rejects paths, extra keys and a missing id");
+        Func<string, string> withImage = img => request("library.beginDrag", "{\"modelId\":\"" + Model + "\",\"image\":\"" + img + "\"}");
+        Check(BridgePolicy.TryParse(withImage("data:image/jpeg;base64,AAAA"), out parsed, out code), "beginDrag accepts an optional JPEG data URL thumbnail");
+        Check(!BridgePolicy.TryParse(withImage("data:image/png;base64,AAAA"), out parsed, out code)
+            && !BridgePolicy.TryParse(withImage("C:/x/thumb.jpg"), out parsed, out code)
+            && !BridgePolicy.TryParse(withImage("https://evil.test/a.jpg"), out parsed, out code)
+            && !BridgePolicy.TryParse(withImage(""), out parsed, out code)
+            && !BridgePolicy.TryParse(withImage("data:image/jpeg;base64," + new string('A', 12000)), out parsed, out code), "beginDrag rejects other formats, paths, URLs, empty and oversized thumbnails");
     }
     static async Task Run(string root)
     {

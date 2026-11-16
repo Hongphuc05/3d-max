@@ -81,6 +81,23 @@ function HoverPreview({ p, anchor, scene }) {
     </div>, document.body);
 }
 
+// Anh thu nho cua the (JPEG data URL <= 12000 ky tu, gioi han tin nhan bridge) cho o keo theo chuot; khong ve duoc thi bo qua (chi hien ten).
+export function dragThumbnail(card) {
+  try {
+    const img = card?.querySelector('img');
+    if (!img || !img.complete || !img.naturalWidth) return undefined;
+    for (const [side, quality] of [[96, 0.75], [64, 0.6]]) {
+      const canvas = document.createElement('canvas'); canvas.width = canvas.height = side;
+      const g = canvas.getContext('2d'); if (!g) return undefined;
+      const scale = Math.max(side / img.naturalWidth, side / img.naturalHeight), w = img.naturalWidth * scale, h = img.naturalHeight * scale;
+      g.fillStyle = '#fff'; g.fillRect(0, 0, side, side); g.drawImage(img, (side - w) / 2, (side - h) / 2, w, h);
+      const url = canvas.toDataURL('image/jpeg', quality);
+      if (url.startsWith('data:image/jpeg;base64,') && url.length <= 12000) return url;
+    }
+  } catch { /* canvas bi khoa (anh khac nguon) */ }
+  return undefined;
+}
+
 export function PluginCard({ p, active, onOpen, ctx }) {
   const scene = p.contentDomain === '3dscenes';
   const [anchor, setAnchor] = useState(null);
@@ -90,7 +107,7 @@ export function PluginCard({ p, active, onOpen, ctx }) {
   const onDragStart = (e) => {
     e.preventDefault(); // huy keo HTML cua trinh duyet; host lam keo that
     setDragError('');
-    beginDragModel(p.id).catch((err) => setDragError(err?.message || 'Không kéo thả được model này.'));
+    beginDragModel(p.id, dragThumbnail(e.currentTarget)).catch((err) => setDragError(err?.message || 'Không kéo thả được model này.'));
   };
   return (
     <div draggable={canDrag || undefined} onDragStart={canDrag ? onDragStart : undefined} onMouseLeave={() => setDragError('')}
