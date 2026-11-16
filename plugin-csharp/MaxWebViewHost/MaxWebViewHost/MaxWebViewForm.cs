@@ -694,10 +694,10 @@ namespace MaxWebViewHost
                 var path = _v3.Downloads.DragFile(modelId, year);
                 log.Log("drag: start " + Path.GetFileName(path) + " (Max " + year + ")");
                 PostResponse(id, true, new { started = true }, null);
-                var data = new DataObject();
-                data.SetData(DataFormats.FileDrop, new[] { path });
-                // Our own drop target over the working Max window (only while dragging): Max's built-in menu would replace the scene on Open File.
-                DragDropOverlay overlay = null;
+                // Private format, not a file drop: only our overlays accept it (no copies into Explorer, never Max's replace-the-scene Open).
+                var data = new DataObject(DragDropOverlay.DragFormat, path);
+                // Our own drop target over every Max window (only while dragging): Max's built-in menu would replace the scene on Open File.
+                var overlays = new List<DragDropOverlay>();
                 var model = _v3.Downloads.Find(modelId);
                 // Card with thumbnail + name that follows the pointer for the whole drag (click-through, so it never takes the drop).
                 var ghost = new DragGhost(model == null ? null : model.name, "3DSMOOD / " + Path.GetExtension(path).TrimStart('.').ToUpperInvariant(), DragGhost.DecodeThumbnail(thumbnailDataUrl));
@@ -711,31 +711,35 @@ namespace MaxWebViewHost
                     if (!DragDropOverlay.ShouldCollapse(WindowState == FormWindowState.Minimized ? (Rectangle?)null : Bounds, cursor, collapsed)) return;
                     collapsed = true;
                     WindowState = FormWindowState.Minimized;
-                    if (overlay != null) overlay.CoverWholeWindow();   // the panel no longer sits on Max: the whole Max window takes the drop
+                    foreach (var o in overlays) o.CoverWholeWindow();   // the panel no longer sits on Max: the whole Max window takes the drop
                     log.Log("drag: left the panel, panel minimized");
                 };
                 try
                 {
-                    IntPtr maxWindow;
-                    using (var self = Process.GetCurrentProcess()) maxWindow = self.MainWindowHandle;
-                    var maxBounds = DragDropOverlay.WindowBounds(maxWindow);
-                    if (maxBounds.HasValue)
+                    int selfPid;
+                    using (var self = Process.GetCurrentProcess()) selfPid = self.Id;
+                    var hole = Visible && WindowState != FormWindowState.Minimized ? (Rectangle?)Bounds : null;
+                    foreach (var w in DragDropOverlay.FindMaxWindows())
                     {
-                        overlay = new DragDropOverlay(maxBounds.Value, Visible && WindowState != FormWindowState.Minimized ? (Rectangle?)Bounds : null, path);
-                        overlay.Show();
+                        var o = new DragDropOverlay(w.Bounds, hole, path, w.ProcessId, w.ProcessId == selfPid);
+                        overlays.Add(o);
+                        o.Show();
+                        log.Log("drag: covering Max pid " + w.ProcessId + (o.IsOwnerMax ? " (this Max)" : "") + " class " + w.ClassName + " at " + w.Bounds);
                     }
-                    else log.Log("drag: no visible Max window to cover; Max's own drop handling applies");
+                    if (overlays.Count == 0) log.Log("drag: no visible Max window to cover; the drop will not be accepted anywhere");
                     ghost.Follow(Cursor.Position);
                     ghost.Show();
                     GiveFeedback += follow;
                     var effect = DoDragDrop(data, DragDropEffects.Copy);
                     GiveFeedback -= follow;
                     ghost.Hide();
-                    log.Log("drag: finished, effect " + effect + (overlay != null && overlay.Dropped ? ", dropped on the Max window" : ""));
+                    var hit = overlays.FirstOrDefault(o => o.Dropped);
+                    log.Log("drag: finished, effect " + effect + (hit != null ? ", dropped on Max pid " + hit.ProcessId + (hit.IsOwnerMax ? " (this Max)" : "") : ""));
                     if (collapsed && DragDropOverlay.RestoreAfterDrag(effect)) { WindowState = stateBefore; log.Log("drag: cancelled, panel restored"); }
-                    if (overlay != null && overlay.Dropped) { var at = overlay.DropPoint; overlay.Hide(); ShowDropMenu(path, at); }
+                    foreach (var o in overlays) o.Hide();
+                    if (hit != null) ShowDropMenu(path, hit.DropPoint, hit.IsOwnerMax);
                 }
-                finally { GiveFeedback -= follow; ghost.Dispose(); if (overlay != null) overlay.Dispose(); }
+                finally { GiveFeedback -= follow; ghost.Dispose(); foreach (var o in overlays) o.Dispose(); }
             }
             catch (ApiException e) { log.Log("drag: " + e.Code); PostError(id, e.Code, e.Message); }
             catch (Exception e) when (e is InvalidOperationException || e is System.Runtime.InteropServices.COMException)
@@ -745,14 +749,20 @@ namespace MaxWebViewHost
             }
         }
 
-        // Menu shown where the model was dropped on the Max window. Open File starts ANOTHER Max with the file (the scene being worked on is untouched);
-        // Merge/XRef run in this Max through MAXScript. Every action re-checks that the file is still one of the library's own downloaded files.
-        private void ShowDropMenu(string path, Point screenPoint)
+        // Menu shown where the model was dropped. First line names the file that will be used (renderer/version variant). Open File starts ANOTHER
+        // Max with the file (the scene being worked on is never replaced). Merge/XRef only on the Max hosting this panel (run through its MAXScript);
+        // another Max only gets Open. Every action re-checks that the file is still one of the library's own downloaded files.
+        private void ShowDropMenu(string path, Point screenPoint, bool ownerMax)
         {
             var menu = new ContextMenuStrip { ShowImageMargin = false };
+            menu.Items.Add(new ToolStripLabel(Path.GetFileName(path)) { ForeColor = SystemColors.GrayText });
+            menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("Open File (cửa sổ Max mới)").Click += (s, e) => OpenInNewMax(path);
-            menu.Items.Add("Merge File").Click += (s, e) => RunDropAction(path, "merge");
-            menu.Items.Add("XRef File").Click += (s, e) => RunDropAction(path, "xref");
+            if (ownerMax)
+            {
+                menu.Items.Add("Merge File").Click += (s, e) => RunDropAction(path, "merge");
+                menu.Items.Add("XRef File").Click += (s, e) => RunDropAction(path, "xref");
+            }
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("Cancel");
             menu.Closed += (s, e) => BeginInvoke(new Action(menu.Dispose));   // after the click handler has run
@@ -764,6 +774,18 @@ namespace MaxWebViewHost
             return _v3 != null && path != null && path.EndsWith(".max", StringComparison.OrdinalIgnoreCase) && File.Exists(path) && _v3.Downloads.OwnsEntry(path);
         }
 
+        // Max windows this panel started for previews (static: survives closing/reopening the panel). Pruned to the ones still running.
+        private static readonly List<int> _previewPids = new List<int>();
+        private static int RunningPreviews()
+        {
+            _previewPids.RemoveAll(pid =>
+            {
+                try { using (var p = Process.GetProcessById(pid)) return p.HasExited; }
+                catch (Exception e) when (e is ArgumentException || e is InvalidOperationException) { return true; }
+            });
+            return _previewPids.Count;
+        }
+
         private void OpenInNewMax(string path)
         {
             var log = _v3 == null ? null : _v3.Update;
@@ -773,7 +795,10 @@ namespace MaxWebViewHost
                 string maxExe;
                 using (var self = Process.GetCurrentProcess()) maxExe = self.MainModule.FileName;
                 if (!string.Equals(Path.GetFileName(maxExe), "3dsmax.exe", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("not 3dsmax.exe");
-                using (Process.Start(new ProcessStartInfo(maxExe, "\"" + path + "\"") { UseShellExecute = false })) { }
+                var running = RunningPreviews();
+                if (running >= 2 && MessageBox.Show(this, "Đang có " + running + " cửa sổ 3ds Max do 3dsmood mở để xem trước. Mở thêm một cửa sổ nữa sẽ tốn thêm RAM và thời gian khởi động.\n\nVẫn mở thêm?",
+                        "3dsmood", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) { log.Log("drag: another preview Max declined (" + running + " running)"); return; }
+                using (var started = Process.Start(new ProcessStartInfo(maxExe, "\"" + path + "\"") { UseShellExecute = false })) { if (started != null) _previewPids.Add(started.Id); }
                 log.Log("drag: opened " + Path.GetFileName(path) + " in a new Max");
             }
             catch (Exception e) when (e is InvalidOperationException || e is System.ComponentModel.Win32Exception || e is IOException)
