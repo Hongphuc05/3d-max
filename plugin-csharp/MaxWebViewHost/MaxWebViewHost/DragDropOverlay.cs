@@ -48,6 +48,18 @@ namespace MaxWebViewHost
             get { var cp = base.CreateParams; cp.ExStyle |= 0x08000000 | 0x00000080; return cp; }   // WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW
         }
 
+        /// <summary>After the panel has been minimized mid-drag nothing of it covers Max any more: drop the cut-out.</summary>
+        internal void CoverWholeWindow() { Region = new Region(new Rectangle(Point.Empty, Size)); }
+
+        /// <summary>Minimize the panel once, the first time the pointer leaves its (visible) rectangle during a drag.</summary>
+        internal static bool ShouldCollapse(Rectangle? panel, Point cursor, bool alreadyCollapsed)
+        {
+            return !alreadyCollapsed && panel.HasValue && !panel.Value.Contains(cursor);
+        }
+
+        /// <summary>Bring the panel back only when the drag ended without a drop (Esc, released over nothing that accepts it).</summary>
+        internal static bool RestoreAfterDrag(DragDropEffects effect) { return effect == DragDropEffects.None; }
+
         /// <summary>True only for a file drop of exactly the file the panel started dragging.</summary>
         internal static bool Accepts(IDataObject data, string expectedPath)
         {

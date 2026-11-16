@@ -701,7 +701,19 @@ namespace MaxWebViewHost
                 var model = _v3.Downloads.Find(modelId);
                 // Card with thumbnail + name that follows the pointer for the whole drag (click-through, so it never takes the drop).
                 var ghost = new DragGhost(model == null ? null : model.name, "3DSMOOD / " + Path.GetExtension(path).TrimStart('.').ToUpperInvariant(), DragGhost.DecodeThumbnail(thumbnailDataUrl));
-                GiveFeedbackEventHandler follow = (s, e) => ghost.Follow(Cursor.Position);
+                // Leaving the panel while dragging minimizes it so the Max window underneath is free to drop on; a cancelled drag brings it back.
+                var stateBefore = WindowState;
+                var collapsed = false;
+                GiveFeedbackEventHandler follow = (s, e) =>
+                {
+                    var cursor = Cursor.Position;
+                    ghost.Follow(cursor);
+                    if (!DragDropOverlay.ShouldCollapse(WindowState == FormWindowState.Minimized ? (Rectangle?)null : Bounds, cursor, collapsed)) return;
+                    collapsed = true;
+                    WindowState = FormWindowState.Minimized;
+                    if (overlay != null) overlay.CoverWholeWindow();   // the panel no longer sits on Max: the whole Max window takes the drop
+                    log.Log("drag: left the panel, panel minimized");
+                };
                 try
                 {
                     IntPtr maxWindow;
@@ -720,6 +732,7 @@ namespace MaxWebViewHost
                     GiveFeedback -= follow;
                     ghost.Hide();
                     log.Log("drag: finished, effect " + effect + (overlay != null && overlay.Dropped ? ", dropped on the Max window" : ""));
+                    if (collapsed && DragDropOverlay.RestoreAfterDrag(effect)) { WindowState = stateBefore; log.Log("drag: cancelled, panel restored"); }
                     if (overlay != null && overlay.Dropped) { var at = overlay.DropPoint; overlay.Hide(); ShowDropMenu(path, at); }
                 }
                 finally { GiveFeedback -= follow; ghost.Dispose(); if (overlay != null) overlay.Dispose(); }

@@ -35,6 +35,19 @@ class DragDropOverlayTests
         using (var overlay = new DragDropOverlay(max, null, file))
             Check(overlay.Region.IsVisible(new Point(500, 300)), "no panel (minimized/hidden): the whole Max window receives the drop");
         Check(DragDropOverlay.WindowBounds(IntPtr.Zero) == null, "no window handle: no bounds");
+
+        // Panel collapse while dragging out of it, and what happens when the drag ends.
+        Check(!DragDropOverlay.ShouldCollapse(panel, new Point(350, 250), false), "pointer still inside the panel: keep it open");
+        Check(DragDropOverlay.ShouldCollapse(panel, new Point(900, 250), false), "pointer left the panel: minimize it");
+        Check(!DragDropOverlay.ShouldCollapse(panel, new Point(900, 250), true), "minimize only once per drag");
+        Check(!DragDropOverlay.ShouldCollapse(null, new Point(900, 250), false), "an already minimized/hidden panel is left alone");
+        Check(DragDropOverlay.RestoreAfterDrag(DragDropEffects.None), "drag cancelled (Esc / released over nothing): bring the panel back");
+        Check(!DragDropOverlay.RestoreAfterDrag(DragDropEffects.Copy), "dropped somewhere: keep the panel minimized");
+        using (var overlay = new DragDropOverlay(max, panel, file))
+        {
+            overlay.CoverWholeWindow();
+            Check(overlay.Region.IsVisible(new Point(300 - 100 + 50, 200 - 100 + 50)), "after the panel minimizes, its old area also receives the drop");
+        }
         Console.WriteLine("All DragDropOverlay tests passed.");
     }
 }
