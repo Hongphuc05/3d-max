@@ -786,7 +786,10 @@ namespace MaxWebViewHost
             return _previewPids.Count;
         }
 
-        private void OpenInNewMax(string path)
+        /// <summary>Called by the startup agent of a preview Max: "copy|libraryFile" once, else "" (see PreviewCopy.Consume).</summary>
+        public static string ConsumePreviewRelink() { return PreviewCopy.Consume(); }
+
+        private async void OpenInNewMax(string path)
         {
             var log = _v3 == null ? null : _v3.Update;
             try
@@ -798,10 +801,16 @@ namespace MaxWebViewHost
                 var running = RunningPreviews();
                 if (running >= 2 && MessageBox.Show(this, "Đang có " + running + " cửa sổ 3ds Max do 3dsmood mở để xem trước. Mở thêm một cửa sổ nữa sẽ tốn thêm RAM và thời gian khởi động.\n\nVẫn mở thêm?",
                         "3dsmood", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) { log.Log("drag: another preview Max declined (" + running + " running)"); return; }
-                using (var started = Process.Start(new ProcessStartInfo(maxExe, "\"" + path + "\"") { UseShellExecute = false })) { if (started != null) _previewPids.Add(started.Id); }
-                log.Log("drag: opened " + Path.GetFileName(path) + " in a new Max");
+                // Copy only the .max (off the UI thread: scenes can be large); the library file itself is never opened, so Save cannot overwrite it.
+                var previewRoot = Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(log.LogPath)), "Preview");
+                var copy = await Task.Run(() => PreviewCopy.Create(path, previewRoot));
+                var start = new ProcessStartInfo(maxExe, "\"" + copy + "\"") { UseShellExecute = false };
+                start.EnvironmentVariables[PreviewCopy.OpenEnv] = copy;   // only this new Max gets them
+                start.EnvironmentVariables[PreviewCopy.EntryEnv] = path;
+                using (var started = Process.Start(start)) { if (started != null) _previewPids.Add(started.Id); }
+                log.Log("drag: opened a preview copy of " + Path.GetFileName(path) + " in a new Max");
             }
-            catch (Exception e) when (e is InvalidOperationException || e is System.ComponentModel.Win32Exception || e is IOException)
+            catch (Exception e) when (e is InvalidOperationException || e is System.ComponentModel.Win32Exception || e is IOException || e is UnauthorizedAccessException)
             {
                 if (log != null) log.Log("drag: new Max failed " + e.GetType().Name);
                 MessageBox.Show(this, "Không mở được cửa sổ 3ds Max mới.", "3dsmood", MessageBoxButtons.OK, MessageBoxIcon.Warning);

@@ -43,6 +43,17 @@ public static class TexturePathResolverTests
             rejected = false;
             try { Create(root, Path.Combine(Path.GetTempPath(), "outside.max")); } catch (InvalidDataException) { rejected = true; }
             Check(rejected, "entry outside the model package is rejected");
+
+            // XRef: folders of the package that hold images (added to Max's Map Paths), not folders with only other files.
+            var xrefRoot = Path.Combine(root, "xref-pkg"); var maps = Path.Combine(xrefRoot, "maps"); var deep = Path.Combine(xrefRoot, "tex", "wood"); var docs = Path.Combine(xrefRoot, "docs");
+            foreach (var d in new[] { maps, deep, docs }) Directory.CreateDirectory(d);
+            File.WriteAllText(Path.Combine(xrefRoot, "chair.max"), "x"); File.WriteAllText(Path.Combine(maps, "a.JPG"), "x"); File.WriteAllText(Path.Combine(maps, "b.png"), "x");
+            File.WriteAllText(Path.Combine(deep, "oak.tif"), "x"); File.WriteAllText(Path.Combine(docs, "readme.txt"), "x");
+            var joined = Create(xrefRoot, Path.Combine(xrefRoot, "chair.max")).TextureDirectoriesJoined();
+            var dirs = joined.Split('|');
+            Check(dirs.Length == 2 && Array.Exists(dirs, d => string.Equals(d, maps, StringComparison.OrdinalIgnoreCase))
+                && Array.Exists(dirs, d => string.Equals(d, deep, StringComparison.OrdinalIgnoreCase)), "only folders with images are listed, each once, nested ones included: " + joined);
+            Check(!joined.Contains(docs), "a folder with no image is not added to Map Paths");
             Console.WriteLine(checks + " texture resolver checks passed"); return 0;
         }
         catch (Exception error) { Console.Error.WriteLine(error); return 1; }

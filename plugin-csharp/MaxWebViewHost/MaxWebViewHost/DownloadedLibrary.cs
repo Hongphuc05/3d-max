@@ -517,6 +517,21 @@ namespace MaxWebViewHost
             }
         }
 
+        private static readonly string[] ImageExtensions = { ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".tga", ".bmp", ".exr", ".hdr", ".psd", ".tx", ".gif", ".dds", ".webp" };
+
+        /// <summary>Folders of this package that hold texture images, joined with '|' (not a legal path character) for MAXScript. Used to add
+        /// them to Max's Map Paths for an XRef, whose materials are read from the library file and cannot be relinked in the scene. At most 64.</summary>
+        public string TextureDirectoriesJoined()
+        {
+            var folders = files.Values
+                .Where(f => ImageExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
+                .Select(Path.GetDirectoryName)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(d => d, StringComparer.OrdinalIgnoreCase)
+                .Take(64);
+            return string.Join("|", folders);
+        }
+
         public string Resolve(string reference)
         {
             LastStatus = "missing";

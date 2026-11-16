@@ -277,6 +277,40 @@ fn pbHandleImportFile id args sink = (
         ",\"texturesResolved\":" + (textureReport[1] as string) + ",\"textureWarnings\":" + (textureReport[2].count as string) + "}")
 )
 
+-- Adds folders (joined with '|') to Max's Map Paths, skipping ones already there. Returns how many were added.
+fn pbAddMapPaths joined = (
+    if joined == undefined or joined == "" do return 0
+    local existing = for i = 1 to mapPaths.count() collect toLower (mapPaths.get i)
+    local added = 0
+    for d in (filterString joined "|") where (findItem existing (toLower d)) == 0 do (
+        mapPaths.add d
+        append existing (toLower d)
+        added += 1
+    )
+    added
+)
+
+-- Preview Max ("Open File (cửa sổ Max mới)"): the panel opened a COPY of the library .max in this Max and told the startup agent
+-- (gPlatformPreviewRelink = "copy|libraryFile"). Once that copy is open, relink its textures into the library folder exactly like Merge does,
+-- then mark the scene clean so closing the preview does not ask to save. Runs once; any other opened file is ignored.
+global gPlatformPreviewRelink
+fn pbPreviewRelinkAfterOpen = (
+    local spec = gPlatformPreviewRelink
+    if spec == undefined or spec == "" do return false
+    local parts = filterString spec "|"
+    if parts.count != 2 or maxFileName == "" or (toLower (maxFilePath + maxFileName)) != (toLower parts[1]) do return false
+    gPlatformPreviewRelink = undefined
+    callbacks.removeScripts id:#platformPreviewRelink
+    try (
+        local resolver = dotNetObject "MaxWebViewHost.TexturePathResolver" parts[2]
+        local report = pbRelinkImportedTextures (objects as array) resolver
+        format "[3dsmood preview] relinked % texture(s), % warning(s)\n" report[1] report[2].count
+        for w in report[2] do format "[3dsmood texture] %\n" w
+        setSaveRequired false
+    ) catch (format "[3dsmood preview] relink failed: %\n" (getCurrentException()))
+    true
+)
+
 -- Native-only (not in the web allowlist): the user dropped a downloaded model on the Max window and chose Merge File or XRef File in the plugin's menu.
 -- Open File does not come here: the host starts another 3dsmax.exe for it. The host already checked that the file is one of the library's own downloads.
 fn pbHandleDropFile id args sink = (
@@ -305,6 +339,11 @@ fn pbHandleDropFile id args sink = (
             )
         )
     ) else if mode == "xref" then (
+        -- XRef materials are read from the library file every time, so they cannot be relinked in this scene: let Max find the images instead.
+        try (
+            local resolver = dotNetObject "MaxWebViewHost.TexturePathResolver" p
+            format "[3dsmood xref] added % texture folder(s) to Map Paths\n" (pbAddMapPaths (resolver.TextureDirectoriesJoined()))
+        ) catch (format "[3dsmood xref] could not add texture folders: %\n" (getCurrentException()))
         try (xrefs.addNewXRefFile p) catch (failure = getCurrentException())
     ) else failure = "unknown mode"
     if failure != undefined then (
