@@ -72,8 +72,7 @@ export function FavoriteFolderDialog({ product, folders, onAssign, onCreate, onC
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4" onClick={onClose}>
       <section ref={section} role="dialog" aria-modal="true" aria-labelledby="fav-folder-title" onKeyDown={keyDown} onClick={(e) => e.stopPropagation()}
-        style={{ background: 'linear-gradient(180deg, #0b0809 0%, #160707 55%, #4a0b0b 100%)' }}
-        className="grid max-h-[90vh] w-full max-w-2xl overflow-auto rounded-xl border border-white/10 shadow-2xl sm:grid-cols-[15rem_minmax(0,1fr)]">
+        className="grid max-h-[90vh] w-full max-w-2xl overflow-auto rounded-lg border border-line bg-panel shadow-xl sm:grid-cols-[15rem_minmax(0,1fr)]">
         <div data-testid="favorite-preview" className="flex flex-col gap-3 p-5 sm:border-r sm:border-white/10">
           <div className="overflow-hidden rounded-xl bg-white"><Preview source={product.image || product.thumb} name={product.name} /></div>
           <div className="truncate rounded-md bg-white/10 px-3 py-2 text-sm text-white" title={product.name}>{product.name}</div>

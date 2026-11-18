@@ -20,9 +20,9 @@ import { FavoriteFolderBar, FavoriteFolderDialog } from './FavoriteFolders.jsx';
 import PluginSettings from './PluginSettings.jsx';
 import ImportOptionsDialog from './ImportOptionsDialog.jsx';
 
-const PAGE = 30;
-// Model chua co ngay (may chu cu / chua quet) luon xep cuoi, ca Moi nhat lan Cu nhat.
-const stamp = (p) => { const t = Date.parse(p.modifiedAt); return Number.isFinite(t) ? t : null; };
+const PAGE = 100; // luoi 10 x 10
+// Tab Da tai xep theo luc tai (downloadedAt); con lai theo ngay model. Chua co ngay luon xep cuoi.
+const stamp = (p) => { const t = Date.parse(p.downloadedAt ?? p.modifiedAt); return Number.isFinite(t) ? t : null; };
 const byDate = (direction) => (a, b) => {
   const x = stamp(a), y = stamp(b);
   if (x === null || y === null) return x === y ? a.name.localeCompare(b.name) : x === null ? 1 : -1;

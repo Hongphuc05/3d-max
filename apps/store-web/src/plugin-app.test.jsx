@@ -300,10 +300,10 @@ test('the header badge follows the host: ONLINE, then OFFLINE when the host repo
 
 test('changing the search goes back to page 1', async () => {
   server(); const many = globalThis.fetch;
-  globalThis.fetch = async (url, init) => String(url) === '/api/v1/catalog' ? json({ catalogVersion: 1, models: Array.from({ length: 70 }, (_, i) => ({ id: id(500 + i), name: 'Lamp ' + String(i).padStart(2, '0'), categoryId: id(1), sizeBytes: 1048576, fileType: 'rar', status: 'PUBLISHED' })) }) : many(url, init);
+  globalThis.fetch = async (url, init) => String(url) === '/api/v1/catalog' ? json({ catalogVersion: 1, models: Array.from({ length: 150 }, (_, i) => ({ id: id(500 + i), name: 'Lamp ' + String(i).padStart(2, '0'), categoryId: id(1), sizeBytes: 1048576, fileType: 'rar', status: 'PUBLISHED' })) }) : many(url, init);
   const root = await mount();
   await act(async () => { document.querySelector('[aria-label="Trang sau"]').click(); await flush(); });
-  assert.equal(document.querySelector('[aria-current=page]').textContent, '2', 'second page of 70 models');
+  assert.equal(document.querySelector('[aria-current=page]').textContent, '2', 'second page of 150 models (100 per page)');
   const input = document.querySelector('input[placeholder="Tìm model…"]');
   await act(async () => { const set = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value').set; set.call(input, 'lamp'); input.dispatchEvent(new dom.window.Event('input', { bubbles: true })); await flush(); });
   assert.equal(document.querySelector('[aria-current=page]').textContent, '1', 'after searching, the grid is not stuck on page 2'); assert.match(text(), /Lamp 00/);
@@ -484,7 +484,7 @@ test('device popup: after an install the host keeps reporting "restart required"
   await done(root);
 });
 
-test('folder picker: shows the model image and name on the left, the folder list on the right, with the brand gradient', async () => {
+test('folder picker: shows the model image and name on the left, the folder list on the right, on the plain dark panel', async () => {
   const { FavoriteFolderDialog } = await import('./FavoriteFolders.jsx');
   const host = document.createElement('div'); document.body.appendChild(host);
   const root = createRoot(host);
@@ -497,7 +497,7 @@ test('folder picker: shows the model image and name on the left, the folder list
   const dialog = document.querySelector('[role=dialog]');
   assert.ok(!left.contains(dialog.querySelector('input[type=search]')), 'the folder search is on the other side');
   assert.deepEqual([...dialog.querySelectorAll('input[type=radio]')].map((r) => r.parentElement.textContent), ['Default', 'Phòng khách']);
-  assert.match(dialog.style.background, /linear-gradient/, 'red gradient background');
+  assert.equal(dialog.style.background, '', 'no gradient, plain bg-panel like Settings');
   assert.match(dialog.querySelector('h2').className, /text-white/, 'the title is white');
   assert.ok([...dialog.querySelectorAll('button')].some((b) => b.textContent.includes('Tạo thư mục mới')) && [...dialog.querySelectorAll('button')].some((b) => b.textContent === 'Thêm'));
   await act(() => root.unmount()); host.remove();
