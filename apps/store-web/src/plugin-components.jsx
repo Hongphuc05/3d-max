@@ -79,10 +79,11 @@ function HoverPreview({ p, anchor, scene }) {
 }
 
 // O 10 x 10 chi con anh (o cao ~80px o 1080p); ten + nut hien de len anh khi re chuot/focus. Man hep: luon hien.
-export function PluginCard({ p, active, onOpen, ctx }) {
+// actions=false: trang cong khai (chi xem), khong nut tai/import/tim.
+export function PluginCard({ p, active, onOpen, ctx, actions = true }) {
   const scene = p.contentDomain === '3dscenes';
   const [anchor, setAnchor] = useState(null);
-  const downloaded = !ctx.local && ctx.downloadedIds?.has(p.id);
+  const downloaded = actions && !ctx.local && ctx.downloadedIds?.has(p.id);
   return (
     <div className={`group relative flex min-h-0 flex-col overflow-hidden rounded-lg border bg-white transition ${active ? 'border-white' : 'border-white/20 hover:border-white/50'}`}>
       <button onClick={() => onOpen(p)} onMouseEnter={(e) => setAnchor(e.currentTarget.getBoundingClientRect())} onMouseLeave={() => setAnchor(null)}
@@ -93,9 +94,9 @@ export function PluginCard({ p, active, onOpen, ctx }) {
       {downloaded && <span className="pointer-events-none absolute top-1 left-1 rounded bg-black/70 px-1 font-mono text-[9px] text-white">Đã tải</span>}
       <div className="bg-card p-1.5 min-[900px]:absolute min-[900px]:inset-x-0 min-[900px]:bottom-0 min-[900px]:bg-black/85 min-[900px]:opacity-0 min-[900px]:transition min-[900px]:group-hover:opacity-100 min-[900px]:focus-within:opacity-100">
         <button onClick={() => onOpen(p)} className="mb-1 block w-full truncate text-left text-[11px] font-bold text-white" title={p.name}>{p.name}</button>
-        <ModelAction p={p} ctx={ctx} />
+        {actions && <ModelAction p={p} ctx={ctx} />}
       </div>
-      <FavoriteHeart p={p} ctx={ctx} reveal className="absolute top-1 right-1 z-10" />
+      {actions && <FavoriteHeart p={p} ctx={ctx} reveal className="absolute top-1 right-1 z-10" />}
     </div>
   );
 }

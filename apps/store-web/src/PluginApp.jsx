@@ -19,7 +19,7 @@ import { FavoriteFolderBar, FavoriteFolderDialog } from './FavoriteFolders.jsx';
 import PluginSettings from './PluginSettings.jsx';
 import ImportOptionsDialog from './ImportOptionsDialog.jsx';
 
-const PAGE = 100; // luoi 10 x 10
+export const PAGE = 100; // luoi 10 x 10
 // Tab Da tai xep theo luc tai (downloadedAt); con lai theo ngay model. Chua co ngay luon xep cuoi.
 const stamp = (p) => { const t = Date.parse(p.downloadedAt ?? p.modifiedAt); return Number.isFinite(t) ? t : null; };
 const byDate = (direction) => (a, b) => {
@@ -27,7 +27,7 @@ const byDate = (direction) => (a, b) => {
   if (x === null || y === null) return x === y ? a.name.localeCompare(b.name) : x === null ? 1 : -1;
   return direction * (y - x) || a.name.localeCompare(b.name);
 };
-const SORTS = {
+export const SORTS = {
   name: ['Tên A → Z', (a, b) => a.name.localeCompare(b.name)],
   newest: ['Mới nhất', byDate(1)],
   oldest: ['Cũ nhất', byDate(-1)],
@@ -84,7 +84,7 @@ function UpdateSection() {
 
 // Mot muc dieu huong tren header: glyph/icon + nhan nho, muc dang chon to mau thuong hieu.
 // glyph: slot thay the duoc (ReactNode); khong truyen thi dung icon SVG theo ten.
-function NavButton({ icon, glyph, label, active = false, onClick }) {
+export function NavButton({ icon, glyph, label, active = false, onClick }) {
   return (
     <button onClick={onClick} aria-pressed={active} title={label}
       className={'flex flex-col items-center gap-0.5 rounded-md px-3 py-1 text-[10px] transition ' + (active ? 'text-brand' : 'text-mute hover:bg-raised hover:text-fg')}>
@@ -95,7 +95,7 @@ function NavButton({ icon, glyph, label, active = false, onClick }) {
 
 // Slot icon cho tab Models/Scenes: thay bang <img src=...> khi khach gui icon rieng.
 const BigGlyph = ({ children = '3D' }) => <span className="text-2xl font-black leading-none">{children}</span>;
-const DOMAIN_GLYPH = { '3dmodels': <BigGlyph />, '3dscenes': <BigGlyph /> };
+export const DOMAIN_GLYPH = { '3dmodels': <BigGlyph />, '3dscenes': <BigGlyph /> };
 
 // Popup thong tin thiet bi (cung kieu popup Cai dat).
 function DeviceDialog({ max, onClose }) {

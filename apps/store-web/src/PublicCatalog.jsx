@@ -4,10 +4,11 @@ import { Filters, Logo, Preview } from './components.jsx';
 import { Icon } from './icons.jsx';
 import { matchesCategory } from './catalog-view.js';
 import { usePluginCatalog } from './usePluginCatalog.js';
-import ContentDomainTabs from './ContentDomainTabs.jsx';
+import { Pagination } from './Pagination.jsx';
+import { PluginCard } from './plugin-components.jsx';
+import { DOMAIN_GLYPH, NavButton, PAGE, SORTS } from './PluginApp.jsx';
 
 const MZP = '/download/3dsmood-library.mzp';
-const STEP = 48;
 
 function DownloadButton({ className = '' }) {
   const [ready, setReady] = useState(null);
@@ -79,6 +80,7 @@ function Lightbox({ p, onClose }) {
   );
 }
 
+// Bo cuc giong plugin (header 2 hang, sidebar danh muc, thanh tim + sap xep, luoi 10 x 10, phan trang); bo cac nut chi co trong Max.
 export default function PublicCatalog() {
   const [reloadKey, setReloadKey] = useState(0);
   const { products: allProducts, tree: allTree, state, error } = usePluginCatalog(reloadKey);
@@ -88,71 +90,72 @@ export default function PublicCatalog() {
   const noun = domain === "3dscenes" ? "scene" : "model";
   const [subs, setSubs] = useState(() => new Set());
   const [text, setText] = useState('');
-  const [limit, setLimit] = useState(STEP);
+  const [sort, setSort] = useState('name');
+  const [page, setPage] = useState(1);
   const [active, setActive] = useState(null);
   const [drawer, setDrawer] = useState(false);
   const rows = useMemo(() => {
     const needle = text.trim().toLowerCase();
-    return products.filter((p) => matchesCategory(p, subs) && (!needle || p.name.toLowerCase().includes(needle)));
-  }, [products, subs, text]);
-  useEffect(() => setLimit(STEP), [subs, text, domain]);
+    return products.filter((p) => matchesCategory(p, subs) && (!needle || p.name.toLowerCase().includes(needle))).sort(SORTS[sort][1]);
+  }, [products, subs, text, sort]);
+  useEffect(() => setPage(1), [subs, text, sort, domain]);
+  const pages = Math.max(1, Math.ceil(rows.length / PAGE));
+  const view = rows.slice((page - 1) * PAGE, page * PAGE);
   function selectDomain(next) { setDomain(next); setSubs(new Set()); setText(''); setActive(null); }
 
   return (
-    <div className="flex min-h-screen flex-col bg-base text-fg">
-      <header className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-line bg-bar px-4 py-4">
-        <div className="min-w-0 flex-1 basis-64">
-          <Logo className="mb-2 h-12" />
-          <p className="text-sm text-mute">Thư viện 3D model và scene cho 3ds Max. Xem toàn bộ model và scene, cài plugin để dùng trực tiếp trong Max.</p>
-        </div>
-        <div className="flex flex-col items-start gap-1 sm:items-end">
-          <DownloadButton className="w-full sm:w-auto sm:px-8 sm:py-3 sm:text-[1rem]" />
-          <p className="text-xs text-mute">Trong 3ds Max: Scripting → Run Script → chọn file .mzp.</p>
+    <div className="flex h-screen flex-col bg-base text-fg">
+      <header className="shrink-0 border-b border-line bg-bar px-4 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+            <Logo className="h-11" />
+            <nav aria-label="Content domain" className="flex items-center gap-1">
+              {[["3dmodels", "Models"], ["3dscenes", "Scenes"]].map(([d, label]) => <NavButton key={d} glyph={DOMAIN_GLYPH[d]} label={label} active={domain === d} onClick={() => selectDomain(d)} />)}
+            </nav>
+          </div>
+          <div className="flex flex-col items-start gap-1 sm:items-end">
+            <DownloadButton />
+            <p className="text-[11px] text-mute">Trong 3ds Max: Scripting → Run Script → chọn file .mzp.</p>
+          </div>
         </div>
       </header>
 
       <div className="flex min-h-0 flex-1">
         <div className={`${drawer ? 'fixed inset-0 z-30 bg-black/60' : 'hidden'} lg:static lg:z-auto lg:block lg:bg-transparent`} onClick={() => setDrawer(false)}>
-          <aside className="h-full w-72 overflow-auto border-r border-line bg-panel lg:w-64" onClick={(e) => e.stopPropagation()}>
+          <aside className="h-full w-72 overflow-auto border-r border-line bg-panel lg:w-48" onClick={(e) => e.stopPropagation()}>
             <Filters categories={tree} subs={subs} setSubs={setSubs} renderers={new Set()} setRenderers={() => {}} rendererOptions={[]} />
           </aside>
         </div>
 
-        <main className="min-w-0 flex-1 p-3">
-          <div className="mb-3"><ContentDomainTabs value={domain} onChange={selectDomain} /></div>
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => setDrawer(true)} className="flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs text-mute hover:text-fg lg:hidden">
-              <Icon name="filter" className="size-3.5" />Danh mục{subs.size ? ` (${subs.size})` : ''}
-            </button>
-            <label className="flex min-w-48 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-brand">
+        <main className="flex min-w-0 flex-1 flex-col">
+          <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
+            <label className="flex min-w-32 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-brand">
               <Icon name="search" className="size-3.5 text-mute" />
               <input value={text} onChange={(e) => setText(e.target.value)} placeholder={`Tìm ${noun}…`} aria-label={`Tìm ${noun}`} className="w-full bg-transparent py-1.5 text-sm outline-none placeholder:text-mute" />
             </label>
             <span className="font-mono text-xs text-mute">{state === 'ready' ? `${rows.length} ${noun}` : ''}</span>
+            <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sắp xếp" className="rounded-md border border-line bg-panel px-2 py-1.5 font-mono text-xs outline-none focus:border-brand">
+              {Object.entries(SORTS).map(([k, [label]]) => <option key={k} value={k}>{label}</option>)}
+            </select>
+            <button type="button" onClick={() => setDrawer(true)} className="flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs text-mute hover:text-fg lg:hidden">
+              <Icon name="filter" className="size-3.5" />Danh mục{subs.size ? ` (${subs.size})` : ''}
+            </button>
           </div>
 
-          {state === 'loading' && <p role="status" className="py-16 text-center font-mono text-xs text-mute">Đang tải danh mục…</p>}
-          {state === 'error' && (
-            <div role="alert" className="mx-auto mt-16 max-w-md rounded-md border border-danger/40 bg-danger/10 p-4 text-center font-mono text-xs text-danger">
-              {error}
-              <div><button type="button" onClick={() => setReloadKey((k) => k + 1)} className="mt-3 rounded-md border border-danger/40 px-3 py-1">Thử lại</button></div>
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pt-2 pb-3 min-[900px]:overflow-hidden">
+            {state === 'loading' && <p role="status" className="py-16 text-center font-mono text-xs text-mute">Đang tải danh mục…</p>}
+            {state === 'error' && (
+              <div role="alert" className="mx-auto mt-16 max-w-md rounded-md border border-danger/40 bg-danger/10 p-4 text-center font-mono text-xs text-danger">
+                {error}
+                <div><button type="button" onClick={() => setReloadKey((k) => k + 1)} className="mt-3 rounded-md border border-danger/40 px-3 py-1">Thử lại</button></div>
+              </div>
+            )}
+            {state === 'ready' && rows.length === 0 && <p className="py-16 text-center text-sm text-mute">Không có {noun} nào khớp.</p>}
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-1.5 min-[900px]:min-h-0 min-[900px]:flex-1 min-[900px]:grid-cols-[repeat(10,minmax(0,1fr))] min-[900px]:grid-rows-[repeat(10,minmax(0,1fr))]">
+              {view.map((p) => <PluginCard key={p.id} p={p} active={active?.id === p.id} onOpen={setActive} ctx={{}} actions={false} />)}
             </div>
-          )}
-          {state === 'ready' && rows.length === 0 && <p className="py-16 text-center text-sm text-mute">Không có {noun} nào khớp.</p>}
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2.5">
-            {rows.slice(0, limit).map((p) => (
-              <button type="button" key={p.id} onClick={() => setActive(p)} className="group flex flex-col overflow-hidden rounded-lg border border-line bg-panel text-left transition hover:border-mute/60">
-                <div className="aspect-square w-full overflow-hidden bg-white"><Preview source={p.thumb} name={p.name} lazy /></div>
-                <div className="px-2 py-2">
-                  <div className="truncate text-[13px] font-bold" title={p.name}>{p.name}</div>
-                  <div className="truncate font-mono text-[10px] text-mute">{p.subcategory}</div>
-                </div>
-              </button>
-            ))}
           </div>
-          {rows.length > limit && (
-            <div className="py-5 text-center"><button type="button" onClick={() => setLimit((n) => n + STEP)} className="rounded-md border border-line px-5 py-2 text-sm text-mute hover:text-fg">Xem thêm</button></div>
-          )}
+          {rows.length > PAGE && <Pagination page={page} pages={pages} total={rows.length} onPage={setPage} />}
         </main>
       </div>
       {active && <Lightbox p={active} onClose={() => setActive(null)} />}

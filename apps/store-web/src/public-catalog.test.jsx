@@ -75,7 +75,7 @@ test('lists all models without any buy/price/license UI; search and category fil
 
 test('click a card opens the lightbox with name and category', async () => {
   const root = await mount();
-  await act(async () => { document.querySelectorAll('.group')[0].click(); });
+  await act(async () => { document.querySelector('.group button').click(); });
   const dialog = document.querySelector('[role=dialog]');
   assert.ok(dialog); assert.match(dialog.textContent, /Living|Bedroom/);
   await act(() => root.unmount());
@@ -158,7 +158,7 @@ test("public gallery keeps Models scope when the capability response contains Sc
 
 test('Models and Scenes switch: each shows only its own cards, categories and counts, and the search resets', async () => {
   const root = await mount();
-  const tab = (label) => [...document.querySelectorAll('[aria-label="Content domain"] button')].find((b) => b.textContent === label);
+  const tab = (label) => document.querySelector(`[aria-label="Content domain"] button[title="${label}"]`);
   assert.equal(tab('Models').getAttribute('aria-pressed'), 'true');
   assert.deepEqual(cards().map((c) => c.includes('Apartment Scene')), [false, false, false]);
   await act(async () => { tab('Scenes').click(); });
