@@ -386,7 +386,7 @@ test('card: hovering the image shows a 550px side popup (25% larger than before)
   const host = document.createElement('div'); document.body.appendChild(host);
   const root = createRoot(host);
   const render = async (p) => { await act(async () => { root.render(<PluginCard p={p} active={false} onOpen={() => {}} ctx={ctx()} />); await flush(); }); };
-  const imageButton = () => host.querySelector('button.rounded-t-\\[7px\\]');
+  const imageButton = () => host.querySelector('.group > button');
   const fire = (el, type) => el.dispatchEvent(new dom.window.MouseEvent(type, { bubbles: true }));
 
   await render(product());

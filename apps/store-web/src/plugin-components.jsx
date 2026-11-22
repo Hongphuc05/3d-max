@@ -78,24 +78,24 @@ function HoverPreview({ p, anchor, scene }) {
     </div>, document.body);
 }
 
+// O 10 x 10 chi con anh (o cao ~80px o 1080p); ten + nut hien de len anh khi re chuot/focus. Man hep: luon hien.
 export function PluginCard({ p, active, onOpen, ctx }) {
   const scene = p.contentDomain === '3dscenes';
   const [anchor, setAnchor] = useState(null);
+  const downloaded = !ctx.local && ctx.downloadedIds?.has(p.id);
   return (
-    <div className={`group relative flex flex-col rounded-lg border bg-card transition ${active ? 'border-white' : 'border-white/20 hover:border-white/50'}`}>
+    <div className={`group relative flex min-h-0 flex-col overflow-hidden rounded-lg border bg-white transition ${active ? 'border-white' : 'border-white/20 hover:border-white/50'}`}>
       <button onClick={() => onOpen(p)} onMouseEnter={(e) => setAnchor(e.currentTarget.getBoundingClientRect())} onMouseLeave={() => setAnchor(null)}
-        className="relative overflow-hidden rounded-t-[7px] bg-white">
-        <Preview source={p.thumb} name={p.name} lazy fit={scene ? 'cover' : 'contain'} aspect={scene ? 'aspect-[4/3]' : 'aspect-square'} zoom={false} />
+        aria-label={p.name} className="relative min-h-0 flex-1 overflow-hidden bg-white">
+        <Preview source={p.thumb} name={p.name} lazy fit={scene ? 'cover' : 'contain'} aspect={`${scene ? 'aspect-[4/3]' : 'aspect-square'} min-[900px]:aspect-auto`} zoom={false} />
       </button>
       <HoverPreview p={p} anchor={anchor} scene={scene} />
-      <button onClick={() => onOpen(p)} className="flex flex-1 flex-col px-2 pt-2 text-left">
-        <div className="truncate text-[13px] font-bold" title={p.name}>{p.name}</div>
-        <div className="mt-0.5 flex justify-between gap-2 font-mono text-[10px] text-mute">
-          <span className="truncate">{p.subcategory}</span><span className="shrink-0">{mb(p.info.sizeMB)}</span>
-        </div>
-      </button>
-      <div className="p-2"><ModelAction p={p} ctx={ctx} /></div>
-      <FavoriteHeart p={p} ctx={ctx} reveal className="absolute top-1.5 right-1.5 z-10" />
+      {downloaded && <span className="pointer-events-none absolute top-1 left-1 rounded bg-black/70 px-1 font-mono text-[9px] text-white">Đã tải</span>}
+      <div className="bg-card p-1.5 min-[900px]:absolute min-[900px]:inset-x-0 min-[900px]:bottom-0 min-[900px]:bg-black/85 min-[900px]:opacity-0 min-[900px]:transition min-[900px]:group-hover:opacity-100 min-[900px]:focus-within:opacity-100">
+        <button onClick={() => onOpen(p)} className="mb-1 block w-full truncate text-left text-[11px] font-bold text-white" title={p.name}>{p.name}</button>
+        <ModelAction p={p} ctx={ctx} />
+      </div>
+      <FavoriteHeart p={p} ctx={ctx} reveal className="absolute top-1 right-1 z-10" />
     </div>
   );
 }
