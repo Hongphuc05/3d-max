@@ -251,7 +251,7 @@ export default function PluginApp({ orderPollMs }) {
           )}
 
           {/* >= 900px: 10 x 10 khit cua so, khong cuon; man hep: luoi tu dong, cuon doc. */}
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pl-3 pr-[100px] pb-3 min-[900px]:overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-3 min-[900px]:overflow-hidden">
             {tab === 'done' && downloads.error && <p role="alert" className="py-3 text-sm text-danger">{downloads.error}</p>}
             {favorites.error && <p role="alert" className="py-3 text-sm text-danger">{favorites.error}</p>}
             {tab !== 'done' && state === 'error' && (
