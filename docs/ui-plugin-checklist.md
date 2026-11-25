@@ -12,7 +12,7 @@ Mẫu: ảnh Photoshop chủ dự án gửi 15/11/2026.
 | 2 | Lưới **10 model/dòng**, tự co giãn theo chiều rộng plugin | Lưới | [x] | [ ] |
 | 3 | Rê chuột vào ảnh thẻ → **popup ảnh lớn như bản cũ, to hơn 25%** (440 → 550px). *Sửa lại 15/11: lần đầu làm nhầm thành phóng tại chỗ* | Lưới | [x] | [ ] |
 | 4 | Viền thẻ + nút Download / "Đã tải · Xem": chưa chọn = **trắng mờ**, đang chọn = **trắng**; bỏ viền đỏ | Lưới | [x] | [ ] |
-| 5 | ~~Khoảng trống 100px mép phải~~ → bỏ (22/11): lưới 10×10 không cuộn nữa | Lưới | [x] | [ ] |
+| 5 | Khoảng trống **100px ở mép phải cùng** để đặt chuột cuộn (không chạm ảnh nên không bật popup) *(bỏ 22/11, trả lại 25/11 khi lưới cuộn lại)* | Lưới | [x] | [ ] |
 | 6 | Ảnh **Scene**: hết 2 dải trắng, ảnh to hơn (thẻ 4:3; popup Scene khung ngang 720px, ảnh lấp đầy) | Lưới | [x] | [ ] |
 | 7 | Thanh kết nối chuyển từ WinForms **vào web**: ô "Connected: <cửa sổ Max> ▾" bên trái hàng trên cùng, bấm để chọn cửa sổ Max. *Web + C# đã gộp; C# chưa build, phải kiểm trên Windows* | Header | [x] | [ ] |
 | 8 | Nút **focus 3ds Max** chuyển vào web: nút **Home đỏ** góc phải, cạnh nút làm mới (đỏ). *Web + C# đã gộp; C# chưa build, phải kiểm trên Windows* | Header | [x] | [ ] |
