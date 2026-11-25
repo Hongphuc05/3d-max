@@ -5,8 +5,8 @@ import { Icon } from './icons.jsx';
 import { matchesCategory } from './catalog-view.js';
 import { usePluginCatalog } from './usePluginCatalog.js';
 import { Pagination } from './Pagination.jsx';
-import { GridZoom, gridClass, PluginCard, useGridCols } from './plugin-components.jsx';
-import { DOMAIN_GLYPH, NavButton, PAGE, SORTS } from './PluginApp.jsx';
+import { DEFAULT_COLS, GRID_ROWS, GridZoom, gridClass, PluginCard, resizeGrid } from './plugin-components.jsx';
+import { DOMAIN_GLYPH, NavButton, SORTS } from './PluginApp.jsx';
 
 const MZP = '/download/3dsmood-library.mzp';
 
@@ -94,14 +94,17 @@ export default function PublicCatalog() {
   const [page, setPage] = useState(1);
   const [active, setActive] = useState(null);
   const [drawer, setDrawer] = useState(false);
-  const [cols, setCols] = useGridCols();
+  const [cols, setCols] = useState(DEFAULT_COLS);
+  const pageSize = cols * GRID_ROWS;
+  const scroller = useRef(null);
   const rows = useMemo(() => {
     const needle = text.trim().toLowerCase();
     return products.filter((p) => matchesCategory(p, subs) && (!needle || p.name.toLowerCase().includes(needle))).sort(SORTS[sort][1]);
   }, [products, subs, text, sort]);
   useEffect(() => setPage(1), [subs, text, sort, domain]);
-  const pages = Math.max(1, Math.ceil(rows.length / PAGE));
-  const view = rows.slice((page - 1) * PAGE, page * PAGE);
+  const pages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const view = rows.slice((page - 1) * pageSize, page * pageSize);
+  useEffect(() => { if (scroller.current) scroller.current.scrollTop = 0; }, [page, cols]);
   function selectDomain(next) { setDomain(next); setSubs(new Set()); setText(''); setActive(null); }
 
   return (
@@ -138,13 +141,13 @@ export default function PublicCatalog() {
             <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sắp xếp" className="rounded-md border border-line bg-panel px-2 py-1.5 font-mono text-xs outline-none focus:border-brand">
               {Object.entries(SORTS).map(([k, [label]]) => <option key={k} value={k}>{label}</option>)}
             </select>
-            <GridZoom cols={cols} setCols={setCols} />
+            <GridZoom cols={cols} onCols={(n) => resizeGrid(setCols, setPage, cols, n)} />
             <button type="button" onClick={() => setDrawer(true)} className="flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs text-mute hover:text-fg lg:hidden">
               <Icon name="filter" className="size-3.5" />Danh mục{subs.size ? ` (${subs.size})` : ''}
             </button>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-2 pb-3">
+          <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-3 pt-2 pb-3">
             {state === 'loading' && <p role="status" className="py-16 text-center font-mono text-xs text-mute">Đang tải danh mục…</p>}
             {state === 'error' && (
               <div role="alert" className="mx-auto mt-16 max-w-md rounded-md border border-danger/40 bg-danger/10 p-4 text-center font-mono text-xs text-danger">
@@ -157,7 +160,7 @@ export default function PublicCatalog() {
               {view.map((p) => <PluginCard key={p.id} p={p} active={active?.id === p.id} onOpen={setActive} ctx={{}} actions={false} />)}
             </div>
           </div>
-          {rows.length > PAGE && <Pagination page={page} pages={pages} total={rows.length} onPage={setPage} />}
+          {rows.length > pageSize && <Pagination page={page} pages={pages} total={rows.length} onPage={setPage} />}
         </main>
       </div>
       {active && <Lightbox p={active} onClose={() => setActive(null)} />}

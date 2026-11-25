@@ -19,7 +19,7 @@ export function Pagination({ page, pages, total, onPage }) {
   const [jump, setJump] = useState('');
   const go = (n) => onPage(Math.min(pages, Math.max(1, Math.round(n) || page)));
   return (
-    <nav aria-label="Phân trang" title={`${total} model`} className="flex flex-wrap items-center gap-1 border-t border-line px-3 py-2 font-mono text-xs">
+    <nav aria-label="Phân trang" title={`${total} model`} className="flex min-h-12 flex-wrap items-center gap-1 border-t border-line px-3 py-1.5 font-mono text-xs">
       <button aria-label="Trang đầu" disabled={page === 1} onClick={() => go(1)} className={btn}>«</button>
       <button aria-label="Trang trước" disabled={page === 1} onClick={() => go(page - 1)} className={btn}>‹</button>
       {pageWindow(page, pages).map((n, i) => n === '…'

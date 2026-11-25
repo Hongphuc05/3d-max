@@ -663,21 +663,26 @@ test('favorites survive remount, are scoped to the current Models/Scenes tab, an
   await done(root);
 });
 
-test('grid zoom: + removes one column (bigger cards), − adds one; stops at the limits and is remembered', async () => {
-  server(); window.localStorage.removeItem('3dsmood.gridCols');
+test('grid zoom: + removes one column, − adds one; a page is always cols × 10 (full last row); new page scrolls to top; reopening is 10 × 10', async () => {
+  server(); const many = globalThis.fetch;
+  globalThis.fetch = async (url, init) => String(url) === '/api/v1/catalog' ? json({ catalogVersion: 1, models: Array.from({ length: 250 }, (_, i) => ({ id: id(700 + i), name: 'Lamp ' + String(i).padStart(3, '0'), categoryId: id(1), sizeBytes: 1048576, fileType: 'rar', status: 'PUBLISHED' })) }) : many(url, init);
   let root = await mount();
   const grid = () => document.querySelector('.group').parentElement;
   const zoom = (label) => document.querySelector(`[aria-label="${label}"]`);
-  assert.equal(grid().style.getPropertyValue('--cols'), '10', 'default 10 columns');
+  const count = () => document.querySelectorAll('.group').length;
+  assert.equal(grid().style.getPropertyValue('--cols'), '10'); assert.equal(count(), 100, 'default 10 × 10');
   await act(async () => { zoom('Phóng to ô').click(); });
-  assert.equal(grid().style.getPropertyValue('--cols'), '9');
-  await act(async () => { zoom('Thu nhỏ ô').click(); zoom('Thu nhỏ ô').click(); });
-  assert.equal(grid().style.getPropertyValue('--cols'), '11');
+  assert.equal(grid().style.getPropertyValue('--cols'), '9'); assert.equal(count(), 90, '9 columns × 10 rows: no half-empty last row');
+  await act(async () => { zoom('Thu nhỏ ô').click(); }); await act(async () => { zoom('Thu nhỏ ô').click(); });
+  assert.equal(grid().style.getPropertyValue('--cols'), '11'); assert.equal(count(), 110);
   for (let i = 0; i < 10; i++) await act(async () => { zoom('Thu nhỏ ô').click(); });
   assert.equal(grid().style.getPropertyValue('--cols'), '16'); assert.ok(zoom('Thu nhỏ ô').disabled, 'max 16 columns');
+  const scroller = grid().parentElement; scroller.scrollTop = 500;
+  await act(async () => { document.querySelector('[aria-label="Trang sau"]').click(); await flush(); });
+  assert.equal(document.querySelector('[aria-current=page]').textContent, '2'); assert.equal(scroller.scrollTop, 0, 'next page starts at the top');
   await done(root);
   root = await mount();
-  assert.equal(grid().style.getPropertyValue('--cols'), '16', 'kept after reopening the panel');
-  window.localStorage.removeItem('3dsmood.gridCols');
+  assert.equal(grid().style.getPropertyValue('--cols'), '10', 'reopening (F5) is back to 10 × 10');
+  globalThis.fetch = many;
   await done(root);
 });
