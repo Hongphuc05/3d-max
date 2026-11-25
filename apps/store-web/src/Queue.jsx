@@ -17,8 +17,9 @@ export function Queue() {
   }, [running]);
 
   return (
-    <section className="border-t border-line p-3">
-      <div className={`${jobs.length ? 'mb-2 ' : ''}flex items-center gap-2 text-xs font-bold`}>
+    <section className={`border-t border-line px-3 ${jobs.length ? 'pb-3' : ''}`}>
+      {/* 47px + vien 1px = 48px nhu thanh phan trang: hai duong vien tren thang hang. */}
+      <div className="flex h-[47px] items-center gap-2 text-xs font-bold">
         <Icon name="download" className="size-3.5 text-brand" /> Hàng đợi
         <span className="ml-auto font-mono font-normal text-mute">{jobs.length} job</span>
       </div>

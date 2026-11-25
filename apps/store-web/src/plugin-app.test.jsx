@@ -386,7 +386,7 @@ test('card: hovering the image shows a 550px side popup (25% larger than before)
   const host = document.createElement('div'); document.body.appendChild(host);
   const root = createRoot(host);
   const render = async (p) => { await act(async () => { root.render(<PluginCard p={p} active={false} onOpen={() => {}} ctx={ctx()} />); await flush(); }); };
-  const imageButton = () => host.querySelector('button.rounded-t-\\[7px\\]');
+  const imageButton = () => host.querySelector('.group > button');
   const fire = (el, type) => el.dispatchEvent(new dom.window.MouseEvent(type, { bubbles: true }));
 
   await render(product());
@@ -704,5 +704,29 @@ test('drag to Max: only a downloaded card is draggable; dragstart is cancelled a
   assert.equal(event.defaultPrevented, true, 'the browser drag is cancelled (the host starts the real file drag)');
   const drag = calls.filter(c => c.method === 'library.beginDrag');
   assert.deepEqual(drag.map(c => c.params), [{ modelId: id(101) }]);
+  await done(root);
+});
+
+test('grid zoom: + removes one column, − adds one; a page is always cols × 10 (full last row); new page scrolls to top; reopening is 10 × 10', async () => {
+  server(); const many = globalThis.fetch;
+  globalThis.fetch = async (url, init) => String(url) === '/api/v1/catalog' ? json({ catalogVersion: 1, models: Array.from({ length: 250 }, (_, i) => ({ id: id(700 + i), name: 'Lamp ' + String(i).padStart(3, '0'), categoryId: id(1), sizeBytes: 1048576, fileType: 'rar', status: 'PUBLISHED' })) }) : many(url, init);
+  let root = await mount();
+  const grid = () => document.querySelector('.group').parentElement;
+  const zoom = (label) => document.querySelector(`[aria-label="${label}"]`);
+  const count = () => document.querySelectorAll('.group').length;
+  assert.equal(grid().style.getPropertyValue('--cols'), '10'); assert.equal(count(), 100, 'default 10 × 10');
+  await act(async () => { zoom('Phóng to ô').click(); });
+  assert.equal(grid().style.getPropertyValue('--cols'), '9'); assert.equal(count(), 90, '9 columns × 10 rows: no half-empty last row');
+  await act(async () => { zoom('Thu nhỏ ô').click(); }); await act(async () => { zoom('Thu nhỏ ô').click(); });
+  assert.equal(grid().style.getPropertyValue('--cols'), '11'); assert.equal(count(), 110);
+  for (let i = 0; i < 10; i++) await act(async () => { zoom('Thu nhỏ ô').click(); });
+  assert.equal(grid().style.getPropertyValue('--cols'), '16'); assert.ok(zoom('Thu nhỏ ô').disabled, 'max 16 columns');
+  const scroller = grid().parentElement; scroller.scrollTop = 500;
+  await act(async () => { document.querySelector('[aria-label="Trang sau"]').click(); await flush(); });
+  assert.equal(document.querySelector('[aria-current=page]').textContent, '2'); assert.equal(scroller.scrollTop, 0, 'next page starts at the top');
+  await done(root);
+  root = await mount();
+  assert.equal(grid().style.getPropertyValue('--cols'), '10', 'reopening (F5) is back to 10 × 10');
+  globalThis.fetch = many;
   await done(root);
 });

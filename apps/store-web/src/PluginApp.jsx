@@ -1,13 +1,13 @@
 // P4.4: giao dien plugin (UI-1: bo cuc 3 cot, loc cay, tim, sap xep, phan trang, tab Online / Đã tải) tren du lieu v3.
 // Khong co tai khoan, khong co man license: thiet bi + quyen do may chu quyet dinh (xem usePluginCatalog / v3-catalog).
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Filters } from './components.jsx';
 import { Pagination } from './Pagination.jsx';
 import { matchesCategory } from './catalog-view.js';
 import { HostBar } from './HostBar.jsx';
 import { Icon } from './icons.jsx';
 import { applyPluginUpdate, checkPluginUpdate, getHostInfo, getLibraryStatus, isMaxHost, refreshLibrary } from './integrations/3dsmax/bridge.js';
-import { BuyLibrary, PluginCard } from './plugin-components.jsx';
+import { BuyLibrary, DEFAULT_COLS, GRID_ROWS, GridZoom, gridClass, PluginCard, resizeGrid } from './plugin-components.jsx';
 import OrderDialog from './OrderDialog.jsx';
 import { Queue } from './Queue.jsx';
 import { UpdateNotice } from './UpdateNotice.jsx';
@@ -20,7 +20,6 @@ import { FavoriteFolderBar, FavoriteFolderDialog } from './FavoriteFolders.jsx';
 import PluginSettings from './PluginSettings.jsx';
 import ImportOptionsDialog from './ImportOptionsDialog.jsx';
 
-const PAGE = 100; // luoi 10 x 10
 // Tab Da tai xep theo luc tai (downloadedAt); con lai theo ngay model. Chua co ngay luon xep cuoi.
 const stamp = (p) => { const t = Date.parse(p.downloadedAt ?? p.modifiedAt); return Number.isFinite(t) ? t : null; };
 const byDate = (direction) => (a, b) => {
@@ -28,7 +27,7 @@ const byDate = (direction) => (a, b) => {
   if (x === null || y === null) return x === y ? a.name.localeCompare(b.name) : x === null ? 1 : -1;
   return direction * (y - x) || a.name.localeCompare(b.name);
 };
-const SORTS = {
+export const SORTS = {
   name: ['Tên A → Z', (a, b) => a.name.localeCompare(b.name)],
   newest: ['Mới nhất', byDate(1)],
   oldest: ['Cũ nhất', byDate(-1)],
@@ -85,7 +84,7 @@ function UpdateSection() {
 
 // Mot muc dieu huong tren header: glyph/icon + nhan nho, muc dang chon to mau thuong hieu.
 // glyph: slot thay the duoc (ReactNode); khong truyen thi dung icon SVG theo ten.
-function NavButton({ icon, glyph, label, active = false, onClick }) {
+export function NavButton({ icon, glyph, label, active = false, onClick }) {
   return (
     <button onClick={onClick} aria-pressed={active} title={label}
       className={'flex flex-col items-center gap-0.5 rounded-md px-3 py-1 text-[10px] transition ' + (active ? 'text-brand' : 'text-mute hover:bg-raised hover:text-fg')}>
@@ -96,7 +95,7 @@ function NavButton({ icon, glyph, label, active = false, onClick }) {
 
 // Slot icon cho tab Models/Scenes: thay bang <img src=...> khi khach gui icon rieng.
 const BigGlyph = ({ children = '3D' }) => <span className="text-2xl font-black leading-none">{children}</span>;
-const DOMAIN_GLYPH = { '3dmodels': <BigGlyph />, '3dscenes': <BigGlyph /> };
+export const DOMAIN_GLYPH = { '3dmodels': <BigGlyph />, '3dscenes': <BigGlyph /> };
 
 // Popup thong tin thiet bi (cung kieu popup Cai dat).
 function DeviceDialog({ max, onClose }) {
@@ -136,6 +135,9 @@ export default function PluginApp({ orderPollMs }) {
   const [deviceOpen, setDeviceOpen] = useState(false);
   const [folderFilter, setFolderFilter] = useState('all');
   const [picking, setPicking] = useState(null);
+  const [cols, setCols] = useState(DEFAULT_COLS);
+  const pageSize = cols * GRID_ROWS;
+  const scroller = useRef(null);
   const { products: allProducts, tree: allTree, state, error, offline, progress, entitlements } = usePluginCatalog(reloadKey);
   const products = useMemo(() => allProducts.filter(p => (p.contentDomain || "3dmodels") === contentDomain), [allProducts, contentDomain]);
   const tree = useMemo(() => allTree.filter(c => (c.contentDomain || "3dmodels") === contentDomain), [allTree, contentDomain]);
@@ -177,9 +179,11 @@ export default function PluginApp({ orderPollMs }) {
 
   useEffect(() => setPage(1), [tab, subs, text, sort, contentDomain, folder]);
   function selectDomain(domain) { setContentDomain(domain); setSubs(new Set()); setActiveId(null); setText(""); setPage(1); }
-  const pages = Math.max(1, Math.ceil(rows.length / PAGE));
+  const pages = Math.max(1, Math.ceil(rows.length / pageSize));
   useEffect(() => setPage((previous) => Math.min(previous, pages)), [pages]);
-  const view = rows.slice((page - 1) * PAGE, page * PAGE);
+  const view = rows.slice((page - 1) * pageSize, page * pageSize);
+  // Sang trang khac (hoac doi so cot) -> ve dau luoi.
+  useEffect(() => { if (scroller.current) scroller.current.scrollTop = 0; }, [page, cols]);
   const activeJobs = jobs.filter((j) => j.status === 'queued' || j.status === 'running').length;
 
   // Lam moi: trong 3ds Max hoi may chu co catalog moi khong (host moi chi tu hoi moi 5 phut), roi doc lai du lieu cuc bo.
@@ -232,13 +236,14 @@ export default function PluginApp({ orderPollMs }) {
             {tabBtn('online', 'Online')}
             {tabBtn('done', `Đã tải${mine.length ? ` (${mine.length})` : ''}`)}
             {max && tabBtn('fav', `Yêu thích${liked.length ? ` (${liked.length})` : ''}`, 'heart')}
-            <label className="flex min-w-32 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-brand">
+            <label className="flex min-w-32 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-white">
               <Icon name="search" className="size-3.5 text-mute" />
               <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Tìm model…" className="w-full bg-transparent py-1.5 text-sm outline-none placeholder:text-mute" />
             </label>
             <select value={sort} onChange={(e) => setSort(e.target.value)} className="rounded-md border border-line bg-panel px-2 py-1.5 font-mono text-xs outline-none focus:border-brand">
               {Object.entries(SORTS).map(([k, [label]]) => <option key={k} value={k}>{label}</option>)}
             </select>
+            <GridZoom cols={cols} onCols={(n) => resizeGrid(setCols, setPage, cols, n)} />
             <button onClick={() => setDrawer(true)} className="flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs text-mute hover:text-fg lg:hidden">
               <Icon name="filter" className="size-3.5" />Lọc{subs.size ? ` (${subs.size})` : ''}
               {max && activeJobs > 0 && <span className="text-brand">· {activeJobs} đang tải</span>}
@@ -252,7 +257,7 @@ export default function PluginApp({ orderPollMs }) {
             </div>
           )}
 
-          <div className="min-h-0 flex-1 overflow-y-scroll pl-3 pr-3 pb-3 min-[1500px]:pr-[50px]">
+          <div ref={scroller} className="min-h-0 flex-1 overflow-y-scroll pl-3 pr-[100px] pb-3">
             {tab === 'done' && downloads.error && <p role="alert" className="py-3 text-sm text-danger">{downloads.error}</p>}
             {favorites.error && <p role="alert" className="py-3 text-sm text-danger">{favorites.error}</p>}
             {tab !== 'done' && state === 'error' && (
@@ -269,14 +274,14 @@ export default function PluginApp({ orderPollMs }) {
               </p>
             )}
             {tab !== 'done' && state === 'loading' && max && <p role="status" className="py-2 text-center font-mono text-xs text-mute">Lần đầu mở: đang tải catalog từ máy chủ (cần Internet)…</p>}
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-2.5">
+            <div className={gridClass} style={{ '--cols': cols }}>
               {!listReady && state === 'loading'
                 ? Array.from({ length: 18 }, (_, i) => <div key={i} className="aspect-[3/4] animate-pulse rounded-lg bg-panel" />)
                 : view.map((p) => <PluginCard key={p.id} p={p} active={activeId === p.id} onOpen={(m) => setActiveId(m.id)} ctx={ctx} />)}
             </div>
           </div>
 
-          {listReady && rows.length > PAGE && (
+          {listReady && rows.length > pageSize && (
             <Pagination page={page} pages={pages} total={rows.length} onPage={setPage} />
           )}
         </main>

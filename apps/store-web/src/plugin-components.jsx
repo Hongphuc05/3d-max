@@ -98,7 +98,8 @@ export function dragThumbnail(card) {
   return undefined;
 }
 
-export function PluginCard({ p, active, onOpen, ctx }) {
+// actions=false: trang cong khai (chi xem), khong nut tai/import/tim.
+export function PluginCard({ p, active, onOpen, ctx, actions = true }) {
   const scene = p.contentDomain === '3dscenes';
   const [anchor, setAnchor] = useState(null);
   const [dragError, setDragError] = useState('');
@@ -117,15 +118,35 @@ export function PluginCard({ p, active, onOpen, ctx }) {
         <Preview source={p.thumb} name={p.name} lazy fit={scene ? 'cover' : 'contain'} aspect={scene ? 'aspect-[4/3]' : 'aspect-square'} zoom={false} />
       </button>
       <HoverPreview p={p} anchor={anchor} scene={scene} />
-      <button onClick={() => onOpen(p)} className="flex flex-1 flex-col px-2 pt-2 text-left">
+      <button onClick={() => onOpen(p)} className={`flex flex-1 flex-col px-2 pt-2 text-left ${actions ? '' : 'pb-2'}`}>
         <div className="truncate text-[13px] font-bold" title={p.name}>{p.name}</div>
         <div className="mt-0.5 flex justify-between gap-2 font-mono text-[10px] text-mute">
-          <span className="truncate">{p.subcategory}</span><span className="shrink-0">{mb(p.info.sizeMB)}</span>
+          <span className="truncate">{p.subcategory}</span><span className="shrink-0">{mb(p.info?.sizeMB)}</span>
         </div>
       </button>
-      <div className="p-2"><ModelAction p={p} ctx={ctx} /></div>
+      {actions && <div className="p-2"><ModelAction p={p} ctx={ctx} /></div>}
       {dragError && <p role="alert" className="px-2 pb-2 text-[10px] text-danger">{dragError}</p>}
-      <FavoriteHeart p={p} ctx={ctx} reveal className="absolute top-1.5 right-1.5 z-10" />
+      {actions && <FavoriteHeart p={p} ctx={ctx} reveal className="absolute top-1.5 right-1.5 z-10" />}
+    </div>
+  );
+}
+
+// Nut + / - doi kich thuoc o: + = o to hon (bot 1 cot), - = o nho hon (them 1 cot). Moi trang = cols x GRID_ROWS model
+// nen hang cuoi luon day (tru trang cuoi cung cua danh sach). Khong luu: mo lai/F5 ve 10 x 10.
+export const MIN_COLS = 4, MAX_COLS = 16, DEFAULT_COLS = 10, GRID_ROWS = 10;
+// Luoi the: man >= 900px dung so cot da chon; man hep van tu xep (auto-fill).
+export const gridClass = 'grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] min-[900px]:grid-cols-[repeat(var(--cols),minmax(0,1fr))] gap-2.5';
+/** Doi so cot va giu model dau tien dang xem nam trong trang moi. */
+export const resizeGrid = (setCols, setPage, cols, next) => {
+  setPage((page) => Math.floor(((page - 1) * cols) / next) + 1);
+  setCols(next);
+};
+export function GridZoom({ cols, onCols }) {
+  const btn = 'grid size-8 place-items-center rounded-md border border-line font-mono text-base font-bold text-mute hover:text-fg disabled:opacity-40 disabled:hover:text-mute';
+  return (
+    <div className="hidden items-center gap-1 min-[900px]:flex" role="group" aria-label="Kích thước ô">
+      <button type="button" onClick={() => onCols(cols + 1)} disabled={cols >= MAX_COLS} aria-label="Thu nhỏ ô" title={`Thu nhỏ ô (${cols} cột)`} className={btn}>−</button>
+      <button type="button" onClick={() => onCols(cols - 1)} disabled={cols <= MIN_COLS} aria-label="Phóng to ô" title={`Phóng to ô (${cols} cột)`} className={btn}>+</button>
     </div>
   );
 }
