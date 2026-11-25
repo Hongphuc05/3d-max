@@ -290,5 +290,5 @@ test('GET also lists derived items (missing preview / missing archive / category
   assert.equal(JSON.stringify(body).includes(full.id) || JSON.stringify(body).includes(noPreview.id), false, 'no model ids');
   const scenes = await (await j('/catalog/review?contentDomain=3dscenes')).json();
   assert.deepEqual(scenes.map((i) => i.candidates[0].name), ['Scene no preview']);
-  assert.equal((await j(`/catalog/review/${body[0].id}`, { method: 'POST', body: { action: 'DISMISS' } })).status, 404);
+  assert.equal((await j(`/catalog/review/${body[0].id}`, { method: 'POST', body: { action: 'DISMISS' } })).status, 422, 'derived ids are not review items');
 });
