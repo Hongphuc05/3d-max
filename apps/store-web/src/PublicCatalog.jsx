@@ -133,12 +133,12 @@ export default function PublicCatalog() {
 
         <main className="flex min-w-0 flex-1 flex-col">
           <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
-            <label className="flex min-w-32 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-white">
+            <label className="flex h-8 min-w-32 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-white">
               <Icon name="search" className="size-3.5 text-mute" />
-              <input value={text} onChange={(e) => setText(e.target.value)} placeholder={`Tìm ${noun}…`} aria-label={`Tìm ${noun}`} className="w-full bg-transparent py-1.5 text-sm outline-none placeholder:text-mute" />
+              <input value={text} onChange={(e) => setText(e.target.value)} placeholder={`Tìm ${noun}…`} aria-label={`Tìm ${noun}`} className="w-full bg-transparent text-sm outline-none placeholder:text-mute" />
             </label>
             <span className="font-mono text-xs text-mute">{state === 'ready' ? `${rows.length} ${noun}` : ''}</span>
-            <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sắp xếp" className="rounded-md border border-line bg-panel px-2 py-1.5 font-mono text-xs outline-none focus:border-brand">
+            <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sắp xếp" className="h-8 rounded-md border border-line bg-panel px-2 font-mono text-xs outline-none focus:border-brand">
               {Object.entries(SORTS).map(([k, [label]]) => <option key={k} value={k}>{label}</option>)}
             </select>
             <GridZoom cols={cols} onCols={(n) => resizeGrid(setCols, setPage, cols, n)} />

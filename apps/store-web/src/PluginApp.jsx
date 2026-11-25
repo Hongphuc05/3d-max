@@ -195,7 +195,7 @@ export default function PluginApp({ orderPollMs }) {
 
   const tabBtn = (k, label, icon) => (
     <button onClick={() => setTab(k)}
-      className={`rounded-md px-4 py-1.5 font-mono text-xs font-bold ${icon ? 'inline-flex items-center gap-1.5 ' : ''}${tab === k ? 'bg-accent text-accent-ink' : 'border border-line text-mute hover:text-fg'}`}>{icon && <Icon name={icon} className="size-3.5" filled />}{label}</button>
+      className={`inline-flex h-8 items-center gap-1.5 rounded-md px-4 font-mono text-xs font-bold ${tab === k ? 'bg-accent text-accent-ink' : 'border border-line text-mute hover:text-fg'}`}>{icon && <Icon name={icon} className="size-3.5" filled />}{label}</button>
   );
 
   return (
@@ -236,11 +236,11 @@ export default function PluginApp({ orderPollMs }) {
             {tabBtn('online', 'Online')}
             {tabBtn('done', `Đã tải${mine.length ? ` (${mine.length})` : ''}`)}
             {max && tabBtn('fav', `Yêu thích${liked.length ? ` (${liked.length})` : ''}`, 'heart')}
-            <label className="flex min-w-32 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-white">
+            <label className="flex h-8 min-w-32 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-white">
               <Icon name="search" className="size-3.5 text-mute" />
-              <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Tìm model…" className="w-full bg-transparent py-1.5 text-sm outline-none placeholder:text-mute" />
+              <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Tìm model…" className="w-full bg-transparent text-sm outline-none placeholder:text-mute" />
             </label>
-            <select value={sort} onChange={(e) => setSort(e.target.value)} className="rounded-md border border-line bg-panel px-2 py-1.5 font-mono text-xs outline-none focus:border-brand">
+            <select value={sort} onChange={(e) => setSort(e.target.value)} className="h-8 rounded-md border border-line bg-panel px-2 font-mono text-xs outline-none focus:border-brand">
               {Object.entries(SORTS).map(([k, [label]]) => <option key={k} value={k}>{label}</option>)}
             </select>
             <GridZoom cols={cols} onCols={(n) => resizeGrid(setCols, setPage, cols, n)} />

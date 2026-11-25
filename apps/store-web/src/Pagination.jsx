@@ -31,7 +31,7 @@ export function Pagination({ page, pages, total, onPage }) {
       <label className="flex items-center gap-2 text-mute">
         Nhập số trang
         <select aria-label="Nhập số trang" value={page} onChange={(e) => go(Number(e.target.value))}
-          className="rounded-md border border-line bg-panel px-2 py-1 text-fg outline-none focus:border-brand">
+          className="rounded-md border border-line bg-panel px-2 py-1 text-fg outline-none focus:border-white">
           {Array.from({ length: pages }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1}</option>)}
         </select>
       </label>
