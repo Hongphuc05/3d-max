@@ -6,8 +6,8 @@ import * as api from './api.js';
 import ContentDomainTabs from './ContentDomainTabs.jsx';
 import { adminError, panel, ResourceState, secondary, primary } from './AdminShared.jsx';
 
-const KIND_ORDER = ['REMAP_CANDIDATE', 'SUGGESTED_PAIR', 'AMBIGUOUS_PAIR', 'ORPHAN_MODEL', 'ORPHAN_IMAGE', 'PREVIEW_IN_ARCHIVE'];
-const kindLabels = { REMAP_CANDIDATE: 'Có thể đổi ID', SUGGESTED_PAIR: 'Gợi ý ghép cặp', AMBIGUOUS_PAIR: 'Ghép cặp không rõ', ORPHAN_MODEL: 'File model lẻ', ORPHAN_IMAGE: 'Ảnh lẻ', PREVIEW_IN_ARCHIVE: 'Ảnh trong file nén' };
+const KIND_ORDER = ['REMAP_CANDIDATE', 'SUGGESTED_PAIR', 'AMBIGUOUS_PAIR', 'ORPHAN_MODEL', 'ORPHAN_IMAGE', 'PREVIEW_IN_ARCHIVE', 'MISSING_PREVIEW', 'MISSING_ARCHIVE', 'CATEGORY_MISMATCH'];
+const kindLabels = { REMAP_CANDIDATE: 'Có thể đổi ID', SUGGESTED_PAIR: 'Gợi ý ghép cặp', AMBIGUOUS_PAIR: 'Ghép cặp không rõ', ORPHAN_MODEL: 'File model lẻ', ORPHAN_IMAGE: 'Ảnh lẻ', PREVIEW_IN_ARCHIVE: 'Ảnh trong file nén', MISSING_PREVIEW: 'Thiếu ảnh preview', MISSING_ARCHIVE: 'Ảnh thiếu file model/scene', CATEGORY_MISMATCH: 'Ảnh lệch danh mục' };
 const ACCEPTABLE = new Set(['SUGGESTED_PAIR', 'REMAP_CANDIDATE']);
 
 function Item({ item, onResolved, contentDomain }) {
@@ -27,7 +27,7 @@ function Item({ item, onResolved, contentDomain }) {
   return <li data-review={item.id} className="space-y-3 border-t border-line py-4 first:border-t-0">
     <p className="text-sm">{item.summary}</p>
     {item.candidates.length > 0 && <ul className="space-y-1 text-xs text-mute">{item.candidates.map((c, i) => <li key={i} className="break-all font-mono">{c.name}</li>)}</ul>}
-    {state.confirm
+    {item.derived ? null : state.confirm
       ? <div className="space-y-2 rounded-md border border-warn/40 p-3 text-sm">
         <p className="text-warn">Bạn sắp gộp file mới vào model cũ (giữ nguyên ID, giá và tên) và xóa model mới trùng. Thao tác không hoàn tác.</p>
         <div className="flex gap-2"><button className={primary} disabled={state.busy} onClick={() => send('ACCEPT', 'Đã gộp vào model cũ.')}>Gộp</button>
@@ -69,7 +69,7 @@ function ReviewDomain({ contentDomain }) {
   const resolved = (id, doneMessage) => { setMessage(doneMessage); setState((s) => ({ ...s, items: s.items.filter((item) => item.id !== id) })); };
   const items = state.items;
   const kinds = items ? KIND_ORDER.filter((kind) => items.some((item) => item.kind === kind)) : [];
-  const hasPassive = items?.some((item) => !ACCEPTABLE.has(item.kind));
+  const hasPassive = items?.some((item) => !item.derived && !ACCEPTABLE.has(item.kind));
 
   return <section className="space-y-5">
     <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-bold">Cần duyệt</h2>
@@ -81,7 +81,8 @@ function ReviewDomain({ contentDomain }) {
     {kinds.map((kind) => {
       const group = items.filter((item) => item.kind === kind);
       return <section key={kind} data-kind={kind} className={`${panel} space-y-1`}>
-        <h3 className="font-bold">{kindLabels[kind]} ({group.length})</h3>
+        <h3 className="font-bold">{kindLabels[kind]} ({group[0].total ?? group.length})</h3>
+        {group[0].derived && <p className="text-xs text-mute">Tự mất khi bạn upload ảnh / đưa file lên Drive rồi quét lại.{group[0].total > group.length && ` Đang hiện ${group.length}, còn ${group[0].total - group.length} mục.`}</p>}
         <ul>{group.map((item) => <Item contentDomain={contentDomain} key={item.id} item={item} onResolved={resolved} />)}</ul>
       </section>;
     })}

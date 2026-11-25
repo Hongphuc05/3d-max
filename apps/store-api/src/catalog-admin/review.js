@@ -5,7 +5,7 @@
 import { contentDomain } from '../content-domain.js';
 import { apiError } from '../drive/errors.js';
 import { refreshCatalogState } from '../catalog-v1/manifest.js';
-import { audit, bad, inTransaction, UUID } from './shared.js';
+import { audit, bad, HAS_ARCHIVE_SQL, HAS_PREVIEW_SQL, inTransaction, MISMATCH_SQL, UUID } from './shared.js';
 
 const ACCEPTABLE = new Set(['SUGGESTED_PAIR', 'REMAP_CANDIDATE']);
 
@@ -22,6 +22,24 @@ const summaryOf = (kind, p) => {
   }
 };
 const itemView = (r) => ({ id: r.id, kind: r.kind, summary: summaryOf(r.kind, r.payload ?? {}), candidates: (r.payload?.files ?? []).map((name) => ({ name: String(name) })) });
+
+// Muc suy ra tu du lieu model (khong luu, tu het khi duoc sua): chi doc, khong co hanh dong, khong tra ID.
+const DERIVED_LIMIT = 200;
+const DERIVED = [
+  ['MISSING_PREVIEW', `${HAS_ARCHIVE_SQL} and not ${HAS_PREVIEW_SQL}`],
+  ['MISSING_ARCHIVE', `${HAS_PREVIEW_SQL} and not ${HAS_ARCHIVE_SQL}`],
+  ['CATEGORY_MISMATCH', MISMATCH_SQL],
+];
+const DERIVED_SQL = DERIVED.map(([kind, where], i) => `(select '${kind}' as kind, m.name, c.full_path, dc.full_path as drive_path, count(*) over () as total
+    from models m join categories c on c.id = m.category_id left join categories dc on dc.id = m.drive_category_id
+    left join model_previews p on p.model_id = m.id and p.variant = 'sm' and p.is_primary
+    where m.content_domain = $1 and m.status <> 'HIDDEN' and ${where} order by m.name, m.id limit ${DERIVED_LIMIT})`).join(' union all ');
+const derivedSummary = (kind, r) => {
+  if (kind === 'MISSING_PREVIEW') return `Có file nhưng chưa có ảnh preview (${r.full_path}).`;
+  if (kind === 'MISSING_ARCHIVE') return `Có ảnh preview nhưng chưa có file nén (${r.full_path}).`;
+  return `Ảnh ở "${r.full_path}" nhưng file trên Drive ở "${r.drive_path ?? '?'}".`;
+};
+const derivedView = (r, i) => ({ id: `${r.kind}:${i}`, kind: r.kind, derived: true, total: Number(r.total), summary: derivedSummary(r.kind, r), candidates: [{ name: r.name }] });
 const notApplicable = () => apiError('REVIEW_NOT_APPLICABLE');
 
 // Gop file/anh cua model MOI vao model CU (da mat) trong cung transaction. Model cu giu ID, gia, ten va legacy_id.
@@ -45,7 +63,8 @@ export function addReviewRoutes(router, { pool, pre, json }) {
     try {
       const domain = contentDomain(req.query.contentDomain);
       const rows = (await pool.query("select id, kind, payload from review_items where status = 'OPEN' and content_domain=$1 order by created_at, id limit 500", [domain])).rows;
-      res.json(rows.map(itemView));
+      const derived = (await pool.query(DERIVED_SQL, [domain])).rows;
+      res.json([...rows.map(itemView), ...derived.map(derivedView)]);
     } catch (e) { next(e); }
   });
 

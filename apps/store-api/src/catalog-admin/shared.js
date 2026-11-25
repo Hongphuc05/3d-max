@@ -17,3 +17,8 @@ export async function inTransaction(pool, fn) {
 export const audit = (c, adminId, action, targetType, targetId, details) => c.query(
   `insert into audit_events (actor_kind, actor_ref, action, target_type, target_id, details) values ('ADMIN', $1, $2, $3, $4, $5)`,
   [String(adminId), action, targetType, targetId, JSON.stringify(details)]);
+
+// Dieu kien ghep cap suy ra tu du lieu (alias: m = models, p = model_previews sm primary). Dung chung cho danh sach Model va "Can duyet".
+export const HAS_ARCHIVE_SQL = '(m.primary_file_id is not null)';
+export const HAS_PREVIEW_SQL = '(p.local_path is not null)';
+export const MISMATCH_SQL = '(m.drive_category_id is not null and m.drive_category_id <> m.category_id)';

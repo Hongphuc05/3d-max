@@ -263,3 +263,31 @@ test('the row lock itself decides races: concurrent ACCEPT (and ACCEPT vs DISMIS
   assert.ok(['RESOLVED', 'DISMISSED'].includes(status));
   assert.equal((await model(m2.id)).status, status === 'RESOLVED' ? 'PUBLISHED' : 'NEEDS_REVIEW', 'the model follows the one decision that won');
 });
+
+test('GET also lists derived items (missing preview / missing archive / category mismatch), per domain, read-only and without ids', { skip }, async () => {
+  const full = await makeModel('Full sofa');
+  const noPreview = await makeModel('No preview', {});
+  await pool.query('delete from model_previews where model_id = $1', [noPreview.id]);
+  const noFile = await makeModel('No file', {});
+  await pool.query('update models set primary_file_id = null where id = $1', [noFile.id]);
+  const mism = await makeModel('Mismatch', {});
+  const other = (await pool.query("insert into categories(name,slug,full_path) values('Chair','chair','Living / Chair') returning id")).rows[0].id;
+  await pool.query('update models set drive_category_id = $1 where id = $2', [other, mism.id]);
+  const hidden = await makeModel('Hidden no preview', { status: 'HIDDEN' });
+  await pool.query('delete from model_previews where model_id = $1', [hidden.id]);
+  const scene = await makeModel('Scene no preview', {});
+  await pool.query("update models set content_domain = '3dscenes' where id = $1", [scene.id]);
+  await pool.query('delete from model_previews where model_id = $1', [scene.id]);
+
+  const body = await (await j('/catalog/review')).json();
+  const by = (kind) => body.filter((i) => i.kind === kind);
+  assert.deepEqual(by('MISSING_PREVIEW').map((i) => i.candidates[0].name), ['No preview']);
+  assert.deepEqual(by('MISSING_ARCHIVE').map((i) => i.candidates[0].name), ['No file']);
+  assert.deepEqual(by('CATEGORY_MISMATCH').map((i) => i.candidates[0].name), ['Mismatch']);
+  assert.match(by('CATEGORY_MISMATCH')[0].summary, /Living \/ Chair/);
+  assert.ok(body.every((i) => i.derived === true && i.total === 1));
+  assert.equal(JSON.stringify(body).includes(full.id) || JSON.stringify(body).includes(noPreview.id), false, 'no model ids');
+  const scenes = await (await j('/catalog/review?contentDomain=3dscenes')).json();
+  assert.deepEqual(scenes.map((i) => i.candidates[0].name), ['Scene no preview']);
+  assert.equal((await j(`/catalog/review/${body[0].id}`, { method: 'POST', body: { action: 'DISMISS' } })).status, 404);
+});

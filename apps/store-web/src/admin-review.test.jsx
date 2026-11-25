@@ -185,3 +185,14 @@ test('Scenes review actions send the selected domain', async () => {
   await click(row('scene-review').querySelector('button'));
   assert.deepEqual(posts()[0].body, { action: 'DISMISS', contentDomain: '3dscenes' });
 });
+
+test('derived items (missing preview/archive, mismatch) are listed read-only with the real total', async () => {
+  const d = (id, kind, name, total) => ({ ...item(id, kind, [name], `Tóm tắt ${kind}`), derived: true, total });
+  await mount([d('MISSING_PREVIEW:0', 'MISSING_PREVIEW', 'chair-a', 3), d('MISSING_ARCHIVE:0', 'MISSING_ARCHIVE', 'lamp-b', 1), d('CATEGORY_MISMATCH:0', 'CATEGORY_MISMATCH', 'sofa-c', 1)]);
+  const sections = [...container.querySelectorAll('section[data-kind]')];
+  assert.deepEqual(sections.map((s) => s.dataset.kind), ['MISSING_PREVIEW', 'MISSING_ARCHIVE', 'CATEGORY_MISMATCH']);
+  assert.match(sections[0].textContent, /Thiếu ảnh preview \(3\)/);
+  assert.match(sections[0].textContent, /còn 2 mục/);
+  assert.equal(container.querySelectorAll('li button').length, 0, 'no action buttons');
+  assert.equal(container.textContent.includes('Đã xem'), false);
+});

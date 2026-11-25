@@ -7,7 +7,7 @@ import { apiError, requestId, v3ErrorHandler } from '../drive/errors.js';
 import { refreshCatalogState } from '../catalog-v1/manifest.js';
 import { addPreviewRoutes } from './previews.js';
 import { addReviewRoutes } from './review.js';
-import { audit, bad, inTransaction, UUID } from './shared.js';
+import { audit, bad, HAS_ARCHIVE_SQL, HAS_PREVIEW_SQL, inTransaction, MISMATCH_SQL, UUID } from './shared.js';
 
 const CONTROL = /[\u0000-\u001f\u007f]/;
 const MODEL_STATUSES = new Set(['DRAFT', 'PUBLISHED', 'NEEDS_REVIEW', 'HIDDEN']);
@@ -58,8 +58,8 @@ const settingsView = (r) => ({
 // D29: trang thai ghep cap suy ra tu du lieu (khong luu): FULL = anh + file nen = cong khai; con lai chi hien o admin.
 const STATE_WHERE = { FULL: 'has_archive and has_preview', PREVIEW_ONLY: 'has_preview and not has_archive', ARCHIVE_ONLY: 'has_archive and not has_preview', MISMATCH: 'mismatch' };
 const BASE = `select m.id, m.name, m.category_id, m.content_domain, array(select mc.category_id from model_categories mc where mc.model_id=m.id order by mc.category_id) as category_ids, c.full_path, m.status, m.name_overridden, m.updated_at, p.local_path as thumb_path,
-    (m.primary_file_id is not null) as has_archive, (p.local_path is not null) as has_preview,
-    (m.drive_category_id is not null and m.drive_category_id <> m.category_id) as mismatch
+    ${HAS_ARCHIVE_SQL} as has_archive, ${HAS_PREVIEW_SQL} as has_preview,
+    ${MISMATCH_SQL} as mismatch
   from models m join categories c on c.id = m.category_id
   left join model_previews p on p.model_id = m.id and p.variant = 'sm' and p.is_primary`;
 const modelView = (r) => ({ id: r.id, name: r.name, contentDomain: r.content_domain, categoryId: r.category_id, categoryIds: r.category_ids, categoryPath: r.full_path, status: r.status,
