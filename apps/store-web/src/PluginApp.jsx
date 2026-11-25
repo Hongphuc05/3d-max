@@ -234,7 +234,7 @@ export default function PluginApp({ orderPollMs }) {
             {tabBtn('online', 'Online')}
             {tabBtn('done', `Đã tải${mine.length ? ` (${mine.length})` : ''}`)}
             {max && tabBtn('fav', `Yêu thích${liked.length ? ` (${liked.length})` : ''}`, 'heart')}
-            <label className="flex min-w-32 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-brand">
+            <label className="flex min-w-32 flex-1 items-center gap-2 rounded-md border border-line bg-panel px-3 focus-within:border-white">
               <Icon name="search" className="size-3.5 text-mute" />
               <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Tìm model…" className="w-full bg-transparent py-1.5 text-sm outline-none placeholder:text-mute" />
             </label>
