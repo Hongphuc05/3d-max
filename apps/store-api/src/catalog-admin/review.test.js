@@ -276,7 +276,8 @@ test('GET also lists derived items (missing preview / missing archive / category
   const hidden = await makeModel('Hidden no preview', { status: 'HIDDEN' });
   await pool.query('delete from model_previews where model_id = $1', [hidden.id]);
   const scene = await makeModel('Scene no preview', {});
-  await pool.query("update models set content_domain = '3dscenes' where id = $1", [scene.id]);
+  const sceneCat = (await pool.query("insert into categories(name,slug,full_path,content_domain) values('Interior','interior','Scenes / Interior','3dscenes') returning id")).rows[0].id;
+  await pool.query("update models set content_domain = '3dscenes', category_id = $2 where id = $1", [scene.id, sceneCat]); // trigger: model va danh muc cung domain
   await pool.query('delete from model_previews where model_id = $1', [scene.id]);
 
   const body = await (await j('/catalog/review')).json();
