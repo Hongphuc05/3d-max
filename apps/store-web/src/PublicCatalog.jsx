@@ -138,7 +138,7 @@ export default function PublicCatalog() {
               <input value={text} onChange={(e) => setText(e.target.value)} placeholder={`Tìm ${noun}…`} aria-label={`Tìm ${noun}`} className="w-full bg-transparent text-sm outline-none placeholder:text-mute" />
             </label>
             <span className="font-mono text-xs text-mute">{state === 'ready' ? `${rows.length} ${noun}` : ''}</span>
-            <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sắp xếp" className="h-8 rounded-md border border-line bg-panel px-2 font-mono text-xs outline-none focus:border-brand">
+            <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sắp xếp" className="h-8 rounded-md border border-line bg-panel px-2 font-mono text-xs outline-none focus:border-white">
               {Object.entries(SORTS).map(([k, [label]]) => <option key={k} value={k}>{label}</option>)}
             </select>
             <GridZoom cols={cols} onCols={(n) => resizeGrid(setCols, setPage, cols, n)} />

@@ -240,7 +240,7 @@ export default function PluginApp({ orderPollMs }) {
               <Icon name="search" className="size-3.5 text-mute" />
               <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Tìm model…" className="w-full bg-transparent text-sm outline-none placeholder:text-mute" />
             </label>
-            <select value={sort} onChange={(e) => setSort(e.target.value)} className="h-8 rounded-md border border-line bg-panel px-2 font-mono text-xs outline-none focus:border-brand">
+            <select value={sort} onChange={(e) => setSort(e.target.value)} className="h-8 rounded-md border border-line bg-panel px-2 font-mono text-xs outline-none focus:border-white">
               {Object.entries(SORTS).map(([k, [label]]) => <option key={k} value={k}>{label}</option>)}
             </select>
             <GridZoom cols={cols} onCols={(n) => resizeGrid(setCols, setPage, cols, n)} />
