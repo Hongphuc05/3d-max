@@ -23,7 +23,7 @@ Mẫu: ảnh Photoshop chủ dự án gửi 15/11/2026.
 | 13 | Hàng đợi: bỏ dòng mô tả, gọn 1 dòng "⇩ Hàng đợi · 0 job" như mẫu | Thanh lọc | [x] | [ ] |
 | 14 | Phân trang: nút số trang « ‹ 1 2 3 … 8 9 10 › » + ô **Nhảy tới trang** | Thanh lọc | [x] | [ ] |
 | 15 | Ô sắp xếp: bỏ **Nhẹ → nặng** và **Nặng → nhẹ**, còn Tên A → Z / Mới nhất / Cũ nhất | Thanh lọc | [x] | [ ] |
-| 16 | Mỗi trang **10 × 10 = 100 model khít cửa sổ, không cuộn** (≥ 900px): ô tự co theo cửa sổ, chỉ hiện ảnh + nhãn "Đã tải"; tên + nút hiện khi rê chuột | Lưới | [x] | [ ] |
+| 16 | Mỗi trang **100 model, 10 cột**, thẻ đầy đủ (ảnh, tên, dung lượng, nút Download), **cuộn dọc** *(đã thử 10×10 khít màn hình không cuộn, rollback 25/11)* | Lưới | [x] | [ ] |
 | 17 | Tab Đã tải: **Mới nhất / Cũ nhất** xếp theo **lúc tải** (`downloadedAt`), không theo ngày model | Thanh lọc | [x] | [ ] |
 | 18 | Popup **Thêm vào yêu thích**: bỏ nền gradient đỏ, nền tối đơn giản như Cài đặt | Popup | [x] | [ ] |
 

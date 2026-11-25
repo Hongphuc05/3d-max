@@ -80,7 +80,7 @@ function Lightbox({ p, onClose }) {
   );
 }
 
-// Bo cuc giong plugin (header 2 hang, sidebar danh muc, thanh tim + sap xep, luoi 10 x 10, phan trang); bo cac nut chi co trong Max.
+// Bo cuc giong plugin (header 2 hang, sidebar danh muc, thanh tim + sap xep, luoi 10 cot, 100 model/trang, cuon doc); bo cac nut chi co trong Max.
 export default function PublicCatalog() {
   const [reloadKey, setReloadKey] = useState(0);
   const { products: allProducts, tree: allTree, state, error } = usePluginCatalog(reloadKey);
@@ -142,7 +142,7 @@ export default function PublicCatalog() {
             </button>
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pt-2 pb-3 min-[900px]:overflow-hidden">
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-2 pb-3">
             {state === 'loading' && <p role="status" className="py-16 text-center font-mono text-xs text-mute">Đang tải danh mục…</p>}
             {state === 'error' && (
               <div role="alert" className="mx-auto mt-16 max-w-md rounded-md border border-danger/40 bg-danger/10 p-4 text-center font-mono text-xs text-danger">
@@ -151,7 +151,7 @@ export default function PublicCatalog() {
               </div>
             )}
             {state === 'ready' && rows.length === 0 && <p className="py-16 text-center text-sm text-mute">Không có {noun} nào khớp.</p>}
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-1.5 min-[900px]:min-h-0 min-[900px]:flex-1 min-[900px]:grid-cols-[repeat(10,minmax(0,1fr))] min-[900px]:grid-rows-[repeat(10,minmax(0,1fr))]">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] min-[900px]:grid-cols-[repeat(10,minmax(0,1fr))] gap-2.5">
               {view.map((p) => <PluginCard key={p.id} p={p} active={active?.id === p.id} onOpen={setActive} ctx={{}} actions={false} />)}
             </div>
           </div>

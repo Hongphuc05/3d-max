@@ -250,8 +250,7 @@ export default function PluginApp({ orderPollMs }) {
             </div>
           )}
 
-          {/* >= 900px: 10 x 10 khit cua so, khong cuon; man hep: luoi tu dong, cuon doc. */}
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-3 min-[900px]:overflow-hidden">
+          <div className="min-h-0 flex-1 overflow-y-scroll px-3 pb-3">
             {tab === 'done' && downloads.error && <p role="alert" className="py-3 text-sm text-danger">{downloads.error}</p>}
             {favorites.error && <p role="alert" className="py-3 text-sm text-danger">{favorites.error}</p>}
             {tab !== 'done' && state === 'error' && (
@@ -268,9 +267,9 @@ export default function PluginApp({ orderPollMs }) {
               </p>
             )}
             {tab !== 'done' && state === 'loading' && max && <p role="status" className="py-2 text-center font-mono text-xs text-mute">Lần đầu mở: đang tải catalog từ máy chủ (cần Internet)…</p>}
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-1.5 min-[900px]:min-h-0 min-[900px]:flex-1 min-[900px]:grid-cols-[repeat(10,minmax(0,1fr))] min-[900px]:grid-rows-[repeat(10,minmax(0,1fr))]">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] min-[900px]:grid-cols-[repeat(10,minmax(0,1fr))] gap-2.5">
               {!listReady && state === 'loading'
-                ? Array.from({ length: 18 }, (_, i) => <div key={i} className="aspect-square animate-pulse rounded-lg bg-panel min-[900px]:aspect-auto" />)
+                ? Array.from({ length: 18 }, (_, i) => <div key={i} className="aspect-[3/4] animate-pulse rounded-lg bg-panel" />)
                 : view.map((p) => <PluginCard key={p.id} p={p} active={activeId === p.id} onOpen={(m) => setActiveId(m.id)} ctx={ctx} />)}
             </div>
           </div>
