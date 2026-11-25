@@ -662,3 +662,22 @@ test('favorites survive remount, are scoped to the current Models/Scenes tab, an
   assert.equal(button('Yêu thích (1)').textContent, 'Yêu thích (1)', 'failed save is rolled back');
   await done(root);
 });
+
+test('grid zoom: + removes one column (bigger cards), − adds one; stops at the limits and is remembered', async () => {
+  server(); window.localStorage.removeItem('3dsmood.gridCols');
+  let root = await mount();
+  const grid = () => document.querySelector('.group').parentElement;
+  const zoom = (label) => document.querySelector(`[aria-label="${label}"]`);
+  assert.equal(grid().style.getPropertyValue('--cols'), '10', 'default 10 columns');
+  await act(async () => { zoom('Phóng to ô').click(); });
+  assert.equal(grid().style.getPropertyValue('--cols'), '9');
+  await act(async () => { zoom('Thu nhỏ ô').click(); zoom('Thu nhỏ ô').click(); });
+  assert.equal(grid().style.getPropertyValue('--cols'), '11');
+  for (let i = 0; i < 10; i++) await act(async () => { zoom('Thu nhỏ ô').click(); });
+  assert.equal(grid().style.getPropertyValue('--cols'), '16'); assert.ok(zoom('Thu nhỏ ô').disabled, 'max 16 columns');
+  await done(root);
+  root = await mount();
+  assert.equal(grid().style.getPropertyValue('--cols'), '16', 'kept after reopening the panel');
+  window.localStorage.removeItem('3dsmood.gridCols');
+  await done(root);
+});

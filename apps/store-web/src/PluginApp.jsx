@@ -7,7 +7,7 @@ import { matchesCategory } from './catalog-view.js';
 import { HostBar } from './HostBar.jsx';
 import { Icon } from './icons.jsx';
 import { applyPluginUpdate, checkPluginUpdate, getHostInfo, getLibraryStatus, isMaxHost, refreshLibrary } from './integrations/3dsmax/bridge.js';
-import { BuyLibrary, PluginCard } from './plugin-components.jsx';
+import { BuyLibrary, GridZoom, gridClass, PluginCard, useGridCols } from './plugin-components.jsx';
 import OrderDialog from './OrderDialog.jsx';
 import { Queue } from './Queue.jsx';
 import { useJobs } from './queue.js';
@@ -135,6 +135,7 @@ export default function PluginApp({ orderPollMs }) {
   const [deviceOpen, setDeviceOpen] = useState(false);
   const [folderFilter, setFolderFilter] = useState('all');
   const [picking, setPicking] = useState(null);
+  const [cols, setCols] = useGridCols();
   const { products: allProducts, tree: allTree, state, error, offline, progress, entitlements } = usePluginCatalog(reloadKey);
   const products = useMemo(() => allProducts.filter(p => (p.contentDomain || "3dmodels") === contentDomain), [allProducts, contentDomain]);
   const tree = useMemo(() => allTree.filter(c => (c.contentDomain || "3dmodels") === contentDomain), [allTree, contentDomain]);
@@ -237,6 +238,7 @@ export default function PluginApp({ orderPollMs }) {
             <select value={sort} onChange={(e) => setSort(e.target.value)} className="rounded-md border border-line bg-panel px-2 py-1.5 font-mono text-xs outline-none focus:border-brand">
               {Object.entries(SORTS).map(([k, [label]]) => <option key={k} value={k}>{label}</option>)}
             </select>
+            <GridZoom cols={cols} setCols={setCols} />
             <button onClick={() => setDrawer(true)} className="flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs text-mute hover:text-fg lg:hidden">
               <Icon name="filter" className="size-3.5" />Lọc{subs.size ? ` (${subs.size})` : ''}
               {max && activeJobs > 0 && <span className="text-brand">· {activeJobs} đang tải</span>}
@@ -267,7 +269,7 @@ export default function PluginApp({ orderPollMs }) {
               </p>
             )}
             {tab !== 'done' && state === 'loading' && max && <p role="status" className="py-2 text-center font-mono text-xs text-mute">Lần đầu mở: đang tải catalog từ máy chủ (cần Internet)…</p>}
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] min-[900px]:grid-cols-[repeat(10,minmax(0,1fr))] gap-2.5">
+            <div className={gridClass} style={{ '--cols': cols }}>
               {!listReady && state === 'loading'
                 ? Array.from({ length: 18 }, (_, i) => <div key={i} className="aspect-[3/4] animate-pulse rounded-lg bg-panel" />)
                 : view.map((p) => <PluginCard key={p.id} p={p} active={activeId === p.id} onOpen={(m) => setActiveId(m.id)} ctx={ctx} />)}

@@ -1,6 +1,6 @@
 // P4.4: the model grid card, detail panel and action button of the plugin (UI-1 layout, v3 data). No account, no licence screen:
 // what a device may download is decided by the server (entitlements); the button only reflects it.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { mb } from './api.js';
 import { importDownloaded, useImports } from './local-imports.js';
@@ -97,6 +97,28 @@ export function PluginCard({ p, active, onOpen, ctx, actions = true }) {
       </button>
       {actions && <div className="p-2"><ModelAction p={p} ctx={ctx} /></div>}
       {actions && <FavoriteHeart p={p} ctx={ctx} reveal className="absolute top-1.5 right-1.5 z-10" />}
+    </div>
+  );
+}
+
+// Nut + / - doi kich thuoc o: + = o to hon (bot 1 cot), - = o nho hon (them 1 cot). Nho theo trinh duyet/WebView (localStorage).
+export const MIN_COLS = 4, MAX_COLS = 16, DEFAULT_COLS = 10;
+const COLS_KEY = '3dsmood.gridCols';
+export function useGridCols() {
+  const [cols, setCols] = useState(() => {
+    try { const n = Number(window.localStorage.getItem(COLS_KEY)); return Number.isInteger(n) && n >= MIN_COLS && n <= MAX_COLS ? n : DEFAULT_COLS; } catch { return DEFAULT_COLS; }
+  });
+  useEffect(() => { try { window.localStorage.setItem(COLS_KEY, String(cols)); } catch { /* storage blocked: keep in memory */ } }, [cols]);
+  return [cols, setCols];
+}
+// Luoi the: man >= 900px dung so cot da chon; man hep van tu xep (auto-fill).
+export const gridClass = 'grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] min-[900px]:grid-cols-[repeat(var(--cols),minmax(0,1fr))] gap-2.5';
+export function GridZoom({ cols, setCols }) {
+  const btn = 'grid size-8 place-items-center rounded-md border border-line font-mono text-base font-bold text-mute hover:text-fg disabled:opacity-40 disabled:hover:text-mute';
+  return (
+    <div className="hidden items-center gap-1 min-[900px]:flex" role="group" aria-label="Kích thước ô">
+      <button type="button" onClick={() => setCols(c => Math.min(MAX_COLS, c + 1))} disabled={cols >= MAX_COLS} aria-label="Thu nhỏ ô" title={`Thu nhỏ ô (${cols} cột)`} className={btn}>−</button>
+      <button type="button" onClick={() => setCols(c => Math.max(MIN_COLS, c - 1))} disabled={cols <= MIN_COLS} aria-label="Phóng to ô" title={`Phóng to ô (${cols} cột)`} className={btn}>+</button>
     </div>
   );
 }

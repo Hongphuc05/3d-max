@@ -26,5 +26,6 @@ Mẫu: ảnh Photoshop chủ dự án gửi 15/11/2026.
 | 16 | Mỗi trang **100 model, 10 cột**, thẻ đầy đủ (ảnh, tên, dung lượng, nút Download), **cuộn dọc** *(đã thử 10×10 khít màn hình không cuộn, rollback 25/11)* | Lưới | [x] | [ ] |
 | 17 | Tab Đã tải: **Mới nhất / Cũ nhất** xếp theo **lúc tải** (`downloadedAt`), không theo ngày model | Thanh lọc | [x] | [ ] |
 | 18 | Popup **Thêm vào yêu thích**: bỏ nền gradient đỏ, nền tối đơn giản như Cài đặt | Popup | [x] | [ ] |
+| 19 | Nút **− / +** cạnh ô sắp xếp: mỗi nấc thêm/bớt **1 cột** (4–16 cột, mặc định 10), nhớ lựa chọn; có cả trên web công khai | Thanh lọc | [x] | [ ] |
 
 Câu trả lời đã chốt (15/11): hover = popup ảnh lớn như bản cũ, to hơn 25%; "Nhập số trang" = nhảy tới trang; nút focus Max chỉ chỉnh giao diện (chức năng đã chạy).

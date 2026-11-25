@@ -5,7 +5,7 @@ import { Icon } from './icons.jsx';
 import { matchesCategory } from './catalog-view.js';
 import { usePluginCatalog } from './usePluginCatalog.js';
 import { Pagination } from './Pagination.jsx';
-import { PluginCard } from './plugin-components.jsx';
+import { GridZoom, gridClass, PluginCard, useGridCols } from './plugin-components.jsx';
 import { DOMAIN_GLYPH, NavButton, PAGE, SORTS } from './PluginApp.jsx';
 
 const MZP = '/download/3dsmood-library.mzp';
@@ -94,6 +94,7 @@ export default function PublicCatalog() {
   const [page, setPage] = useState(1);
   const [active, setActive] = useState(null);
   const [drawer, setDrawer] = useState(false);
+  const [cols, setCols] = useGridCols();
   const rows = useMemo(() => {
     const needle = text.trim().toLowerCase();
     return products.filter((p) => matchesCategory(p, subs) && (!needle || p.name.toLowerCase().includes(needle))).sort(SORTS[sort][1]);
@@ -137,6 +138,7 @@ export default function PublicCatalog() {
             <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sắp xếp" className="rounded-md border border-line bg-panel px-2 py-1.5 font-mono text-xs outline-none focus:border-brand">
               {Object.entries(SORTS).map(([k, [label]]) => <option key={k} value={k}>{label}</option>)}
             </select>
+            <GridZoom cols={cols} setCols={setCols} />
             <button type="button" onClick={() => setDrawer(true)} className="flex items-center gap-1.5 rounded-md border border-line px-3 py-1.5 text-xs text-mute hover:text-fg lg:hidden">
               <Icon name="filter" className="size-3.5" />Danh mục{subs.size ? ` (${subs.size})` : ''}
             </button>
@@ -151,7 +153,7 @@ export default function PublicCatalog() {
               </div>
             )}
             {state === 'ready' && rows.length === 0 && <p className="py-16 text-center text-sm text-mute">Không có {noun} nào khớp.</p>}
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] min-[900px]:grid-cols-[repeat(10,minmax(0,1fr))] gap-2.5">
+            <div className={gridClass} style={{ '--cols': cols }}>
               {view.map((p) => <PluginCard key={p.id} p={p} active={active?.id === p.id} onOpen={setActive} ctx={{}} actions={false} />)}
             </div>
           </div>
